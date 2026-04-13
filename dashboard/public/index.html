@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><title>UniChat</title></head>
+<body>
+<h1>🌐 UniChat Dashboard</h1>
+<pre id="stats"></pre>
+
+<input id="user" placeholder="User ID">
+<button onclick="add()">Add Access</button>
+
+<script>
+fetch('/stats').then(r=>r.json()).then(d=>{
+document.getElementById('stats').innerText=JSON.stringify(d,null,2)
+});
+
+function add(){
+fetch('/access',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({user:document.getElementById('user').value})})
+}
+</script>
+</body>
+</html>
