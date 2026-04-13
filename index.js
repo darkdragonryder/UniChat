@@ -1,117 +1,162 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection, EmbedBuilder, REST, Routes } from 'discord.js';
-import fs from 'fs';
+import {
+  Client,
+  GatewayIntentBits,
+  Collection,
+  REST,
+  Routes,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder
+} from 'discord.js';
 
-import { getUserLanguage } from './utils/language.js';
-import { translateText } from './utils/translator.js';
-import { getLinkedChannels } from './utils/links.js';
-import { hasAccess } from './utils/access.js';
-import { getCache, setCache } from './utils/cache.js';
-import { queue } from './utils/queue.js';
-import { track } from './utils/stats.js';
+import fs from 'fs';
+import { translate } from './utils/translate.js';
+import { getGuildConfig, saveGuildConfig } from './utils/guildConfig.js';
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions
+    GatewayIntentBits.MessageContent
   ]
 });
 
 client.commands = new Collection();
 
-// Load commands
+// Load slash commands
 for (const file of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) {
   const cmd = await import(`./commands/${file}`);
   client.commands.set(cmd.default.data.name, cmd.default);
 }
 
-// Register slash commands
+// Register slash commands + context menu
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
 await rest.put(
   Routes.applicationCommands(process.env.CLIENT_ID),
-  { body: client.commands.map(c => c.data.toJSON()) }
+  {
+    body: [
+      ...client.commands.map(c => c.data.toJSON()),
+      {
+        name: 'Translate Message',
+        type: 3 // MESSAGE CONTEXT MENU
+      }
+    ]
+  }
 );
 
 console.log("✅ Commands registered");
 
 client.once('ready', () => {
-  console.log(`🚀 UniChat v4 LIVE: ${client.user.tag}`);
+  console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
 
-// Command handler
-client.on('interactionCreate', async i => {
-  if (!i.isChatInputCommand()) return;
-  const cmd = client.commands.get(i.commandName);
-  if (!cmd) return;
-  await cmd.execute(i);
-});
+// Slash commands
+client.on('interactionCreate', async (interaction) => {
 
-// Message handler
-client.on('messageCreate', async msg => {
-  if (msg.author.bot || !msg.guild) return;
-  if (!(await hasAccess(msg))) return;
+  // =====================
+  // SLASH COMMANDS
+  // =====================
+  if (interaction.isChatInputCommand()) {
+    const cmd = client.commands.get(interaction.commandName);
+    if (!cmd) return;
+    return cmd.execute(interaction);
+  }
 
-  queue(async () => {
-    const members = msg.channel.members.filter(m => !m.user.bot);
-    const langMap = {};
+  // =====================
+  // RIGHT CLICK TRANSLATE
+  // =====================
+  if (interaction.isMessageContextMenuCommand()) {
 
-    for (const [_, member] of members) {
-      const lang = (await getUserLanguage(member.id)) || process.env.DEFAULT_LANG;
-      if (!langMap[lang]) langMap[lang] = [];
-      langMap[lang].push(member.user.username);
-    }
+    if (interaction.commandName === 'Translate Message') {
 
-    for (const lang of Object.keys(langMap)) {
-      const key = msg.content + "_" + lang;
-      let translated = getCache(key);
+      const message = interaction.targetMessage;
+      const config = getGuildConfig(interaction.guild.id);
 
-      if (!translated) {
-        translated = await translateText(msg.content, lang);
-        setCache(key, translated);
+      const userId = interaction.user.id;
+
+      // ❌ No language yet → ask for it
+      if (!config.languages[userId]) {
+
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId(`set_language_${message.id}`)
+          .setPlaceholder('🌍 Select your language')
+          .addOptions(
+            new StringSelectMenuOptionBuilder().setLabel('🇬🇧 English').setValue('en'),
+            new StringSelectMenuOptionBuilder().setLabel('🇫🇷 French').setValue('fr'),
+            new StringSelectMenuOptionBuilder().setLabel('🇪🇸 Spanish').setValue('es'),
+            new StringSelectMenuOptionBuilder().setLabel('🇩🇪 German').setValue('de'),
+            new StringSelectMenuOptionBuilder().setLabel('🇮🇹 Italian').setValue('it'),
+            new StringSelectMenuOptionBuilder().setLabel('🇵🇹 Portuguese').setValue('pt')
+          );
+
+        const row = new ActionRowBuilder().addComponents(menu);
+
+        return interaction.reply({
+          content: '🌍 Please select your language:',
+          components: [row],
+          ephemeral: true
+        });
       }
 
-      if (!translated || translated === msg.content) continue;
+      // ✅ Translate immediately
+      const userLang = config.languages[userId];
 
-      track(lang, msg.author.id);
+      const translated = await translate(message.content, userLang);
 
-      const embed = new EmbedBuilder()
-        .setAuthor({ name: msg.author.username, iconURL: msg.author.displayAvatarURL() })
-        .setDescription(translated)
-        .setFooter({ text: `🌐 ${lang.toUpperCase()}` });
+      await interaction.channel.send(
+        `🌍 **Translation (${userLang})**:\n${translated}`
+      );
 
-      msg.channel.send({ embeds: [embed] });
+      return interaction.reply({
+        content: '✅ Translated',
+        ephemeral: true
+      });
     }
+  }
 
-    // Linked channels
-    for (const ch of getLinkedChannels(msg.channel.id)) {
-      const channel = client.channels.cache.get(ch);
-      if (!channel) continue;
+  // =====================
+  // LANGUAGE SELECT MENU
+  // =====================
+  if (interaction.isStringSelectMenu()) {
 
-      const translated = await translateText(msg.content, process.env.DEFAULT_LANG);
+    if (interaction.customId.startsWith('set_language_')) {
 
-      const embed = new EmbedBuilder()
-        .setDescription(translated)
-        .setFooter({ text: `🔗 Linked from ${msg.channel.name}` });
+      const messageId = interaction.customId.split('_')[2];
+      const lang = interaction.values[0];
 
-      channel.send({ embeds: [embed] });
+      const config = getGuildConfig(interaction.guild.id);
+
+      config.languages = config.languages || {};
+      config.languages[interaction.user.id] = lang;
+
+      saveGuildConfig(interaction.guild.id, config);
+
+      // Fetch original message
+      const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
+
+      if (!message) {
+        return interaction.reply({
+          content: '❌ Message not found',
+          ephemeral: true
+        });
+      }
+
+      const translated = await translate(message.content, lang);
+
+      // Send public translation
+      await interaction.channel.send(
+        `🌍 **Translation (${lang})**:\n${translated}`
+      );
+
+      return interaction.reply({
+        content: '✅ Language saved & translated',
+        ephemeral: true
+      });
     }
-  });
-});
+  }
 
-// Reaction translate
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot || reaction.emoji.name !== "🌐") return;
-
-  const lang = await getUserLanguage(user.id) || process.env.DEFAULT_LANG;
-  const translated = await translateText(reaction.message.content, lang);
-
-  const embed = new EmbedBuilder()
-    .setDescription(translated)
-    .setFooter({ text: `🌐 ${lang.toUpperCase()} • ${user.username}` });
-
-  reaction.message.channel.send({ embeds: [embed] });
 });
 
 client.login(process.env.TOKEN);
