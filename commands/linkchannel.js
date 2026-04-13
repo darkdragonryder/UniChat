@@ -1,14 +1,14 @@
-const { SlashCommandBuilder } = require('discord.js');
-const fs = require('fs');
+import { SlashCommandBuilder } from 'discord.js';
+import fs from 'fs';
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('linkchannel')
-    .setDescription('Link this channel to another channel')
+    .setDescription('Link channels')
     .addChannelOption(option =>
       option
         .setName('channel')
-        .setDescription('Channel to link to')
+        .setDescription('Channel to link')
         .setRequired(true)
     ),
 
@@ -19,7 +19,7 @@ module.exports = {
 
     try {
       config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-    } catch (err) {
+    } catch {
       config = { linkedChannels: {} };
     }
 
@@ -27,7 +27,6 @@ module.exports = {
       config.linkedChannels[interaction.channel.id] = [];
     }
 
-    // Prevent duplicates
     if (!config.linkedChannels[interaction.channel.id].includes(target.id)) {
       config.linkedChannels[interaction.channel.id].push(target.id);
     }
