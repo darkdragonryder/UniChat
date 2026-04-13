@@ -1,15 +1,36 @@
-import { SlashCommandBuilder } from 'discord.js';
-import { setUserLanguage } from '../utils/language.js';
+const { SlashCommandBuilder } = require('discord.js');
+const fs = require('fs');
 
-export default {
+// simple safe fallback storage if your util breaks
+const path = './config.json';
+
+module.exports = {
   data: new SlashCommandBuilder()
     .setName('setlang')
     .setDescription('Set your language')
-    .addStringOption(o => o.setName('lang').setRequired(true)),
+    .addStringOption(option =>
+      option
+        .setName('lang')
+        .setDescription('Language code (e.g. en, es, fr)')
+        .setRequired(true)
+    ),
 
-  async execute(i) {
-    const lang = i.options.getString('lang');
-    await setUserLanguage(i.user.id, lang);
-    await i.reply(`✅ Language set to ${lang}`);
+  async execute(interaction) {
+    const lang = interaction.options.getString('lang');
+
+    let config;
+
+    try {
+      config = JSON.parse(fs.readFileSync(path, 'utf8'));
+    } catch (err) {
+      config = {};
+    }
+
+    config.languages = config.languages || {};
+    config.languages[interaction.user.id] = lang;
+
+    fs.writeFileSync(path, JSON.stringify(config, null, 2));
+
+    await interaction.reply(`✅ Language set to ${lang}`);
   }
 };
