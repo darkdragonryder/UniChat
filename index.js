@@ -1,6 +1,3 @@
-console.log("TOKEN VALUE:", process.env.TOKEN);
-console.log("TOKEN TYPE:", typeof process.env.TOKEN);
-
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Collection, EmbedBuilder, REST, Routes } from 'discord.js';
 import fs from 'fs';
