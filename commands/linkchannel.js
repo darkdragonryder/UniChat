@@ -1,25 +1,39 @@
-import { SlashCommandBuilder } from 'discord.js';
-import fs from 'fs';
+const { SlashCommandBuilder } = require('discord.js');
+const fs = require('fs');
 
-export default {
+module.exports = {
   data: new SlashCommandBuilder()
     .setName('linkchannel')
-    .setDescription('Link channels')
-    .addChannelOption(o => o.setName('channel').setRequired(true)),
+    .setDescription('Link this channel to another channel')
+    .addChannelOption(option =>
+      option
+        .setName('channel')
+        .setDescription('Channel to link to')
+        .setRequired(true)
+    ),
 
-  async execute(i) {
-    const target = i.options.getChannel('channel');
+  async execute(interaction) {
+    const target = interaction.options.getChannel('channel');
 
-    const config = JSON.parse(fs.readFileSync('./config.json'));
+    let config;
 
-    if (!config.linkedChannels[i.channel.id]) {
-      config.linkedChannels[i.channel.id] = [];
+    try {
+      config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+    } catch (err) {
+      config = { linkedChannels: {} };
     }
 
-    config.linkedChannels[i.channel.id].push(target.id);
+    if (!config.linkedChannels[interaction.channel.id]) {
+      config.linkedChannels[interaction.channel.id] = [];
+    }
+
+    // Prevent duplicates
+    if (!config.linkedChannels[interaction.channel.id].includes(target.id)) {
+      config.linkedChannels[interaction.channel.id].push(target.id);
+    }
 
     fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
 
-    await i.reply('✅ Channels linked');
+    await interaction.reply('✅ Channels linked');
   }
 };
