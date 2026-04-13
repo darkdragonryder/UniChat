@@ -1,20 +1,20 @@
-const { SlashCommandBuilder } = require('discord.js');
-const fs = require('fs');
+import { SlashCommandBuilder } from 'discord.js';
+import fs from 'fs';
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('access')
     .setDescription('Grant access to a user or server')
     .addStringOption(option =>
       option
         .setName('type')
-        .setDescription('Type of access: user or server')
+        .setDescription('Type: user or server')
         .setRequired(true)
     )
     .addUserOption(option =>
       option
         .setName('user')
-        .setDescription('User to grant access to')
+        .setDescription('User to grant access')
     ),
 
   async execute(interaction) {
@@ -22,7 +22,7 @@ module.exports = {
 
     try {
       config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-    } catch (err) {
+    } catch {
       config = { allowedUsers: [], allowedServers: [] };
     }
 
