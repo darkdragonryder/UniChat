@@ -1,7 +1,7 @@
-const { SlashCommandBuilder } = require('discord.js');
-const fs = require('fs');
+import { SlashCommandBuilder } from 'discord.js';
+import fs from 'fs';
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('access')
     .setDescription('Grant access')
@@ -14,7 +14,7 @@ module.exports = {
     .addUserOption(option =>
       option
         .setName('user')
-        .setDescription('User (only for user type)')
+        .setDescription('User (for user type)')
     ),
 
   async execute(interaction) {
@@ -30,9 +30,7 @@ module.exports = {
     const user = interaction.options.getUser('user');
 
     if (type === 'user') {
-      if (!user) {
-        return interaction.reply('❌ Please mention a user');
-      }
+      if (!user) return interaction.reply('❌ Mention a user');
 
       if (!config.allowedUsers.includes(user.id)) {
         config.allowedUsers.push(user.id);
