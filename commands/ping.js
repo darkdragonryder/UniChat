@@ -1,8 +1,11 @@
-import { SlashCommandBuilder } from 'discord.js';
+const { SlashCommandBuilder } = require('discord.js');
 
-export default {
-  data: new SlashCommandBuilder().setName('ping').setDescription('Check bot'),
-  async execute(i) {
-    await i.reply('🏓 UniChat is working!');
-  }
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('uniping')
+    .setDescription('Check if the bot is responding'),
+
+  async execute(interaction) {
+    await interaction.reply('🏓 UniChat is working!');
+  },
 };
