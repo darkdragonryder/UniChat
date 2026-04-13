@@ -24,13 +24,17 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load slash commands
+// =====================
+// LOAD COMMANDS
+// =====================
 for (const file of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) {
   const cmd = await import(`./commands/${file}`);
   client.commands.set(cmd.default.data.name, cmd.default);
 }
 
-// Register slash commands + context menu
+// =====================
+// REGISTER COMMANDS
+// =====================
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 await rest.put(
@@ -48,25 +52,30 @@ await rest.put(
 
 console.log("✅ Commands registered");
 
+// =====================
+// READY EVENT
+// =====================
 client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
 
-// Slash commands
+// =====================
+// INTERACTIONS
+// =====================
 client.on('interactionCreate', async (interaction) => {
 
-  // =====================
+  // ---------------------
   // SLASH COMMANDS
-  // =====================
+  // ---------------------
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
     return cmd.execute(interaction);
   }
 
-  // =====================
-  // RIGHT CLICK TRANSLATE
-  // =====================
+  // ---------------------
+  // CONTEXT MENU TRANSLATE
+  // ---------------------
   if (interaction.isMessageContextMenuCommand()) {
 
     if (interaction.commandName === 'Translate Message') {
@@ -76,7 +85,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const userId = interaction.user.id;
 
-      // ❌ No language yet → ask for it
+      // No language → ask user
       if (!config.languages[userId]) {
 
         const menu = new StringSelectMenuBuilder()
@@ -100,7 +109,7 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // ✅ Translate immediately
+      // Translate immediately
       const userLang = config.languages[userId];
 
       const translated = await translate(message.content, userLang);
@@ -116,12 +125,15 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
-  // =====================
+  // ---------------------
   // LANGUAGE SELECT MENU
-  // =====================
+  // ---------------------
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId.startsWith('set_language_')) {
+
+      // IMPORTANT FIX → prevents timeout
+      await interaction.deferReply({ ephemeral: true });
 
       const messageId = interaction.customId.split('_')[2];
       const lang = interaction.values[0];
@@ -133,27 +145,20 @@ client.on('interactionCreate', async (interaction) => {
 
       saveGuildConfig(interaction.guild.id, config);
 
-      // Fetch original message
       const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
 
       if (!message) {
-        return interaction.reply({
-          content: '❌ Message not found',
-          ephemeral: true
-        });
+        return interaction.editReply('❌ Message not found');
       }
 
       const translated = await translate(message.content, lang);
 
-      // Send public translation
+      // Post publicly in channel
       await interaction.channel.send(
         `🌍 **Translation (${lang})**:\n${translated}`
       );
 
-      return interaction.reply({
-        content: '✅ Language saved & translated',
-        ephemeral: true
-      });
+      return interaction.editReply('✅ Language saved & translated');
     }
   }
 
