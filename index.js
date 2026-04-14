@@ -150,12 +150,12 @@ client.on('interactionCreate', async (interaction) => {
     const detected = typeof result === 'object' ? result.detected : null;
 
     return interaction.reply({
-      content:
-        `🌍 **Translation (${userLang})**\n` +
-        `${detected ? `🧠 Detected: ${detected}\n\n` : ''}` +
-        `${translated}`,
-      ephemeral: true
-    });
+  content:
+    `🌍 **Translation (${userLang})**\n` +
+    `${detected ? `🧠 Detected: ${getFlag(detected)} ${detected}\n\n` : ''}` +
+    `${translated}`,
+  ephemeral: true
+});
   }
 
 });
