@@ -25,7 +25,7 @@ function defaultConfig() {
     premiumExpiry: null,
     mode: 'reaction',
 
-    // 🔑 LICENSE SYSTEM (FIXED + ADDED)
+    // 🔑 LICENSE SYSTEM
     licenses: {
       devKeys: [],
       lifetimeKeys: [],
@@ -59,6 +59,13 @@ function defaultConfig() {
 }
 
 // =====================================================
+// SAFE MERGE HELPERS
+// =====================================================
+function safe(obj, fallback) {
+  return obj !== undefined && obj !== null ? obj : fallback;
+}
+
+// =====================================================
 // GET CONFIG
 // =====================================================
 export function getGuildConfig(guildId) {
@@ -73,39 +80,38 @@ export function getGuildConfig(guildId) {
       return config;
     }
 
-    const raw = fs.readFileSync(path, 'utf8');
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
 
     return {
-      languages: parsed.languages || {},
+      languages: safe(parsed.languages, {}),
 
-      premium: parsed.premium ?? false,
-      licenseKey: parsed.licenseKey ?? null,
-      premiumStart: parsed.premiumStart ?? null,
-      premiumExpiry: parsed.premiumExpiry ?? null,
+      // PREMIUM
+      premium: safe(parsed.premium, false),
+      licenseKey: safe(parsed.licenseKey, null),
+      premiumStart: safe(parsed.premiumStart, null),
+      premiumExpiry: safe(parsed.premiumExpiry, null),
+      mode: safe(parsed.mode, 'reaction'),
 
-      mode: parsed.mode || 'reaction',
-
-      // 🔑 LICENSE SYSTEM (FIXED MERGE)
+      // LICENSES
       licenses: {
-        devKeys: parsed.licenses?.devKeys || [],
-        lifetimeKeys: parsed.licenses?.lifetimeKeys || [],
-        usedKeys: parsed.licenses?.usedKeys || {}
+        devKeys: safe(parsed.licenses?.devKeys, []),
+        lifetimeKeys: safe(parsed.licenses?.lifetimeKeys, []),
+        usedKeys: safe(parsed.licenses?.usedKeys, {})
       },
 
-      // 🏷️ REFERRALS
+      // REFERRALS
       referrals: {
-        codes: parsed.referrals?.codes || {},
-        leaderboard: parsed.referrals?.leaderboard || {},
-        usedServers: parsed.referrals?.usedServers || {},
-        rewardsGiven: parsed.referrals?.rewardsGiven || {},
-        badges: parsed.referrals?.badges || {},
-        cycleStart: parsed.referrals?.cycleStart || Date.now()
+        codes: safe(parsed.referrals?.codes, {}),
+        leaderboard: safe(parsed.referrals?.leaderboard, {}),
+        usedServers: safe(parsed.referrals?.usedServers, {}),
+        rewardsGiven: safe(parsed.referrals?.rewardsGiven, {}),
+        badges: safe(parsed.referrals?.badges, {}),
+        cycleStart: safe(parsed.referrals?.cycleStart, Date.now())
       },
 
-      referredBy: parsed.referredBy || null,
+      referredBy: safe(parsed.referredBy, null),
 
-      referralRoles: parsed.referralRoles || {
+      referralRoles: safe(parsed.referralRoles, {
         enabled: true,
         map: {
           5: "Trusted Referrer",
@@ -113,7 +119,7 @@ export function getGuildConfig(guildId) {
           25: "Referral King",
           50: "Legend Referrer"
         }
-      }
+      })
     };
 
   } catch (err) {
@@ -135,34 +141,35 @@ export function saveGuildConfig(guildId, config) {
   const path = getPath(guildId);
 
   const safeConfig = {
-    languages: config.languages || {},
+    languages: safe(config.languages, {}),
 
-    premium: config.premium ?? false,
-    licenseKey: config.licenseKey || null,
-    premiumStart: config.premiumStart || null,
-    premiumExpiry: config.premiumExpiry || null,
+    // PREMIUM
+    premium: safe(config.premium, false),
+    licenseKey: safe(config.licenseKey, null),
+    premiumStart: safe(config.premiumStart, null),
+    premiumExpiry: safe(config.premiumExpiry, null),
+    mode: safe(config.mode, 'reaction'),
 
-    mode: config.mode || 'reaction',
-
-    // 🔑 LICENSE SYSTEM SAVE
+    // LICENSES
     licenses: {
-      devKeys: config.licenses?.devKeys || [],
-      lifetimeKeys: config.licenses?.lifetimeKeys || [],
-      usedKeys: config.licenses?.usedKeys || {}
+      devKeys: safe(config.licenses?.devKeys, []),
+      lifetimeKeys: safe(config.licenses?.lifetimeKeys, []),
+      usedKeys: safe(config.licenses?.usedKeys, {})
     },
 
+    // REFERRALS
     referrals: {
-      codes: config.referrals?.codes || {},
-      leaderboard: config.referrals?.leaderboard || {},
-      usedServers: config.referrals?.usedServers || {},
-      rewardsGiven: config.referrals?.rewardsGiven || {},
-      badges: config.referrals?.badges || {},
-      cycleStart: config.referrals?.cycleStart || Date.now()
+      codes: safe(config.referrals?.codes, {}),
+      leaderboard: safe(config.referrals?.leaderboard, {}),
+      usedServers: safe(config.referrals?.usedServers, {}),
+      rewardsGiven: safe(config.referrals?.rewardsGiven, {}),
+      badges: safe(config.referrals?.badges, {}),
+      cycleStart: safe(config.referrals?.cycleStart, Date.now())
     },
 
-    referredBy: config.referredBy || null,
+    referredBy: safe(config.referredBy, null),
 
-    referralRoles: config.referralRoles || {
+    referralRoles: safe(config.referralRoles, {
       enabled: true,
       map: {
         5: "Trusted Referrer",
@@ -170,7 +177,7 @@ export function saveGuildConfig(guildId, config) {
         25: "Referral King",
         50: "Legend Referrer"
       }
-    }
+    })
   };
 
   fs.writeFileSync(path, JSON.stringify(safeConfig, null, 2), 'utf8');
