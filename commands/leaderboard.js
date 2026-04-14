@@ -4,74 +4,45 @@ import { getGuildConfig } from '../utils/guildConfig.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('Show the invite leaderboard'),
+    .setDescription('Invite leaderboard'),
 
   async execute(interaction) {
     const config = getGuildConfig(interaction.guild.id);
 
-    const lb = config?.inviteLeaderboard?.users || {};
+    const lb = config.referrals?.leaderboard || {};
 
-    const entries = Object.entries(lb);
-
-    if (entries.length === 0) {
+    if (!Object.keys(lb).length) {
       return interaction.reply({
-        content: '📉 No invite data yet. Start inviting people!',
+        content: '📉 No referrals yet.',
         ephemeral: true
       });
     }
 
-    // sort users by invites
-    const sorted = entries
+    const sorted = Object.entries(lb)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
 
-    let description = '';
-
-    let position = 1;
-
     const medals = ['🥇', '🥈', '🥉'];
 
-    for (const [userId, count] of sorted) {
-      let displayName = 'Unknown User';
+    let desc = '';
 
+    for (let i = 0; i < sorted.length; i++) {
+      const [userId, count] = sorted[i];
+
+      let user;
       try {
-        const user = await interaction.client.users.fetch(userId);
-        displayName = user.username;
-      } catch {
-        // keep fallback name
-      }
-
-      const medal = medals[position - 1] || `#${position}`;
-
-      description += `${medal} **${displayName}** — **${count} invites**\n`;
-
-      position++;
-    }
-
-    // 🏆 optional champion highlight
-    const top = sorted[0];
-    const topUserId = top?.[0];
-
-    let championText = '';
-
-    if (topUserId) {
-      try {
-        const topUser = await interaction.client.users.fetch(topUserId);
-        championText = `\n🏆 Current Leader: **${topUser.username}**`;
+        user = await interaction.client.users.fetch(userId);
       } catch {}
+
+      desc += `${medals[i] || '🏅'} **${user?.username || 'Unknown'}** — ${count} referrals\n`;
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('🏆 Invite Leaderboard')
-      .setColor(0x00AEFF)
-      .setDescription(description + championText)
-      .setFooter({
-        text: 'Cycle resets every 90 days'
-      })
-      .setTimestamp();
+      .setTitle('🏆 Referral Leaderboard')
+      .setColor(0xFFD700)
+      .setDescription(desc)
+      .setFooter({ text: 'Resets every 90 days' });
 
-    return interaction.reply({
-      embeds: [embed]
-    });
+    return interaction.reply({ embeds: [embed] });
   }
 };
