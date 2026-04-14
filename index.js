@@ -64,6 +64,15 @@ console.log("✅ Commands registered");
 client.once('ready', async () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 
+  // 📁 SERVICES FOLDER CHECK (RAILWAY DEBUG)
+  const fsMod = await import('fs');
+
+  const serviceFiles = fsMod.default.existsSync('./services')
+    ? fsMod.default.readdirSync('./services')
+    : null;
+
+  console.log("📁 SERVICES FOLDER CHECK:", serviceFiles || "MISSING");
+
   // 🔥 FULL ROLE SYNC ON START
   for (const guild of client.guilds.cache.values()) {
     try {
@@ -90,32 +99,22 @@ function safeConfig(guildId) {
 // =====================
 client.on('interactionCreate', async (interaction) => {
 
-  // =====================
-  // COMMANDS
-  // =====================
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
 
     await cmd.execute(interaction);
 
-    // =====================
-    // REFERRAL SYSTEM HOOK (FIXED FLOW)
-    // =====================
     if (interaction.commandName.includes('referral')) {
       const guild = interaction.guild;
 
-      // 1. UPDATE LEADERBOARD FIRST
       await updateLeaderboard(guild.id);
 
-      // 2. GET UPDATED CONFIG
       const config = getGuildConfig(guild.id);
       const lb = config.referrals?.leaderboard || {};
 
-      // 3. UPDATE ROLE SYSTEM
       await updateReferralRole(guild, lb);
 
-      // 4. LOG TOP USER
       const top = getTopReferrer(guild.id);
       console.log("🏆 Top referrer:", top);
     }
@@ -123,9 +122,6 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
-  // =====================
-  // BUTTONS
-  // =====================
   if (interaction.isButton()) {
 
     if (interaction.customId === 'dismiss_translation') {
@@ -137,9 +133,9 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.customId.startsWith('translate_')) return;
 
-    const message = await interaction.channel.messages.fetch(
-      interaction.customId.split('_')[1]
-    ).catch(() => null);
+    const message = await interaction.channel.messages
+      .fetch(interaction.customId.split('_')[1])
+      .catch(() => null);
 
     if (!message?.content) return;
 
@@ -155,9 +151,6 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // =====================
-  // REFERRAL REDEEM (FIXED)
-  // =====================
   if (
     interaction.isChatInputCommand() &&
     interaction.commandName === 'referral-redeem'
@@ -177,14 +170,11 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // 1. update leaderboard first
     await updateLeaderboard(interaction.guild.id);
 
-    // 2. get fresh config
     const config = getGuildConfig(interaction.guild.id);
     const lb = config.referrals?.leaderboard || {};
 
-    // 3. sync roles
     await updateReferralRole(interaction.guild, lb);
 
     const top = getTopReferrer(interaction.guild.id);
