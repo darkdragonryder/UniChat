@@ -16,15 +16,16 @@ const BADGE_LEVELS = [
 ];
 
 // ===============================
-// ENSURE STRUCTURE
+// SAFE ENSURE STRUCTURE
 // ===============================
 function ensureLeaderboard(config) {
-  if (!config.referrals) config.referrals = {};
+  if (!config.referrals) {
+    config.referrals = {};
+  }
 
   if (!config.referrals.leaderboard) config.referrals.leaderboard = {};
-  if (!config.referrals.cycleStart) config.referrals.cycleStart = Date.now();
-
   if (!config.referrals.badges) config.referrals.badges = {};
+  if (!config.referrals.cycleStart) config.referrals.cycleStart = Date.now();
 
   return config;
 }
@@ -45,7 +46,7 @@ function getBadge(count) {
 }
 
 // ===============================
-// UPDATE LEADERBOARD
+// UPDATE LEADERBOARD (90 DAY RESET)
 // ===============================
 export function updateLeaderboard(guildId) {
   let config = getGuildConfig(guildId);
@@ -89,10 +90,11 @@ export function addReferralPoint(guildId, userId) {
 // GET TOP USER
 // ===============================
 export function getTopReferrer(guildId) {
-  const config = getGuildConfig(guildId);
+  let config = getGuildConfig(guildId);
   config = ensureLeaderboard(config);
 
-  const entries = Object.entries(config.referrals.leaderboard || {});
+  const entries = Object.entries(config.referrals.leaderboard);
+
   if (!entries.length) return null;
 
   const sorted = entries.sort((a, b) => b[1] - a[1]);
@@ -107,6 +109,7 @@ export function getTopReferrer(guildId) {
 // GET USER BADGE
 // ===============================
 export function getUserBadge(guildId, userId) {
-  const config = getGuildConfig(guildId);
-  return config.referrals?.badges?.[userId] || '🥉 Rookie';
+  const config = ensureLeaderboard(getGuildConfig(guildId));
+
+  return config.referrals.badges[userId] || '🥉 Rookie';
 }
