@@ -1,9 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { redeemReferralCode } from '../utils/referralService.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 
-// ---------------------
-// CLEAN CODE FORMAT
-// ---------------------
 function normalize(code) {
   return code.trim().toUpperCase();
 }
@@ -21,73 +19,50 @@ export default {
 
   async execute(interaction) {
     const guildId = interaction.guild.id;
+    const userId = interaction.user.id;
     const code = normalize(interaction.options.getString('code'));
 
-    const config = getGuildConfig(guildId);
+    // =====================================================
+    // APPLY REDEMPTION LOGIC (CENTRALISED)
+    // =====================================================
+    const result = redeemReferralCode(guildId, userId, code);
 
     // =====================================================
-    // ❌ BLOCK: ALREADY USED REFERRAL
+    // ERROR HANDLING
     // =====================================================
-    if (config.referredBy) {
+    if (!result.success) {
+      let msg = '❌ Invalid referral code.';
+
+      if (result.reason === 'SELF_USE') {
+        msg = '❌ You cannot use your own referral code.';
+      }
+
+      if (result.reason === 'ALREADY_USED') {
+        msg = '❌ This server has already used a referral code.';
+      }
+
       return interaction.reply({
-        content: '❌ This server has already used a referral code.',
+        content: msg,
         ephemeral: true
       });
     }
-
-    // =====================================================
-    // ❌ CHECK IF CODE EXISTS
-    // =====================================================
-    const refData = config.referrals?.codes?.[code];
-
-    if (!refData) {
-      return interaction.reply({
-        content: '❌ Invalid referral code.',
-        ephemeral: true
-      });
-    }
-
-    // =====================================================
-    // LINK SERVER → REFERRER
-    // =====================================================
-    config.referredBy = {
-      code,
-      ownerId: refData.creatorId,
-      guildId: refData.guildId,
-      redeemedAt: Date.now()
-    };
-
-    // =====================================================
-    // UPDATE CODE USAGE
-    // =====================================================
-    if (!config.referrals.codes[code].uses) {
-      config.referrals.codes[code].uses = 0;
-    }
-
-    config.referrals.codes[code].uses += 1;
-
-    // =====================================================
-    // TRACK LEADERBOARD
-    // =====================================================
-    const ownerId = refData.creatorId;
-
-    if (!config.referrals.leaderboard[ownerId]) {
-      config.referrals.leaderboard[ownerId] = 0;
-    }
-
-    config.referrals.leaderboard[ownerId] += 1;
-
-    saveGuildConfig(guildId, config);
 
     // =====================================================
     // SUCCESS RESPONSE
     // =====================================================
+    let rewardText = '';
+
+    if (result.reward === 'week') rewardText = '🎁 7 Days Premium Unlocked!';
+    if (result.reward === 'month') rewardText = '🎁 30 Days Premium Unlocked!';
+    if (result.reward === 'lifetime') rewardText = '👑 Lifetime Premium Unlocked!';
+
     return interaction.reply({
       content:
         `🎉 **Referral Activated!**\n\n` +
-        `✔ Code: \`${code}\`\n` +
-        `✔ Server linked to referral system\n` +
-        `✔ Rewards will apply when premium is activated`,
+        `✔ Code accepted\n` +
+        `✔ Linked to system\n` +
+        `✔ Total uses: ${result.totalUses}\n` +
+        (rewardText ? `\n${rewardText}` : ''),
       ephemeral: true
     });
   }
