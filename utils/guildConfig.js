@@ -15,7 +15,13 @@ export function getGuildConfig(guildId) {
 
   try {
     if (!fs.existsSync(path)) {
-      const defaultConfig = { languages: {} };
+      const defaultConfig = {
+        languages: {},
+        premium: false,
+        licenseKey: null,
+        mode: 'reaction' // reaction | auto | hybrid (future)
+      };
+
       fs.writeFileSync(path, JSON.stringify(defaultConfig, null, 2));
       return defaultConfig;
     }
@@ -23,15 +29,23 @@ export function getGuildConfig(guildId) {
     const raw = fs.readFileSync(path, 'utf8');
     const parsed = JSON.parse(raw);
 
-    // 🔒 safety merge (prevents crashes if file is corrupted or missing keys)
     return {
-      languages: parsed.languages || {}
+      languages: parsed.languages || {},
+      premium: parsed.premium ?? false,
+      licenseKey: parsed.licenseKey ?? null,
+      mode: parsed.mode || 'reaction'
     };
 
   } catch (err) {
     console.log("⚠️ Config corrupted, resetting:", guildId);
 
-    const resetConfig = { languages: {} };
+    const resetConfig = {
+      languages: {},
+      premium: false,
+      licenseKey: null,
+      mode: 'reaction'
+    };
+
     fs.writeFileSync(path, JSON.stringify(resetConfig, null, 2));
 
     return resetConfig;
