@@ -15,7 +15,6 @@ export async function translate(text, targetLang) {
   if (!text || !targetLang) return text;
 
   const lang = normalizeLang(targetLang);
-
   const key = `${text}_${lang}`;
 
   if (cache.has(key)) {
@@ -37,21 +36,29 @@ export async function translate(text, targetLang) {
 
     if (!res.ok) {
       console.error(`DeepL HTTP Error: ${res.status}`);
-      return text;
+      return { text, detected: null };
     }
 
     const data = await res.json();
 
     const translated = data?.translations?.[0]?.text;
+    const detected = data?.translations?.[0]?.detected_source_language;
 
-    if (!translated) return text;
+    if (!translated) {
+      return { text, detected: null };
+    }
 
-    setCache(key, translated);
+    const result = {
+      text: translated,
+      detected: detected || null
+    };
 
-    return translated;
+    setCache(key, result);
+
+    return result;
 
   } catch (err) {
     console.error('DeepL error:', err);
-    return text;
+    return { text, detected: null };
   }
 }
