@@ -13,6 +13,7 @@ import {
 import fs from 'fs';
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
+import { getFlag } from './utils/flags.js';
 
 const client = new Client({
   intents: [
