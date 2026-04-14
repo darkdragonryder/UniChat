@@ -19,8 +19,10 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions
+  ],
+  partials: ['MESSAGE', 'CHANNEL', 'REACTION']
 });
 
 client.commands = new Collection();
@@ -60,45 +62,74 @@ client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
 
-// =====================
-// MESSAGE ENGINE (AUTO TRANSLATION CORE)
-// =====================
+
+// =====================================================
+// 💎 PREMIUM AUTO TRANSLATION (DM ONLY SYSTEM)
+// =====================================================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
   const config = getGuildConfig(message.guild.id);
 
-  // ---------------------
-  // PREMIUM AUTO MODE
-  // ---------------------
-  if (config.premium && config.mode === 'auto') {
+  if (!config.premium || config.mode !== 'auto') return;
 
-    for (const [userId, lang] of Object.entries(config.languages || {})) {
+  const languages = config.languages || {};
 
-      if (!lang || lang === 'en') continue;
+  for (const [userId, lang] of Object.entries(languages)) {
 
+    if (!lang || lang === 'en') continue;
+
+    try {
       const result = await translate(message.content, lang);
       const translated = result.text || result;
 
-      // 🌍 “shadow translation” (only user can see)
-      message.channel.send({
-        content: `🌍 <@${userId}> **Translation (${lang})**:\n${translated}`,
-        ephemeral: true // (Discord ignores this in normal send, we fix later with DM/modal system)
-      });
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (!user) continue;
+
+      await user.send(
+        `🌍 **Auto Translation (${lang})**\n\n${translated}`
+      );
+
+    } catch (err) {
+      console.log("❌ DM failed:", userId);
     }
-
-    return;
   }
-
-  // ---------------------
-  // FREE MODE (reaction system later)
-  // ---------------------
-  // (we will add 🌍 reaction translate in next upgrade)
 });
 
-// =====================
-// INTERACTIONS
-// =====================
+
+// =====================================================
+// 🆓 FREE MODE (REACTION TRANSLATION → PUBLIC CHANNEL)
+// =====================================================
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot) return;
+
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+
+  const config = getGuildConfig(reaction.message.guild?.id);
+  if (!config) return;
+
+  if (reaction.emoji.name !== '🌍') return;
+
+  const userLang = config.languages?.[user.id];
+
+  if (!userLang) {
+    return user.send("❌ Set your language first using /setlang");
+  }
+
+  const result = await translate(reaction.message.content, userLang);
+  const translated = result.text || result;
+
+  // 🆓 FREE MODE OUTPUT (PUBLIC)
+  await reaction.message.channel.send(
+    `🌍 **Translation for ${user.username} (${userLang})**:\n${translated}`
+  );
+});
+
+
+// =====================================================
+// INTERACTIONS (COMMANDS + BUTTONS)
+// =====================================================
 client.on('interactionCreate', async (interaction) => {
 
   // SLASH COMMANDS
