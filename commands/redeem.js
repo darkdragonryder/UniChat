@@ -1,12 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-
-// temporary in-memory key store (replace later with database if needed)
-const validKeys = new Set([
-  'FREE-TRIAL-14D',
-  'PREMIUM-KEY-1',
-  'VIP-ACCESS-XYZ'
-]);
+import { validateKey, useKey, applyKeyToConfig } from '../utils/licenseKeys.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -25,9 +19,9 @@ export default {
 
     const config = getGuildConfig(guildId);
 
-    // -----------------------------
+    // =====================================================
     // CHECK IF ALREADY PREMIUM
-    // -----------------------------
+    // =====================================================
     if (config.premium) {
       return interaction.reply({
         content: '⚠️ This server already has premium activated.',
@@ -35,41 +29,50 @@ export default {
       });
     }
 
-    // -----------------------------
-    // VALIDATE KEY
-    // -----------------------------
-    if (!validKeys.has(key)) {
+    // =====================================================
+    // VALIDATE KEY (NEW DATABASE SYSTEM)
+    // =====================================================
+    const result = validateKey(key);
+
+    if (!result.valid) {
       return interaction.reply({
-        content: '❌ Invalid or expired license key.',
+        content: `❌ Invalid or already used license key.`,
         ephemeral: true
       });
     }
 
-    // -----------------------------
-    // CONSUME KEY (one-time use)
-    // -----------------------------
-    validKeys.delete(key);
+    const keyEntry = result.entry;
 
-    // -----------------------------
-    // ACTIVATE PREMIUM
-    // -----------------------------
-    const now = Date.now();
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    // =====================================================
+    // APPLY KEY TO CONFIG (AUTO HANDLES LIFETIME / TEMP)
+    // =====================================================
+    applyKeyToConfig(config, keyEntry, key);
 
-    config.premium = true;
-    config.mode = 'auto';
-    config.licenseKey = key;
-    config.premiumStart = now;
-    config.premiumExpiry = now + thirtyDays;
+    // =====================================================
+    // MARK KEY AS USED IN DATABASE
+    // =====================================================
+    useKey(key, guildId);
 
+    // =====================================================
+    // SAVE GUILD CONFIG
+    // =====================================================
     saveGuildConfig(guildId, config);
+
+    // =====================================================
+    // SUCCESS RESPONSE
+    // =====================================================
+    const durationText =
+      keyEntry.durationDays === -1
+        ? 'Lifetime Access'
+        : `${keyEntry.durationDays} Days`;
 
     return interaction.reply({
       content:
         `💎 **Premium Activated!**\n\n` +
-        `✔ Auto Translation Enabled\n` +
-        `✔ 30 Day Access Granted\n` +
-        `✔ License Verified Successfully`,
+        `✔ Mode: Auto Translation Enabled\n` +
+        `✔ Duration: ${durationText}\n` +
+        `✔ License Verified\n` +
+        `✔ System Fully Unlocked`,
       ephemeral: true
     });
   }
