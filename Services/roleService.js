@@ -1,4 +1,3 @@
-import { PermissionsBitField } from 'discord.js';
 import { getGuildConfig } from '../utils/guildConfig.js';
 
 const ROLE_TIERS = [
@@ -10,7 +9,7 @@ const ROLE_TIERS = [
 ];
 
 // ===============================
-// GET ROLE FOR COUNT
+// GET ROLE TIER
 // ===============================
 function getRoleTier(count) {
   let role = ROLE_TIERS[0];
@@ -30,7 +29,7 @@ function getLeaderboard(config) {
 }
 
 // ===============================
-// CREATE OR GET ROLE
+// GET OR CREATE ROLE (SAFE)
 // ===============================
 async function getOrCreateRole(guild, name, color) {
   let role = guild.roles.cache.find(r => r.name === name);
@@ -47,46 +46,52 @@ async function getOrCreateRole(guild, name, color) {
 }
 
 // ===============================
-// MAIN ROLE SYNC
+// MAIN ROLE SYNC (FIXED)
 // ===============================
-export async function updateReferralRole(client, guildId) {
-  const guild = await client.guilds.fetch(guildId).catch(() => null);
-  if (!guild) return;
+export async function updateReferralRole(guild, leaderboard = null) {
+  try {
+    const config = getGuildConfig(guild.id);
+    const lb = leaderboard || getLeaderboard(config);
 
-  const config = getGuildConfig(guildId);
-  const lb = getLeaderboard(config);
+    const members = await guild.members.fetch();
 
-  const members = await guild.members.fetch();
+    // cache roles to avoid repeated creation
+    const roleCache = new Map();
 
-  const userCounts = Object.entries(lb);
+    for (const [userId, count] of Object.entries(lb)) {
 
-  // Track roles we created/found
-  const roleCache = new Map();
+      const member = members.get(userId) || await guild.members.fetch(userId).catch(() => null);
+      if (!member) continue;
 
-  // ===============================
-  // ASSIGN CORRECT ROLE PER USER
-  // ===============================
-  for (const [userId, count] of userCounts) {
-    const member = members.get(userId);
-    if (!member) continue;
+      const tier = getRoleTier(count);
 
-    const tier = getRoleTier(count);
-    const role = await getOrCreateRole(guild, tier.name, tier.color);
+      let role = roleCache.get(tier.name);
 
-    roleCache.set(tier.name, role);
+      if (!role) {
+        role = await getOrCreateRole(guild, tier.name, tier.color);
+        roleCache.set(tier.name, role);
+      }
 
-    // remove all referral roles first (ANTI DUPLICATE)
-    for (const t of ROLE_TIERS) {
-      const r = guild.roles.cache.find(x => x.name === t.name);
-      if (r && member.roles.cache.has(r.id)) {
-        await member.roles.remove(r).catch(() => {});
+      // ===============================
+      // REMOVE OLD REFERRAL ROLES
+      // ===============================
+      for (const t of ROLE_TIERS) {
+        const r = guild.roles.cache.find(x => x.name === t.name);
+        if (r && member.roles.cache.has(r.id)) {
+          await member.roles.remove(r).catch(() => {});
+        }
+      }
+
+      // ===============================
+      // APPLY CORRECT ROLE
+      // ===============================
+      if (!member.roles.cache.has(role.id)) {
+        await member.roles.add(role).catch(() => {});
       }
     }
 
-    // give correct role
-    if (!member.roles.cache.has(role.id)) {
-      await member.roles.add(role).catch(() => {});
-    }
+  } catch (err) {
+    console.log("Referral role sync error:", err);
   }
 }
 
@@ -95,6 +100,6 @@ export async function updateReferralRole(client, guildId) {
 // ===============================
 export async function syncAllReferralRoles(client) {
   for (const guild of client.guilds.cache.values()) {
-    await updateReferralRole(client, guild.id);
+    await updateReferralRole(guild);
   }
 }
