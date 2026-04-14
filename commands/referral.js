@@ -1,9 +1,6 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
+import { createReferralCode } from '../utils/referralService.js';
 
-// ---------------------
-// GENERATE CODE
-// ---------------------
 function generateReferralCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = 'UNI-';
@@ -25,32 +22,16 @@ export default {
     const guildId = interaction.guild.id;
     const userId = interaction.user.id;
 
-    const config = getGuildConfig(guildId);
-
-    // Ensure referral storage exists
-    if (!config.referrals) {
-      config.referrals = {};
-    }
-
-    // Generate code
     const code = generateReferralCode();
 
-    // Save referral
-    config.referrals[code] = {
-      creatorId: userId,
-      guildId: guildId,
-      uses: 0,
-      createdAt: Date.now()
-    };
-
-    saveGuildConfig(guildId, config);
+    createReferralCode(guildId, userId, code);
 
     return interaction.reply({
       content:
         `🎉 **Referral Code Generated!**\n\n` +
         `🔑 Code: \`${code}\`\n\n` +
-        `📌 Share this with other server owners.\n` +
-        `💎 When they buy premium, you earn rewards!`,
+        `📌 Share this with server owners\n` +
+        `💎 Rewards are tracked automatically`,
       ephemeral: true
     });
   }
