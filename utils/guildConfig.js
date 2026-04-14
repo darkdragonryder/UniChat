@@ -26,7 +26,10 @@ function defaultConfig() {
     referrals: {
       codes: {},
       leaderboard: {}
-    }
+    },
+
+    // 🔗 REFERRAL LINK (who referred THIS server)
+    referredBy: null
   };
 }
 
@@ -58,11 +61,14 @@ export function getGuildConfig(guildId) {
 
       mode: parsed.mode || 'reaction',
 
-      // 🏷️ REFERRALS (SAFE MERGE)
+      // 🏷️ REFERRALS
       referrals: parsed.referrals || {
         codes: {},
         leaderboard: {}
-      }
+      },
+
+      // 🔗 REFERRAL LINK
+      referredBy: parsed.referredBy || null
     };
 
   } catch (err) {
@@ -97,7 +103,10 @@ export function saveGuildConfig(guildId, config) {
     referrals: config.referrals || {
       codes: {},
       leaderboard: {}
-    }
+    },
+
+    // 🔗 REFERRAL LINK SAVE
+    referredBy: config.referredBy || null
   };
 
   fs.writeFileSync(path, JSON.stringify(safeConfig, null, 2), 'utf8');
