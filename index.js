@@ -22,6 +22,7 @@ import { getFlag } from './utils/flags.js';
 import { applyPremiumExpiry } from './services/premiumService.js';
 import { redeemReferralCode } from './services/referralService.js';
 import { updateLeaderboard, getTopReferrer } from './services/leaderboardService.js';
+import { updateReferralRole, syncAllReferralRoles } from './services/roleService.js';
 
 const client = new Client({
   intents: [
@@ -62,10 +63,13 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // =====================
-// READY
+// READY (ROLE SYNC FIX)
 // =====================
 client.once('ready', async () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
+
+  // 🔥 FULL ROLE SYNC ON START
+  await syncAllReferralRoles(client);
 });
 
 // =====================
@@ -155,15 +159,15 @@ client.on('interactionCreate', async (interaction) => {
     const result = await cmd.execute(interaction);
 
     // =====================
-    // REFERRAL SYSTEM HOOK
+    // REFERRAL SYSTEM HOOK (FIXED)
     // =====================
     if (interaction.commandName.includes('referral')) {
       const guildId = interaction.guild.id;
 
       await updateLeaderboard(guildId);
+      await updateReferralRole(client, guildId);
 
       const top = getTopReferrer(guildId);
-
       console.log("🏆 Top referrer:", top);
     }
 
@@ -203,7 +207,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // =====================
-  // REFERRAL REDEEM
+  // REFERRAL REDEEM (FIXED FLOW)
   // =====================
   if (
     interaction.isChatInputCommand() &&
@@ -225,9 +229,9 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     await updateLeaderboard(interaction.guild.id);
+    await updateReferralRole(client, interaction.guild.id);
 
     const top = getTopReferrer(interaction.guild.id);
-
     console.log("🏆 Updated top referrer:", top);
 
     return interaction.reply({
