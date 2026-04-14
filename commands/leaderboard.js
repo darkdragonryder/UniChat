@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getGuildConfig } from '../utils/guildConfig.js';
+import { getUserBadge } from '../services/leaderboardService.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -34,7 +35,9 @@ export default {
         user = await interaction.client.users.fetch(userId);
       } catch {}
 
-      desc += `${medals[i] || '🏅'} **${user?.username || 'Unknown'}** — ${count} referrals\n`;
+      const badge = getUserBadge(interaction.guild.id, userId);
+
+      desc += `${medals[i] || '🏅'} **${user?.username || 'Unknown'}** — ${count} referrals ${badge}\n`;
     }
 
     const embed = new EmbedBuilder()
