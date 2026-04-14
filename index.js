@@ -78,7 +78,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // ---------------------
-  // CONTEXT MENU TRANSLATE (NOW RETURNS BUTTON)
+  // CONTEXT MENU → BUTTON
   // ---------------------
   if (interaction.isMessageContextMenuCommand()) {
 
@@ -112,7 +112,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // ---------------------
-  // BUTTON TRANSLATE HANDLER
+  // BUTTON TRANSLATE HANDLER (FIXED)
   // ---------------------
   if (interaction.isButton()) {
 
@@ -123,7 +123,7 @@ client.on('interactionCreate', async (interaction) => {
     const message = await interaction.channel.messages.fetch(messageId)
       .catch(() => null);
 
-    if (!message) {
+    if (!message || !message.content) {
       return interaction.reply({
         content: '❌ Message not found',
         ephemeral: true
@@ -140,10 +140,19 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    const translated = await translate(message.content, userLang);
+    // =====================
+    // FIXED TRANSLATION HANDLING
+    // =====================
+    const result = await translate(message.content, userLang);
+
+    const translated = typeof result === 'string' ? result : result.text;
+    const detected = typeof result === 'object' ? result.detected : null;
 
     return interaction.reply({
-      content: `🌍 **Translation (${userLang})**:\n${translated}`,
+      content:
+        `🌍 **Translation (${userLang})**\n` +
+        `${detected ? `🧠 Detected: ${detected}\n\n` : ''}` +
+        `${translated}`,
       ephemeral: true
     });
   }
