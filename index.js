@@ -20,18 +20,12 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMessageReactions
   ],
   partials: ['MESSAGE', 'CHANNEL', 'REACTION', 'USER']
 });
 
 client.commands = new Collection();
-
-// =====================
-// INVITE CACHE
-// =====================
-const inviteCache = new Map();
 
 // =====================
 // LOAD COMMANDS
@@ -61,17 +55,8 @@ console.log("✅ Commands registered");
 // =====================
 // READY EVENT
 // =====================
-client.once('ready', async () => {
+client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
-
-  for (const guild of client.guilds.cache.values()) {
-    try {
-      const invites = await guild.invites.fetch();
-      inviteCache.set(guild.id, invites);
-    } catch (err) {
-      console.log("❌ Invite fetch failed:", guild.id);
-    }
-  }
 });
 
 // =====================================================
@@ -80,9 +65,7 @@ client.once('ready', async () => {
 function applyPremiumExpiry(config) {
   if (!config.premium || !config.premiumExpiry) return config;
 
-  const now = Date.now();
-
-  if (now > config.premiumExpiry) {
+  if (Date.now() > config.premiumExpiry) {
     config.premium = false;
     config.mode = 'reaction';
     config.premiumStart = null;
@@ -93,62 +76,85 @@ function applyPremiumExpiry(config) {
 }
 
 // =====================================================
-// 🏆 LEADERBOARD SYSTEM (90 DAY CYCLE)
+// 🧠 REFERRAL REWARD SYSTEM
 // =====================================================
-const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
+async function checkReferralRewards(guildId, ownerId, totalUses) {
+  const config = getGuildConfig(guildId);
 
-function updateLeaderboard(config, guildId) {
-  if (!config.inviteLeaderboard) {
-    config.inviteLeaderboard = {
-      cycleStart: Date.now(),
-      users: {}
-    };
+  if (!config.referrals) return;
+
+  // track rewards already given
+  if (!config.referrals.rewardsGiven) {
+    config.referrals.rewardsGiven = {};
   }
 
-  const lb = config.inviteLeaderboard;
+  if (!config.referrals.rewardsGiven[ownerId]) {
+    config.referrals.rewardsGiven[ownerId] = [];
+  }
 
-  if (Date.now() - lb.cycleStart > NINETY_DAYS) {
+  const rewards = config.referrals.rewardsGiven[ownerId];
 
-    const sorted = Object.entries(lb.users || {})
-      .sort((a, b) => b[1] - a[1]);
+  let reward = null;
 
-    const top = sorted[0];
+  if (totalUses >= 25 && !rewards.includes(25)) {
+    reward = 'lifetime';
+    rewards.push(25);
+  } else if (totalUses >= 10 && !rewards.includes(10)) {
+    reward = 'month';
+    rewards.push(10);
+  } else if (totalUses >= 5 && !rewards.includes(5)) {
+    reward = 'week';
+    rewards.push(5);
+  }
 
-    if (top) {
-      const [winnerId] = top;
+  if (!reward) return;
 
-      const month = 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
 
-      config.premium = true;
-      config.mode = 'auto';
-      config.premiumStart = Date.now();
-      config.premiumExpiry = Date.now() + month;
+  if (reward === 'week') {
+    config.premium = true;
+    config.mode = 'auto';
+    config.premiumStart = now;
+    config.premiumExpiry = now + (7 * 24 * 60 * 60 * 1000);
+  }
 
-      client.users.fetch(winnerId).then(user => {
-        if (user) {
-          user.send("🏆 You won the invite leaderboard! You’ve been granted 1 month FREE premium!");
-        }
-      }).catch(() => {});
+  if (reward === 'month') {
+    config.premium = true;
+    config.mode = 'auto';
+    config.premiumStart = now;
+    config.premiumExpiry = now + (30 * 24 * 60 * 60 * 1000);
+  }
+
+  if (reward === 'lifetime') {
+    config.premium = true;
+    config.mode = 'auto';
+    config.premiumStart = now;
+    config.premiumExpiry = null;
+  }
+
+  saveGuildConfig(guildId, config);
+
+  // DM user
+  try {
+    const user = await client.users.fetch(ownerId);
+    if (user) {
+      await user.send(
+        `🎉 **Referral Reward Unlocked!**\n\n` +
+        `You reached **${totalUses} referrals**\n` +
+        `Reward: **${reward.toUpperCase()} PREMIUM**`
+      );
     }
-
-    config.inviteLeaderboard = {
-      cycleStart: Date.now(),
-      users: {}
-    };
+  } catch (err) {
+    console.log("❌ Reward DM failed:", ownerId);
   }
-
-  return config;
 }
 
 // =====================================================
-// SAFE CONFIG WRAPPER
+// SAFE CONFIG
 // =====================================================
 function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
-
   config = applyPremiumExpiry(config);
-  config = updateLeaderboard(config, guildId);
-
   return config;
 }
 
@@ -157,28 +163,20 @@ function safeConfig(guildId) {
 // =====================================================
 function shouldSkip(text, lang) {
   if (!text) return true;
-
   const simpleLatin = /^[a-z0-9\s.,!?'"()-]+$/i.test(text);
-
-  if (lang === 'en' && simpleLatin) return true;
-
-  return false;
+  return (lang === 'en' && simpleLatin);
 }
 
 // =====================================================
-// 💎 PREMIUM AUTO MODE (DM)
+// 💎 PREMIUM AUTO MODE
 // =====================================================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
   const config = safeConfig(message.guild.id);
-
   if (!config.premium || config.mode !== 'auto') return;
 
-  const languages = config.languages || {};
-
-  for (const [userId, lang] of Object.entries(languages)) {
-
+  for (const [userId, lang] of Object.entries(config.languages || {})) {
     if (!lang || lang === 'en') continue;
     if (shouldSkip(message.content, lang)) continue;
 
@@ -190,7 +188,6 @@ client.on('messageCreate', async (message) => {
       if (!user) continue;
 
       await user.send(`🌍 **Auto Translation (${lang})**\n\n${text}`);
-
     } catch (err) {
       console.log("❌ DM failed:", userId);
     }
@@ -198,7 +195,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // =====================================================
-// 🆓 REACTION MODE (FREE)
+// 🆓 REACTION MODE
 // =====================================================
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
@@ -211,14 +208,10 @@ client.on('messageReactionAdd', async (reaction, user) => {
     if (!message?.content) return;
 
     const config = safeConfig(message.guild?.id);
-
     if (reaction.emoji.name !== '🌍') return;
 
     const userLang = config.languages?.[user.id];
-
-    if (!userLang) {
-      return user.send("❌ Set your language first using /setlang");
-    }
+    if (!userLang) return user.send("❌ Set your language first using /setlang");
 
     const result = await translate(message.content, userLang);
     const text = result?.text || result;
@@ -226,51 +219,8 @@ client.on('messageReactionAdd', async (reaction, user) => {
     await message.channel.send(
       `🌍 **Translation for ${user.username} (${userLang})**:\n${text}`
     );
-
   } catch (err) {
     console.log("❌ Reaction error:", err);
-  }
-});
-
-// =====================================================
-// INVITE TRACKING SYSTEM
-// =====================================================
-client.on('guildMemberAdd', async (member) => {
-  try {
-    const oldInvites = inviteCache.get(member.guild.id);
-    const newInvites = await member.guild.invites.fetch();
-
-    inviteCache.set(member.guild.id, newInvites);
-
-    const config = safeConfig(member.guild.id);
-
-    let usedInvite = null;
-
-    for (const invite of newInvites.values()) {
-      const old = oldInvites?.get(invite.code);
-
-      if (old && invite.uses > old.uses) {
-        usedInvite = invite;
-        break;
-      }
-    }
-
-    if (!usedInvite?.inviter) return;
-
-    const inviterId = usedInvite.inviter.id;
-
-    if (!config.inviteLeaderboard.users[inviterId]) {
-      config.inviteLeaderboard.users[inviterId] = 0;
-    }
-
-    config.inviteLeaderboard.users[inviterId] += 1;
-
-    saveGuildConfig(member.guild.id, config);
-
-    console.log(`🏆 Invite tracked: ${inviterId}`);
-
-  } catch (err) {
-    console.log("❌ Invite tracking error:", err);
   }
 });
 
@@ -282,7 +232,19 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
-    return cmd.execute(interaction);
+
+    const result = await cmd.execute(interaction);
+
+    // 🔥 HOOK INTO REFERRAL REDEEM
+    if (interaction.commandName === 'redeemref' && result?.success) {
+      await checkReferralRewards(
+        interaction.guild.id,
+        result.ownerId,
+        result.totalUses
+      );
+    }
+
+    return;
   }
 
   if (interaction.isMessageContextMenuCommand()) {
@@ -324,10 +286,9 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.customId.startsWith('translate_')) return;
 
-    const messageId = interaction.customId.split('_')[1];
-
-    const message = await interaction.channel.messages.fetch(messageId)
-      .catch(() => null);
+    const message = await interaction.channel.messages.fetch(
+      interaction.customId.split('_')[1]
+    ).catch(() => null);
 
     if (!message?.content) {
       return interaction.reply({
