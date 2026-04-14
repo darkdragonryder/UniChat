@@ -64,7 +64,21 @@ client.once('ready', () => {
 
 
 // =====================================================
-// 💎 PREMIUM AUTO TRANSLATION (DM ONLY SYSTEM)
+// 🧠 SMART FILTER (PREVENT SPAM)
+// =====================================================
+function shouldSkip(text, lang) {
+  if (!text) return true;
+
+  const simpleLatin = /^[a-z0-9\s.,!?'"()-]+$/i.test(text);
+
+  if (lang === 'en' && simpleLatin) return true;
+
+  return false;
+}
+
+
+// =====================================================
+// 💎 PREMIUM AUTO TRANSLATION (DM SYSTEM)
 // =====================================================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -78,16 +92,19 @@ client.on('messageCreate', async (message) => {
   for (const [userId, lang] of Object.entries(languages)) {
 
     if (!lang || lang === 'en') continue;
+    if (shouldSkip(message.content, lang)) continue;
 
     try {
       const result = await translate(message.content, lang);
-      const translated = result.text || result;
+
+      const text = result?.text || result;
+      if (!text) continue;
 
       const user = await client.users.fetch(userId).catch(() => null);
       if (!user) continue;
 
       await user.send(
-        `🌍 **Auto Translation (${lang})**\n\n${translated}`
+        `🌍 **Auto Translation (${lang})**\n\n${text}`
       );
 
     } catch (err) {
@@ -98,32 +115,39 @@ client.on('messageCreate', async (message) => {
 
 
 // =====================================================
-// 🆓 FREE MODE (REACTION TRANSLATION → PUBLIC CHANNEL)
+// 🆓 FREE MODE (REACTION TRANSLATION)
 // =====================================================
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
 
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
 
-  const config = getGuildConfig(reaction.message.guild?.id);
-  if (!config) return;
+    const message = reaction.message;
+    if (!message?.content) return;
 
-  if (reaction.emoji.name !== '🌍') return;
+    const config = getGuildConfig(message.guild?.id);
+    if (!config) return;
 
-  const userLang = config.languages?.[user.id];
+    if (reaction.emoji.name !== '🌍') return;
 
-  if (!userLang) {
-    return user.send("❌ Set your language first using /setlang");
+    const userLang = config.languages?.[user.id];
+
+    if (!userLang) {
+      return user.send("❌ Set your language first using /setlang");
+    }
+
+    const result = await translate(message.content, userLang);
+    const text = result?.text || result;
+
+    await message.channel.send(
+      `🌍 **Translation for ${user.username} (${userLang})**:\n${text}`
+    );
+
+  } catch (err) {
+    console.log("❌ Reaction translation error:", err);
   }
-
-  const result = await translate(reaction.message.content, userLang);
-  const translated = result.text || result;
-
-  // 🆓 FREE MODE OUTPUT (PUBLIC)
-  await reaction.message.channel.send(
-    `🌍 **Translation for ${user.username} (${userLang})**:\n${translated}`
-  );
 });
 
 
@@ -132,14 +156,13 @@ client.on('messageReactionAdd', async (reaction, user) => {
 // =====================================================
 client.on('interactionCreate', async (interaction) => {
 
-  // SLASH COMMANDS
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
     return cmd.execute(interaction);
   }
 
-  // CONTEXT MENU → BUTTON
+  // CONTEXT MENU
   if (interaction.isMessageContextMenuCommand()) {
 
     if (interaction.commandName !== 'Translate Message') return;
@@ -187,7 +210,7 @@ client.on('interactionCreate', async (interaction) => {
     const message = await interaction.channel.messages.fetch(messageId)
       .catch(() => null);
 
-    if (!message || !message.content) {
+    if (!message?.content) {
       return interaction.reply({
         content: '❌ Message not found',
         ephemeral: true
@@ -205,15 +228,14 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     const result = await translate(message.content, userLang);
-
-    const translated = result.text || result;
-    const detected = result.detected || null;
+    const text = result?.text || result;
+    const detected = result?.detected || null;
 
     return interaction.reply({
       content:
         `🌍 **Translation (${userLang})**\n` +
         `${detected ? `🧠 Detected: ${getFlag(detected)} ${detected}\n\n` : ''}` +
-        `${translated}`,
+        `${text}`,
       ephemeral: true,
       components: [
         new ActionRowBuilder().addComponents(
