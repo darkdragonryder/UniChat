@@ -16,11 +16,12 @@ import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 import { getFlag } from './utils/flags.js';
 
-// SERVICES
+// =====================
+// SERVICES (NEW SYSTEM)
+// =====================
 import { applyPremiumExpiry } from './services/premiumService.js';
-import { updateLeaderboard } from './services/leaderboardService.js';
-import { addReferralPoint } from './services/referralService.js';
 import { redeemReferralCode } from './services/referralService.js';
+import { updateReferralBadges, updateTopReferrer } from './services/badgeService.js';
 
 const client = new Client({
   intents: [
@@ -74,7 +75,6 @@ function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
 
   config = applyPremiumExpiry(config);
-  config = updateLeaderboard(config);
 
   return config;
 }
@@ -144,13 +144,11 @@ client.on('messageReactionAdd', async (reaction, user) => {
 });
 
 // =====================
-// GUILD MEMBER JOIN (REFERRAL HOOK)
+// GUILD MEMBER JOIN (FUTURE HOOK)
 // =====================
 client.on('guildMemberAdd', async (member) => {
   try {
-    // FUTURE: connect invite/referral tracking here
-    // addReferralPoint(member.guild.id, inviterId);
-
+    // future invite tracking hook
   } catch {}
 });
 
@@ -165,16 +163,24 @@ client.on('interactionCreate', async (interaction) => {
 
     const result = await cmd.execute(interaction);
 
-    // REFERRAL UPDATE HOOK
+    // =====================
+    // REFERRAL SYSTEM HOOK
+    // =====================
     if (interaction.commandName.includes('referral')) {
-      const config = getGuildConfig(interaction.guild.id);
-      await updateLeaderboard(config);
+      const guild = interaction.guild;
+
+      const config = getGuildConfig(guild.id);
+
+      await updateReferralBadges(client, guild);
+      await updateTopReferrer(guild);
     }
 
     return;
   }
 
+  // =====================
   // BUTTONS
+  // =====================
   if (interaction.isButton()) {
 
     if (interaction.customId === 'dismiss_translation') {
@@ -204,7 +210,9 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
+  // =====================
   // REFERRAL REDEEM
+  // =====================
   if (interaction.commandName === 'referral-redeem') {
     const code = interaction.options.getString('code');
 
@@ -220,6 +228,10 @@ client.on('interactionCreate', async (interaction) => {
         ephemeral: true
       });
     }
+
+    // update badges instantly
+    await updateReferralBadges(client, interaction.guild);
+    await updateTopReferrer(interaction.guild);
 
     return interaction.reply({
       content: `🎉 Referral applied successfully!`,
