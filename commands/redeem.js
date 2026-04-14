@@ -1,59 +1,76 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { validateKey, useKey } from '../utils/licenses.js';
+
+// temporary in-memory key store (replace later with database if needed)
+const validKeys = new Set([
+  'FREE-TRIAL-14D',
+  'PREMIUM-KEY-1',
+  'VIP-ACCESS-XYZ'
+]);
 
 export default {
   data: new SlashCommandBuilder()
     .setName('redeem')
     .setDescription('Redeem a premium license key')
-    .addStringOption(opt =>
-      opt.setName('key')
+    .addStringOption(option =>
+      option
+        .setName('key')
         .setDescription('Your license key')
         .setRequired(true)
     ),
 
   async execute(interaction) {
-
     const key = interaction.options.getString('key');
     const guildId = interaction.guild.id;
 
     const config = getGuildConfig(guildId);
 
-    // already premium
+    // -----------------------------
+    // CHECK IF ALREADY PREMIUM
+    // -----------------------------
     if (config.premium) {
       return interaction.reply({
-        content: '💎 This server already has premium activated.',
+        content: '⚠️ This server already has premium activated.',
         ephemeral: true
       });
     }
 
-    // validate key
-    const result = validateKey(key);
-
-    if (!result.valid) {
+    // -----------------------------
+    // VALIDATE KEY
+    // -----------------------------
+    if (!validKeys.has(key)) {
       return interaction.reply({
-        content: `❌ Invalid key: ${result.reason}`,
+        content: '❌ Invalid or expired license key.',
         ephemeral: true
       });
     }
 
-    // use key
-    useKey(key, guildId);
+    // -----------------------------
+    // CONSUME KEY (one-time use)
+    // -----------------------------
+    validKeys.delete(key);
 
-    // activate premium
+    // -----------------------------
+    // ACTIVATE PREMIUM
+    // -----------------------------
+    const now = Date.now();
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
     config.premium = true;
-    config.licenseKey = key;
     config.mode = 'auto';
+    config.licenseKey = key;
+    config.premiumStart = now;
+    config.premiumExpiry = now + thirtyDays;
 
     saveGuildConfig(guildId, config);
 
     return interaction.reply({
       content:
         `💎 **Premium Activated!**\n\n` +
-        `✔ Auto translation enabled\n` +
-        `✔ License linked to this server\n` +
-        `✔ Mode: AUTO`,
-      ephemeral: false
+        `✔ Auto Translation Enabled\n` +
+        `✔ 30 Day Access Granted\n` +
+        `✔ License Verified Successfully`,
+      ephemeral: true
     });
   }
 };
