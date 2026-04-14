@@ -1,5 +1,16 @@
 const cache = new Map();
 
+// optional: simple cache limit safety
+const MAX_CACHE = 500;
+
+function setCache(key, value) {
+  if (cache.size >= MAX_CACHE) {
+    const firstKey = cache.keys().next().value;
+    cache.delete(firstKey);
+  }
+  cache.set(key, value);
+}
+
 export async function translate(text, targetLang) {
   if (!text || !targetLang) return text;
 
@@ -22,12 +33,23 @@ export async function translate(text, targetLang) {
       })
     });
 
+    // --------------------
+    // HANDLE BAD RESPONSES
+    // --------------------
+    if (!res.ok) {
+      console.error(`DeepL HTTP Error: ${res.status}`);
+      return text;
+    }
+
     const data = await res.json();
 
-    const translated =
-      data?.translations?.[0]?.text || text;
+    const translated = data?.translations?.[0]?.text;
 
-    cache.set(key, translated);
+    if (!translated) {
+      return text;
+    }
+
+    setCache(key, translated);
 
     return translated;
 
