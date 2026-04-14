@@ -4,17 +4,13 @@ import {
   GatewayIntentBits,
   Collection,
   REST,
-  Routes,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
+  Routes
 } from 'discord.js';
 
 import fs from 'fs';
 
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
-import { getFlag } from './utils/flags.js';
 
 // =====================
 // SERVICES
@@ -22,7 +18,7 @@ import { getFlag } from './utils/flags.js';
 import { applyPremiumExpiry } from './services/premiumService.js';
 import { redeemReferralCode } from './services/referralService.js';
 import { updateLeaderboard, getTopReferrer } from './services/leaderboardService.js';
-import { updateReferralRole, syncAllReferralRoles } from './services/roleService.js';
+import { updateReferralRole } from './services/roleService.js';
 
 const client = new Client({
   intents: [
@@ -63,13 +59,22 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // =====================
-// READY (ROLE SYNC FIX)
+// READY (FULL SYNC FIX)
 // =====================
 client.once('ready', async () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 
   // 🔥 FULL ROLE SYNC ON START
-  await syncAllReferralRoles(client);
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const config = getGuildConfig(guild.id);
+      const lb = config.referrals?.leaderboard || {};
+
+      await updateReferralRole(guild, lb);
+    } catch (err) {
+      console.log("Role sync error:", err);
+    }
+  }
 });
 
 // =====================
@@ -156,18 +161,21 @@ client.on('interactionCreate', async (interaction) => {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
 
-    const result = await cmd.execute(interaction);
+    await cmd.execute(interaction);
 
     // =====================
     // REFERRAL SYSTEM HOOK (FIXED)
     // =====================
     if (interaction.commandName.includes('referral')) {
-      const guildId = interaction.guild.id;
+      const guild = interaction.guild;
 
-      await updateLeaderboard(guildId);
-      await updateReferralRole(client, guildId);
+      const config = getGuildConfig(guild.id);
+      const lb = config.referrals?.leaderboard || {};
 
-      const top = getTopReferrer(guildId);
+      await updateLeaderboard(guild.id);
+      await updateReferralRole(guild, lb);
+
+      const top = getTopReferrer(guild.id);
       console.log("🏆 Top referrer:", top);
     }
 
@@ -229,7 +237,11 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     await updateLeaderboard(interaction.guild.id);
-    await updateReferralRole(client, interaction.guild.id);
+
+    const config = getGuildConfig(interaction.guild.id);
+    const lb = config.referrals?.leaderboard || {};
+
+    await updateReferralRole(interaction.guild, lb);
 
     const top = getTopReferrer(interaction.guild.id);
     console.log("🏆 Updated top referrer:", top);
