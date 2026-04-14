@@ -73,8 +73,7 @@ client.once('ready', async () => {
 // =====================
 function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
-  config = applyPremiumExpiry(config);
-  return config;
+  return applyPremiumExpiry(config);
 }
 
 // =====================
@@ -165,8 +164,7 @@ client.on('interactionCreate', async (interaction) => {
 
       const top = getTopReferrer(guildId);
 
-      // OPTIONAL: you can plug badge/role system here later
-      console.log("Top referrer:", top);
+      console.log("🏆 Top referrer:", top);
     }
 
     return;
@@ -205,7 +203,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // =====================
-  // REFERRAL REDEEM (FIXED FLOW)
+  // REFERRAL REDEEM
   // =====================
   if (
     interaction.isChatInputCommand() &&
@@ -229,7 +227,8 @@ client.on('interactionCreate', async (interaction) => {
     await updateLeaderboard(interaction.guild.id);
 
     const top = getTopReferrer(interaction.guild.id);
-    console.log("Updated top referrer:", top);
+
+    console.log("🏆 Updated top referrer:", top);
 
     return interaction.reply({
       content: `🎉 Referral applied successfully!`,
