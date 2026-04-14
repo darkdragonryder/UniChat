@@ -25,6 +25,13 @@ function defaultConfig() {
     premiumExpiry: null,
     mode: 'reaction',
 
+    // 🔑 LICENSE SYSTEM (FIXED + ADDED)
+    licenses: {
+      devKeys: [],
+      lifetimeKeys: [],
+      usedKeys: {}
+    },
+
     // 🏷️ REFERRAL SYSTEM
     referrals: {
       codes: {},
@@ -35,10 +42,10 @@ function defaultConfig() {
       cycleStart: Date.now()
     },
 
-    // 🔗 REFERRAL LINK (who referred THIS server)
+    // 🔗 REFERRAL LINK
     referredBy: null,
 
-    // 🏆 ROLE SYSTEM (future-proof)
+    // 🏆 ROLE SYSTEM
     referralRoles: {
       enabled: true,
       map: {
@@ -79,7 +86,14 @@ export function getGuildConfig(guildId) {
 
       mode: parsed.mode || 'reaction',
 
-      // 🏷️ REFERRALS (FULL SAFE MERGE)
+      // 🔑 LICENSE SYSTEM (FIXED MERGE)
+      licenses: {
+        devKeys: parsed.licenses?.devKeys || [],
+        lifetimeKeys: parsed.licenses?.lifetimeKeys || [],
+        usedKeys: parsed.licenses?.usedKeys || {}
+      },
+
+      // 🏷️ REFERRALS
       referrals: {
         codes: parsed.referrals?.codes || {},
         leaderboard: parsed.referrals?.leaderboard || {},
@@ -89,10 +103,8 @@ export function getGuildConfig(guildId) {
         cycleStart: parsed.referrals?.cycleStart || Date.now()
       },
 
-      // 🔗 REFERRAL LINK
       referredBy: parsed.referredBy || null,
 
-      // 🏆 ROLE SYSTEM
       referralRoles: parsed.referralRoles || {
         enabled: true,
         map: {
@@ -132,7 +144,13 @@ export function saveGuildConfig(guildId, config) {
 
     mode: config.mode || 'reaction',
 
-    // 🏷️ REFERRALS SAFE SAVE
+    // 🔑 LICENSE SYSTEM SAVE
+    licenses: {
+      devKeys: config.licenses?.devKeys || [],
+      lifetimeKeys: config.licenses?.lifetimeKeys || [],
+      usedKeys: config.licenses?.usedKeys || {}
+    },
+
     referrals: {
       codes: config.referrals?.codes || {},
       leaderboard: config.referrals?.leaderboard || {},
@@ -142,10 +160,8 @@ export function saveGuildConfig(guildId, config) {
       cycleStart: config.referrals?.cycleStart || Date.now()
     },
 
-    // 🔗 REFERRAL LINK SAVE
     referredBy: config.referredBy || null,
 
-    // 🏆 ROLE SYSTEM SAVE
     referralRoles: config.referralRoles || {
       enabled: true,
       map: {
