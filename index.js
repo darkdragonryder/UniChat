@@ -20,12 +20,18 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMembers
   ],
-  partials: ['MESSAGE', 'CHANNEL', 'REACTION']
+  partials: ['MESSAGE', 'CHANNEL', 'REACTION', 'USER']
 });
 
 client.commands = new Collection();
+
+// =====================
+// INVITE CACHE
+// =====================
+const inviteCache = new Map();
 
 // =====================
 // LOAD COMMANDS
@@ -53,10 +59,19 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // =====================
-// READY
+// READY EVENT
 // =====================
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const invites = await guild.invites.fetch();
+      inviteCache.set(guild.id, invites);
+    } catch (err) {
+      console.log("❌ Invite fetch failed:", guild.id);
+    }
+  }
 });
 
 // =====================================================
@@ -78,12 +93,17 @@ function applyPremiumExpiry(config) {
 }
 
 // =====================================================
-// 🏆 INVITE LEADERBOARD SYSTEM (90 DAY CYCLE)
+// 🏆 LEADERBOARD SYSTEM (90 DAY CYCLE)
 // =====================================================
 const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
 
-function updateLeaderboard(config) {
-  if (!config.inviteLeaderboard) return config;
+function updateLeaderboard(config, guildId) {
+  if (!config.inviteLeaderboard) {
+    config.inviteLeaderboard = {
+      cycleStart: Date.now(),
+      users: {}
+    };
+  }
 
   const lb = config.inviteLeaderboard;
 
@@ -127,7 +147,7 @@ function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
 
   config = applyPremiumExpiry(config);
-  config = updateLeaderboard(config);
+  config = updateLeaderboard(config, guildId);
 
   return config;
 }
@@ -213,6 +233,48 @@ client.on('messageReactionAdd', async (reaction, user) => {
 });
 
 // =====================================================
+// INVITE TRACKING SYSTEM
+// =====================================================
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const oldInvites = inviteCache.get(member.guild.id);
+    const newInvites = await member.guild.invites.fetch();
+
+    inviteCache.set(member.guild.id, newInvites);
+
+    const config = safeConfig(member.guild.id);
+
+    let usedInvite = null;
+
+    for (const invite of newInvites.values()) {
+      const old = oldInvites?.get(invite.code);
+
+      if (old && invite.uses > old.uses) {
+        usedInvite = invite;
+        break;
+      }
+    }
+
+    if (!usedInvite?.inviter) return;
+
+    const inviterId = usedInvite.inviter.id;
+
+    if (!config.inviteLeaderboard.users[inviterId]) {
+      config.inviteLeaderboard.users[inviterId] = 0;
+    }
+
+    config.inviteLeaderboard.users[inviterId] += 1;
+
+    saveGuildConfig(member.guild.id, config);
+
+    console.log(`🏆 Invite tracked: ${inviterId}`);
+
+  } catch (err) {
+    console.log("❌ Invite tracking error:", err);
+  }
+});
+
+// =====================================================
 // INTERACTIONS
 // =====================================================
 client.on('interactionCreate', async (interaction) => {
@@ -223,7 +285,6 @@ client.on('interactionCreate', async (interaction) => {
     return cmd.execute(interaction);
   }
 
-  // CONTEXT MENU
   if (interaction.isMessageContextMenuCommand()) {
 
     const message = interaction.targetMessage;
@@ -252,7 +313,6 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // BUTTONS
   if (interaction.isButton()) {
 
     if (interaction.customId === 'dismiss_translation') {
