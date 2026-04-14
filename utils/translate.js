@@ -1,6 +1,6 @@
-const cache = new Map();
+import { normalizeLang } from './languageMap.js';
 
-// optional: simple cache limit safety
+const cache = new Map();
 const MAX_CACHE = 500;
 
 function setCache(key, value) {
@@ -14,7 +14,9 @@ function setCache(key, value) {
 export async function translate(text, targetLang) {
   if (!text || !targetLang) return text;
 
-  const key = `${text}_${targetLang}`;
+  const lang = normalizeLang(targetLang);
+
+  const key = `${text}_${lang}`;
 
   if (cache.has(key)) {
     return cache.get(key);
@@ -29,13 +31,10 @@ export async function translate(text, targetLang) {
       body: new URLSearchParams({
         auth_key: process.env.DEEPL_API_KEY,
         text: text,
-        target_lang: targetLang.toUpperCase()
+        target_lang: lang
       })
     });
 
-    // --------------------
-    // HANDLE BAD RESPONSES
-    // --------------------
     if (!res.ok) {
       console.error(`DeepL HTTP Error: ${res.status}`);
       return text;
@@ -45,9 +44,7 @@ export async function translate(text, targetLang) {
 
     const translated = data?.translations?.[0]?.text;
 
-    if (!translated) {
-      return text;
-    }
+    if (!translated) return text;
 
     setCache(key, translated);
 
