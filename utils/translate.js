@@ -13,8 +13,11 @@ export async function translate(text, targetLang) {
   }
 
   try {
+    // =====================
+    // AUTO-DETECT SOURCE LANGUAGE
+    // =====================
     const res = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`
     );
 
     const data = await res.json();
@@ -23,13 +26,13 @@ export async function translate(text, targetLang) {
       data?.responseData?.translatedText ||
       text;
 
-    // prevent useless duplicates
+    // Store in cache
     cache.set(key, translated);
 
     return translated;
 
   } catch (err) {
     console.error('Translation error:', err);
-    return text;
+    return text; // safe fallback
   }
 }
