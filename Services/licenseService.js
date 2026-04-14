@@ -6,11 +6,20 @@ import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 export function activateLicense(guildId, key) {
   const config = getGuildConfig(guildId);
 
+  // ===============================
+  // ENSURE LICENSE STRUCTURE SAFETY
+  // ===============================
   if (!config.licenses) {
-    return { ok: false, reason: 'LICENSE_SYSTEM_MISSING' };
+    config.licenses = {
+      devKeys: [],
+      lifetimeKeys: [],
+      usedKeys: {}
+    };
   }
 
-  const { devKeys, lifetimeKeys, usedKeys } = config.licenses;
+  const devKeys = config.licenses.devKeys || [];
+  const lifetimeKeys = config.licenses.lifetimeKeys || [];
+  const usedKeys = config.licenses.usedKeys || {};
 
   // ===============================
   // CHECK IF ALREADY USED
@@ -22,7 +31,7 @@ export function activateLicense(guildId, key) {
   const now = Date.now();
 
   // ===============================
-  // DEV KEY (FULL CONTROL)
+  // DEV KEY (FULL ACCESS)
   // ===============================
   if (devKeys.includes(key)) {
     config.premium = true;
@@ -30,7 +39,7 @@ export function activateLicense(guildId, key) {
     config.premiumStart = now;
     config.premiumExpiry = null;
 
-    usedKeys[key] = {
+    config.licenses.usedKeys[key] = {
       type: 'dev',
       usedAt: now,
       guildId
@@ -54,7 +63,7 @@ export function activateLicense(guildId, key) {
     config.premiumStart = now;
     config.premiumExpiry = null;
 
-    usedKeys[key] = {
+    config.licenses.usedKeys[key] = {
       type: 'lifetime',
       usedAt: now,
       guildId
@@ -76,21 +85,29 @@ export function activateLicense(guildId, key) {
 }
 
 // ===============================
-// ADD KEYS (ADMIN ONLY USE)
+// ADD KEYS (ADMIN TOOLING)
 // ===============================
 export function addLicenseKey(guildId, type, key) {
   const config = getGuildConfig(guildId);
 
   if (!config.licenses) {
-    config.licenses = { devKeys: [], lifetimeKeys: [], usedKeys: {} };
+    config.licenses = {
+      devKeys: [],
+      lifetimeKeys: [],
+      usedKeys: {}
+    };
   }
 
   if (type === 'dev') {
-    config.licenses.devKeys.push(key);
+    if (!config.licenses.devKeys.includes(key)) {
+      config.licenses.devKeys.push(key);
+    }
   }
 
   if (type === 'lifetime') {
-    config.licenses.lifetimeKeys.push(key);
+    if (!config.licenses.lifetimeKeys.includes(key)) {
+      config.licenses.lifetimeKeys.push(key);
+    }
   }
 
   saveGuildConfig(guildId, config);
