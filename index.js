@@ -4,7 +4,10 @@ import {
   GatewayIntentBits,
   Collection,
   REST,
-  Routes
+  Routes,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } from 'discord.js';
 
 import fs from 'fs';
@@ -75,7 +78,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // ---------------------
-  // CONTEXT MENU TRANSLATE
+  // CONTEXT MENU TRANSLATE (NOW RETURNS BUTTON)
   // ---------------------
   if (interaction.isMessageContextMenuCommand()) {
 
@@ -87,7 +90,6 @@ client.on('interactionCreate', async (interaction) => {
     const userId = interaction.user.id;
     const userLang = config.languages?.[userId];
 
-    // MUST set language first
     if (!userLang) {
       return interaction.reply({
         content: '❌ Please set your language first using /setlang',
@@ -95,9 +97,45 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    if (!message.content || message.content.trim().length === 0) {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`translate_${message.id}`)
+        .setLabel('🌍 Translate')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    return interaction.reply({
+      content: 'Click below to translate this message:',
+      components: [row],
+      ephemeral: true
+    });
+  }
+
+  // ---------------------
+  // BUTTON TRANSLATE HANDLER
+  // ---------------------
+  if (interaction.isButton()) {
+
+    if (!interaction.customId.startsWith('translate_')) return;
+
+    const messageId = interaction.customId.split('_')[1];
+
+    const message = await interaction.channel.messages.fetch(messageId)
+      .catch(() => null);
+
+    if (!message) {
       return interaction.reply({
-        content: '❌ Nothing to translate',
+        content: '❌ Message not found',
+        ephemeral: true
+      });
+    }
+
+    const config = getGuildConfig(interaction.guild.id);
+    const userLang = config.languages?.[interaction.user.id];
+
+    if (!userLang) {
+      return interaction.reply({
+        content: '❌ Please set your language using /setlang',
         ephemeral: true
       });
     }
