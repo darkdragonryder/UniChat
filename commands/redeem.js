@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { validateKey, useKey, applyKeyToConfig } from '../utils/licenseKeys.js';
+import { validateKey, useKey } from '../utils/licenses.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -19,60 +19,85 @@ export default {
 
     const config = getGuildConfig(guildId);
 
-    // =====================================================
-    // CHECK IF ALREADY PREMIUM
-    // =====================================================
+    // =========================
+    // ALREADY PREMIUM CHECK
+    // =========================
     if (config.premium) {
       return interaction.reply({
-        content: '⚠️ This server already has premium activated.',
+        content: '⚠️ This server already has premium active.',
         ephemeral: true
       });
     }
 
-    // =====================================================
-    // VALIDATE KEY (NEW DATABASE SYSTEM)
-    // =====================================================
+    // =========================
+    // VALIDATE LICENSE KEY
+    // =========================
     const result = validateKey(key);
 
     if (!result.valid) {
       return interaction.reply({
-        content: `❌ Invalid or already used license key.`,
+        content: '❌ Invalid or expired license key.',
         ephemeral: true
       });
     }
 
-    const keyEntry = result.entry;
-
-    // =====================================================
-    // APPLY KEY TO CONFIG (AUTO HANDLES LIFETIME / TEMP)
-    // =====================================================
-    applyKeyToConfig(config, keyEntry, key);
-
-    // =====================================================
-    // MARK KEY AS USED IN DATABASE
-    // =====================================================
+    // =========================
+    // CONSUME KEY
+    // =========================
     useKey(key, guildId);
 
-    // =====================================================
-    // SAVE GUILD CONFIG
-    // =====================================================
-    saveGuildConfig(guildId, config);
+    // =========================
+    // ACTIVATE PREMIUM
+    // =========================
+    const now = Date.now();
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
 
-    // =====================================================
-    // SUCCESS RESPONSE
-    // =====================================================
-    const durationText =
-      keyEntry.durationDays === -1
-        ? 'Lifetime Access'
-        : `${keyEntry.durationDays} Days`;
+    config.premium = true;
+    config.mode = 'auto';
+    config.licenseKey = key;
+    config.premiumStart = now;
+    config.premiumExpiry = now + thirtyDays;
+
+    // =========================
+    // 🎁 REFERRAL REWARD TRIGGER
+    // =========================
+    if (config.referredBy) {
+      const ownerId = config.referredBy.ownerId;
+
+      if (ownerId) {
+        if (!config.referrals.leaderboard[ownerId]) {
+          config.referrals.leaderboard[ownerId] = 0;
+        }
+
+        config.referrals.leaderboard[ownerId] += 1;
+
+        try {
+          const user = await interaction.client.users.fetch(ownerId);
+
+          if (user) {
+            await user.send(
+              `🎉 You earned a referral reward!\n` +
+              `A server you referred just activated premium!`
+            );
+          }
+        } catch (err) {
+          console.log("❌ Failed to notify referrer");
+        }
+      }
+    }
+
+    // =========================
+    // SAVE CONFIG
+    // =========================
+    saveGuildConfig(guildId, config);
 
     return interaction.reply({
       content:
         `💎 **Premium Activated!**\n\n` +
-        `✔ Mode: Auto Translation Enabled\n` +
-        `✔ Duration: ${durationText}\n` +
+        `✔ Auto Translation Enabled\n` +
+        `✔ 30 Day Access Granted\n` +
         `✔ License Verified\n` +
-        `✔ System Fully Unlocked`,
+        `${config.referredBy ? '🎁 Referral Reward Applied!' : ''}`,
       ephemeral: true
     });
   }
