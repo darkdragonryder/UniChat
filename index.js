@@ -17,11 +17,11 @@ import { getGuildConfig } from './utils/guildConfig.js';
 import { getFlag } from './utils/flags.js';
 
 // =====================
-// SERVICES (NEW SYSTEM)
+// SERVICES
 // =====================
 import { applyPremiumExpiry } from './services/premiumService.js';
 import { redeemReferralCode } from './services/referralService.js';
-import { updateReferralBadges, updateTopReferrer } from './services/badgeService.js';
+import { updateLeaderboard, getTopReferrer } from './services/leaderboardService.js';
 
 const client = new Client({
   intents: [
@@ -73,9 +73,7 @@ client.once('ready', async () => {
 // =====================
 function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
-
   config = applyPremiumExpiry(config);
-
   return config;
 }
 
@@ -144,19 +142,13 @@ client.on('messageReactionAdd', async (reaction, user) => {
 });
 
 // =====================
-// GUILD MEMBER JOIN (FUTURE HOOK)
-// =====================
-client.on('guildMemberAdd', async (member) => {
-  try {
-    // future invite tracking hook
-  } catch {}
-});
-
-// =====================
 // INTERACTIONS
 // =====================
 client.on('interactionCreate', async (interaction) => {
 
+  // =====================
+  // COMMANDS
+  // =====================
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
@@ -167,12 +159,14 @@ client.on('interactionCreate', async (interaction) => {
     // REFERRAL SYSTEM HOOK
     // =====================
     if (interaction.commandName.includes('referral')) {
-      const guild = interaction.guild;
+      const guildId = interaction.guild.id;
 
-      const config = getGuildConfig(guild.id);
+      await updateLeaderboard(guildId);
 
-      await updateReferralBadges(client, guild);
-      await updateTopReferrer(guild);
+      const top = getTopReferrer(guildId);
+
+      // OPTIONAL: you can plug badge/role system here later
+      console.log("Top referrer:", top);
     }
 
     return;
@@ -211,15 +205,18 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // =====================
-  // REFERRAL REDEEM
+  // REFERRAL REDEEM (FIXED FLOW)
   // =====================
-  if (interaction.commandName === 'referral-redeem') {
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'referral-redeem'
+  ) {
     const code = interaction.options.getString('code');
 
     const result = redeemReferralCode(
       interaction.guild.id,
-      code,
-      interaction.guild.id
+      interaction.user.id,
+      code
     );
 
     if (!result.ok) {
@@ -229,9 +226,10 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // update badges instantly
-    await updateReferralBadges(client, interaction.guild);
-    await updateTopReferrer(interaction.guild);
+    await updateLeaderboard(interaction.guild.id);
+
+    const top = getTopReferrer(interaction.guild.id);
+    console.log("Updated top referrer:", top);
 
     return interaction.reply({
       content: `🎉 Referral applied successfully!`,
