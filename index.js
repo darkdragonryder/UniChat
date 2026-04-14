@@ -12,7 +12,7 @@ import {
 
 import fs from 'fs';
 import { translate } from './utils/translate.js';
-import { getGuildConfig } from './utils/guildConfig.js';
+import { getGuildConfig, saveGuildConfig } from './utils/guildConfig.js';
 import { getFlag } from './utils/flags.js';
 
 const client = new Client({
@@ -45,10 +45,7 @@ await rest.put(
   {
     body: [
       ...client.commands.map(c => c.data.toJSON()),
-      {
-        name: 'Translate Message',
-        type: 3
-      }
+      { name: 'Translate Message', type: 3 }
     ]
   }
 );
@@ -56,15 +53,87 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // =====================
-// READY EVENT
+// READY
 // =====================
 client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
 
+// =====================================================
+// 💎 PREMIUM EXPIRY SYSTEM
+// =====================================================
+function applyPremiumExpiry(config) {
+  if (!config.premium || !config.premiumExpiry) return config;
+
+  const now = Date.now();
+
+  if (now > config.premiumExpiry) {
+    config.premium = false;
+    config.mode = 'reaction';
+    config.premiumStart = null;
+    config.premiumExpiry = null;
+  }
+
+  return config;
+}
 
 // =====================================================
-// 🧠 SMART FILTER (PREVENT SPAM)
+// 🏆 INVITE LEADERBOARD SYSTEM (90 DAY CYCLE)
+// =====================================================
+const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
+
+function updateLeaderboard(config) {
+  if (!config.inviteLeaderboard) return config;
+
+  const lb = config.inviteLeaderboard;
+
+  if (Date.now() - lb.cycleStart > NINETY_DAYS) {
+
+    const sorted = Object.entries(lb.users || {})
+      .sort((a, b) => b[1] - a[1]);
+
+    const top = sorted[0];
+
+    if (top) {
+      const [winnerId] = top;
+
+      const month = 30 * 24 * 60 * 60 * 1000;
+
+      config.premium = true;
+      config.mode = 'auto';
+      config.premiumStart = Date.now();
+      config.premiumExpiry = Date.now() + month;
+
+      client.users.fetch(winnerId).then(user => {
+        if (user) {
+          user.send("🏆 You won the invite leaderboard! You’ve been granted 1 month FREE premium!");
+        }
+      }).catch(() => {});
+    }
+
+    config.inviteLeaderboard = {
+      cycleStart: Date.now(),
+      users: {}
+    };
+  }
+
+  return config;
+}
+
+// =====================================================
+// SAFE CONFIG WRAPPER
+// =====================================================
+function safeConfig(guildId) {
+  let config = getGuildConfig(guildId);
+
+  config = applyPremiumExpiry(config);
+  config = updateLeaderboard(config);
+
+  return config;
+}
+
+// =====================================================
+// SMART FILTER
 // =====================================================
 function shouldSkip(text, lang) {
   if (!text) return true;
@@ -76,14 +145,13 @@ function shouldSkip(text, lang) {
   return false;
 }
 
-
 // =====================================================
-// 💎 PREMIUM AUTO TRANSLATION (DM SYSTEM)
+// 💎 PREMIUM AUTO MODE (DM)
 // =====================================================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  const config = getGuildConfig(message.guild.id);
+  const config = safeConfig(message.guild.id);
 
   if (!config.premium || config.mode !== 'auto') return;
 
@@ -96,16 +164,12 @@ client.on('messageCreate', async (message) => {
 
     try {
       const result = await translate(message.content, lang);
-
       const text = result?.text || result;
-      if (!text) continue;
 
       const user = await client.users.fetch(userId).catch(() => null);
       if (!user) continue;
 
-      await user.send(
-        `🌍 **Auto Translation (${lang})**\n\n${text}`
-      );
+      await user.send(`🌍 **Auto Translation (${lang})**\n\n${text}`);
 
     } catch (err) {
       console.log("❌ DM failed:", userId);
@@ -113,9 +177,8 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-
 // =====================================================
-// 🆓 FREE MODE (REACTION TRANSLATION)
+// 🆓 REACTION MODE (FREE)
 // =====================================================
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
@@ -127,8 +190,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const message = reaction.message;
     if (!message?.content) return;
 
-    const config = getGuildConfig(message.guild?.id);
-    if (!config) return;
+    const config = safeConfig(message.guild?.id);
 
     if (reaction.emoji.name !== '🌍') return;
 
@@ -146,13 +208,12 @@ client.on('messageReactionAdd', async (reaction, user) => {
     );
 
   } catch (err) {
-    console.log("❌ Reaction translation error:", err);
+    console.log("❌ Reaction error:", err);
   }
 });
 
-
 // =====================================================
-// INTERACTIONS (COMMANDS + BUTTONS)
+// INTERACTIONS
 // =====================================================
 client.on('interactionCreate', async (interaction) => {
 
@@ -165,10 +226,8 @@ client.on('interactionCreate', async (interaction) => {
   // CONTEXT MENU
   if (interaction.isMessageContextMenuCommand()) {
 
-    if (interaction.commandName !== 'Translate Message') return;
-
     const message = interaction.targetMessage;
-    const config = getGuildConfig(interaction.guild.id);
+    const config = safeConfig(interaction.guild.id);
 
     const userLang = config.languages?.[interaction.user.id];
 
@@ -193,7 +252,7 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // BUTTON HANDLER
+  // BUTTONS
   if (interaction.isButton()) {
 
     if (interaction.customId === 'dismiss_translation') {
@@ -217,7 +276,7 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    const config = getGuildConfig(interaction.guild.id);
+    const config = safeConfig(interaction.guild.id);
     const userLang = config.languages?.[interaction.user.id];
 
     if (!userLang) {
