@@ -15,13 +15,18 @@ function defaultConfig() {
     // 💎 premium system
     premium: false,
     licenseKey: null,
-    premiumExpiry: null, // timestamp
-
-    // ⚙️ mode control
-    mode: 'reaction', // reaction | auto | hybrid
+    premiumStart: null,
+    premiumExpiry: null,
+    mode: 'reaction',
 
     // 📈 invite system
-    invites: {}
+    invites: {},
+
+    // 🏆 leaderboard system (3 month cycles)
+    inviteLeaderboard: {
+      cycleStart: Date.now(),
+      users: {}
+    }
   };
 }
 
@@ -45,11 +50,17 @@ export function getGuildConfig(guildId) {
 
       premium: parsed.premium ?? false,
       licenseKey: parsed.licenseKey ?? null,
+      premiumStart: parsed.premiumStart ?? null,
       premiumExpiry: parsed.premiumExpiry ?? null,
 
       mode: parsed.mode || 'reaction',
 
-      invites: parsed.invites || {}
+      invites: parsed.invites || {},
+
+      inviteLeaderboard: parsed.inviteLeaderboard || {
+        cycleStart: Date.now(),
+        users: {}
+      }
     };
 
   } catch (err) {
@@ -72,11 +83,17 @@ export function saveGuildConfig(guildId, config) {
 
     premium: config.premium ?? false,
     licenseKey: config.licenseKey || null,
+    premiumStart: config.premiumStart || null,
     premiumExpiry: config.premiumExpiry || null,
 
     mode: config.mode || 'reaction',
 
-    invites: config.invites || {}
+    invites: config.invites || {},
+
+    inviteLeaderboard: config.inviteLeaderboard || {
+      cycleStart: Date.now(),
+      users: {}
+    }
   };
 
   fs.writeFileSync(path, JSON.stringify(safeConfig, null, 2), 'utf8');
