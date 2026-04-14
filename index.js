@@ -20,7 +20,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMembers
   ],
   partials: ['MESSAGE', 'CHANNEL', 'REACTION', 'USER']
 });
@@ -52,15 +53,62 @@ await rest.put(
 
 console.log("✅ Commands registered");
 
-// =====================
+// =====================================================
+// 🏆 ROLE CONFIG
+// =====================================================
+const REFERRAL_ROLE_NAME = '🏆 Referral Champion';
+
+// =====================================================
+// ROLE HANDLER
+// =====================================================
+async function updateReferralRole(guild, config) {
+  try {
+    const lb = config?.referrals?.leaderboard || {};
+    const entries = Object.entries(lb);
+
+    if (entries.length === 0) return;
+
+    const sorted = entries.sort((a, b) => b[1] - a[1]);
+    const topUserId = sorted[0][0];
+
+    let role = guild.roles.cache.find(r => r.name === REFERRAL_ROLE_NAME);
+
+    if (!role) {
+      role = await guild.roles.create({
+        name: REFERRAL_ROLE_NAME,
+        color: 0xFFD700,
+        reason: 'Referral leaderboard reward'
+      });
+    }
+
+    const members = await guild.members.fetch();
+
+    for (const member of members.values()) {
+      if (member.roles.cache.has(role.id) && member.id !== topUserId) {
+        await member.roles.remove(role).catch(() => {});
+      }
+    }
+
+    const topMember = await guild.members.fetch(topUserId).catch(() => null);
+
+    if (topMember && !topMember.roles.cache.has(role.id)) {
+      await topMember.roles.add(role).catch(() => {});
+    }
+
+  } catch (err) {
+    console.log("❌ Role update error:", err);
+  }
+}
+
+// =====================================================
 // READY EVENT
-// =====================
+// =====================================================
 client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
 
 // =====================================================
-// 💎 PREMIUM EXPIRY SYSTEM
+// PREMIUM EXPIRY SYSTEM
 // =====================================================
 function applyPremiumExpiry(config) {
   if (!config.premium || !config.premiumExpiry) return config;
@@ -76,14 +124,13 @@ function applyPremiumExpiry(config) {
 }
 
 // =====================================================
-// 🧠 REFERRAL REWARD SYSTEM
+// REFERRAL REWARD SYSTEM (FIXED HOOK)
 // =====================================================
 async function checkReferralRewards(guildId, ownerId, totalUses) {
   const config = getGuildConfig(guildId);
 
   if (!config.referrals) return;
 
-  // track rewards already given
   if (!config.referrals.rewardsGiven) {
     config.referrals.rewardsGiven = {};
   }
@@ -96,15 +143,15 @@ async function checkReferralRewards(guildId, ownerId, totalUses) {
 
   let reward = null;
 
-  if (totalUses >= 25 && !rewards.includes(25)) {
+  if (totalUses >= 25 && !rewards.includes('lifetime')) {
     reward = 'lifetime';
-    rewards.push(25);
-  } else if (totalUses >= 10 && !rewards.includes(10)) {
+    rewards.push('lifetime');
+  } else if (totalUses >= 10 && !rewards.includes('month')) {
     reward = 'month';
-    rewards.push(10);
-  } else if (totalUses >= 5 && !rewards.includes(5)) {
+    rewards.push('month');
+  } else if (totalUses >= 5 && !rewards.includes('week')) {
     reward = 'week';
-    rewards.push(5);
+    rewards.push('week');
   }
 
   if (!reward) return;
@@ -115,14 +162,14 @@ async function checkReferralRewards(guildId, ownerId, totalUses) {
     config.premium = true;
     config.mode = 'auto';
     config.premiumStart = now;
-    config.premiumExpiry = now + (7 * 24 * 60 * 60 * 1000);
+    config.premiumExpiry = now + 7 * 24 * 60 * 60 * 1000;
   }
 
   if (reward === 'month') {
     config.premium = true;
     config.mode = 'auto';
     config.premiumStart = now;
-    config.premiumExpiry = now + (30 * 24 * 60 * 60 * 1000);
+    config.premiumExpiry = now + 30 * 24 * 60 * 60 * 1000;
   }
 
   if (reward === 'lifetime') {
@@ -134,19 +181,17 @@ async function checkReferralRewards(guildId, ownerId, totalUses) {
 
   saveGuildConfig(guildId, config);
 
-  // DM user
   try {
     const user = await client.users.fetch(ownerId);
+
     if (user) {
       await user.send(
-        `🎉 **Referral Reward Unlocked!**\n\n` +
-        `You reached **${totalUses} referrals**\n` +
-        `Reward: **${reward.toUpperCase()} PREMIUM**`
+        `🎉 Referral Reward Unlocked!\n` +
+        `You reached ${totalUses} referrals!\n` +
+        `Reward: ${reward.toUpperCase()} PREMIUM`
       );
     }
-  } catch (err) {
-    console.log("❌ Reward DM failed:", ownerId);
-  }
+  } catch {}
 }
 
 // =====================================================
@@ -164,11 +209,11 @@ function safeConfig(guildId) {
 function shouldSkip(text, lang) {
   if (!text) return true;
   const simpleLatin = /^[a-z0-9\s.,!?'"()-]+$/i.test(text);
-  return (lang === 'en' && simpleLatin);
+  return lang === 'en' && simpleLatin;
 }
 
 // =====================================================
-// 💎 PREMIUM AUTO MODE
+// MESSAGE EVENTS
 // =====================================================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -187,15 +232,13 @@ client.on('messageCreate', async (message) => {
       const user = await client.users.fetch(userId).catch(() => null);
       if (!user) continue;
 
-      await user.send(`🌍 **Auto Translation (${lang})**\n\n${text}`);
-    } catch (err) {
-      console.log("❌ DM failed:", userId);
-    }
+      await user.send(`🌍 Auto Translation (${lang})\n\n${text}`);
+    } catch {}
   }
 });
 
 // =====================================================
-// 🆓 REACTION MODE
+// REACTION MODE
 // =====================================================
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
@@ -211,17 +254,16 @@ client.on('messageReactionAdd', async (reaction, user) => {
     if (reaction.emoji.name !== '🌍') return;
 
     const userLang = config.languages?.[user.id];
-    if (!userLang) return user.send("❌ Set your language first using /setlang");
+    if (!userLang) return user.send("❌ Set your language first");
 
     const result = await translate(message.content, userLang);
     const text = result?.text || result;
 
     await message.channel.send(
-      `🌍 **Translation for ${user.username} (${userLang})**:\n${text}`
+      `🌍 Translation for ${user.username} (${userLang}):\n${text}`
     );
-  } catch (err) {
-    console.log("❌ Reaction error:", err);
-  }
+
+  } catch {}
 });
 
 // =====================================================
@@ -235,20 +277,22 @@ client.on('interactionCreate', async (interaction) => {
 
     const result = await cmd.execute(interaction);
 
-    // 🔥 HOOK INTO REFERRAL REDEEM
-    if (interaction.commandName === 'redeemref' && result?.success) {
+    // ✅ FIXED HOOK (ALL REFERRAL COMMANDS)
+    if (interaction.commandName.includes('referral') && result?.success) {
       await checkReferralRewards(
         interaction.guild.id,
         result.ownerId,
         result.totalUses
       );
+
+      const config = getGuildConfig(interaction.guild.id);
+      await updateReferralRole(interaction.guild, config);
     }
 
     return;
   }
 
   if (interaction.isMessageContextMenuCommand()) {
-
     const message = interaction.targetMessage;
     const config = safeConfig(interaction.guild.id);
 
@@ -256,7 +300,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!userLang) {
       return interaction.reply({
-        content: '❌ Please set your language first using /setlang',
+        content: '❌ Please set your language first',
         ephemeral: true
       });
     }
@@ -279,7 +323,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.customId === 'dismiss_translation') {
       return interaction.update({
-        content: '🧹 Translation closed.',
+        content: '🧹 Closed',
         components: []
       });
     }
@@ -290,41 +334,17 @@ client.on('interactionCreate', async (interaction) => {
       interaction.customId.split('_')[1]
     ).catch(() => null);
 
-    if (!message?.content) {
-      return interaction.reply({
-        content: '❌ Message not found',
-        ephemeral: true
-      });
-    }
+    if (!message?.content) return;
 
     const config = safeConfig(interaction.guild.id);
     const userLang = config.languages?.[interaction.user.id];
 
-    if (!userLang) {
-      return interaction.reply({
-        content: '❌ Please set your language using /setlang',
-        ephemeral: true
-      });
-    }
-
     const result = await translate(message.content, userLang);
     const text = result?.text || result;
-    const detected = result?.detected || null;
 
     return interaction.reply({
-      content:
-        `🌍 **Translation (${userLang})**\n` +
-        `${detected ? `🧠 Detected: ${getFlag(detected)} ${detected}\n\n` : ''}` +
-        `${text}`,
-      ephemeral: true,
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('dismiss_translation')
-            .setLabel('❌ Dismiss')
-            .setStyle(ButtonStyle.Secondary)
-        )
-      ]
+      content: `🌍 Translation (${userLang}):\n${text}`,
+      ephemeral: true
     });
   }
 });
