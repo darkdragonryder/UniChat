@@ -61,22 +61,54 @@ client.once('ready', () => {
 });
 
 // =====================
+// MESSAGE ENGINE (AUTO TRANSLATION CORE)
+// =====================
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || !message.guild) return;
+
+  const config = getGuildConfig(message.guild.id);
+
+  // ---------------------
+  // PREMIUM AUTO MODE
+  // ---------------------
+  if (config.premium && config.mode === 'auto') {
+
+    for (const [userId, lang] of Object.entries(config.languages || {})) {
+
+      if (!lang || lang === 'en') continue;
+
+      const result = await translate(message.content, lang);
+      const translated = result.text || result;
+
+      // 🌍 “shadow translation” (only user can see)
+      message.channel.send({
+        content: `🌍 <@${userId}> **Translation (${lang})**:\n${translated}`,
+        ephemeral: true // (Discord ignores this in normal send, we fix later with DM/modal system)
+      });
+    }
+
+    return;
+  }
+
+  // ---------------------
+  // FREE MODE (reaction system later)
+  // ---------------------
+  // (we will add 🌍 reaction translate in next upgrade)
+});
+
+// =====================
 // INTERACTIONS
 // =====================
 client.on('interactionCreate', async (interaction) => {
 
-  // ---------------------
   // SLASH COMMANDS
-  // ---------------------
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
     return cmd.execute(interaction);
   }
 
-  // ---------------------
   // CONTEXT MENU → BUTTON
-  // ---------------------
   if (interaction.isMessageContextMenuCommand()) {
 
     if (interaction.commandName !== 'Translate Message') return;
@@ -84,10 +116,8 @@ client.on('interactionCreate', async (interaction) => {
     const message = interaction.targetMessage;
     const config = getGuildConfig(interaction.guild.id);
 
-    const userId = interaction.user.id;
-    const userLang = config.languages?.[userId];
+    const userLang = config.languages?.[interaction.user.id];
 
-    // STEP 2: SMART FILTER (must have language)
     if (!userLang) {
       return interaction.reply({
         content: '❌ Please set your language first using /setlang',
@@ -109,12 +139,9 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // ---------------------
   // BUTTON HANDLER
-  // ---------------------
   if (interaction.isButton()) {
 
-    // DISMISS BUTTON
     if (interaction.customId === 'dismiss_translation') {
       return interaction.update({
         content: '🧹 Translation closed.',
@@ -122,7 +149,6 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // TRANSLATE BUTTON
     if (!interaction.customId.startsWith('translate_')) return;
 
     const messageId = interaction.customId.split('_')[1];
@@ -143,19 +169,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!userLang) {
       return interaction.reply({
         content: '❌ Please set your language using /setlang',
-        ephemeral: true
-      });
-    }
-
-    const content = message.content.toLowerCase();
-
-    // STEP 3: SKIP SAME LANGUAGE (basic heuristic)
-    const isLikelyEnglish =
-      /^[a-z0-9\s.,!?'"()-]+$/i.test(content);
-
-    if (userLang === 'en' && isLikelyEnglish) {
-      return interaction.reply({
-        content: '🧠 Already in your language — no translation needed',
         ephemeral: true
       });
     }
