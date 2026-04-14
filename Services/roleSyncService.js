@@ -1,85 +1,53 @@
 import { getGuildConfig } from '../utils/guildConfig.js';
-import { getTopReferrer } from './leaderboardService.js';
+
+const cache = new Map();
 
 // ===============================
-// CONFIG
+// SYNC USER ROLES
 // ===============================
-const ROLE_NAME = '🏆 Referral Champion';
+export async function syncReferralRoles(client, guild) {
+  const config = getGuildConfig(guild.id);
 
-// ===============================
-// GET OR CREATE ROLE
-// ===============================
-async function getOrCreateRole(guild) {
-  let role = guild.roles.cache.find(r => r.name === ROLE_NAME);
+  if (!config.referralRoles?.enabled) return;
 
-  if (!role) {
-    role = await guild.roles.create({
-      name: ROLE_NAME,
-      color: 0xFFD700,
-      reason: 'Auto referral champion role'
-    });
-  }
+  const map = config.referralRoles.map || {};
+  const leaderboard = config.referrals?.leaderboard || {};
 
-  return role;
-}
+  const members = await guild.members.fetch();
 
-// ===============================
-// MAIN ROLE SYNC
-// ===============================
-export async function syncReferralRoles(client, guildId) {
-  try {
-    const guild = await client.guilds.fetch(guildId);
-    const config = getGuildConfig(guildId);
+  for (const member of members.values()) {
+    const count = leaderboard[member.id] || 0;
 
-    const top = getTopReferrer(guildId);
+    // find highest role they should have
+    const eligible = Object.entries(map)
+      .filter(([req]) => count >= Number(req))
+      .sort((a, b) => Number(b[0]) - Number(a[0]));
 
-    if (!top || !top.userId) return;
+    const shouldHaveRoleName = eligible[0]?.[1];
 
-    const role = await getOrCreateRole(guild);
+    if (!shouldHaveRoleName) continue;
 
-    const members = await guild.members.fetch();
+    let role = guild.roles.cache.find(r => r.name === shouldHaveRoleName);
 
-    // ===============================
-    // REMOVE ROLE FROM EVERYONE ELSE
-    // ===============================
-    for (const member of members.values()) {
-      if (member.roles.cache.has(role.id)) {
-        if (member.id !== top.userId) {
-          await member.roles.remove(role).catch(() => {});
-        }
+    if (!role) {
+      role = await guild.roles.create({
+        name: shouldHaveRoleName,
+        color: 0xFFD700,
+        reason: 'Auto referral role system'
+      });
+    }
+
+    // remove other referral roles
+    for (const r of Object.values(map)) {
+      const existing = guild.roles.cache.find(x => x.name === r);
+      if (existing && member.roles.cache.has(existing.id) && r !== shouldHaveRoleName) {
+        await member.roles.remove(existing).catch(() => {});
       }
     }
 
-    // ===============================
-    // GIVE ROLE TO TOP USER
-    // ===============================
-    const topMember = await guild.members.fetch(top.userId).catch(() => null);
-
-    if (topMember && !topMember.roles.cache.has(role.id)) {
-      await topMember.roles.add(role).catch(() => {});
+    // give correct role
+    if (!member.roles.cache.has(role.id)) {
+      await member.roles.add(role).catch(() => {});
     }
-
-  } catch (err) {
-    console.log('❌ Role sync error:', err);
   }
-}
-
-// ===============================
-// FULL GUILD SYNC (ON STARTUP)
-// ===============================
-export async function syncAllGuildRoles(client) {
-  try {
-    for (const guild of client.guilds.cache.values()) {
-      await syncReferralRoles(client, guild.id);
-    }
-  } catch (err) {
-    console.log('❌ Global role sync error:', err);
-  }
-}
-
-// ===============================
-// AUTO UPDATE AFTER CHANGE
-// ===============================
-export async function updateRoleAfterReferral(client, guildId) {
-  await syncReferralRoles(client, guildId);
 }
