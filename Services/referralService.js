@@ -1,53 +1,10 @@
 import { getGuildConfig, saveGuildConfig } from './guildConfig.js';
 
 // =====================================================
-// FRAUD CACHE (RUNTIME ONLY)
+// RUNTIME FRAUD CACHE
 // =====================================================
 const recentActions = new Map();
-
-// =====================================================
-// ANTI-FRAUD CHECK
-// =====================================================
-function detectFraud(guildId, userId, code, ref) {
-  const now = Date.now();
-
-  // ---------------------
-  // SELF REFERRAL BLOCK
-  // ---------------------
-  if (ref.ownerId === userId) {
-    return { fraud: true, reason: 'SELF_REFERRAL' };
-  }
-
-  // ---------------------
-  // RATE LIMIT (3 uses / 10 min)
-  // ---------------------
-  if (!recentActions.has(userId)) {
-    recentActions.set(userId, []);
-  }
-
-  const actions = recentActions.get(userId);
-
-  const filtered = actions.filter(t => now - t < 10 * 60 * 1000);
-
-  if (filtered.length >= 3) {
-    return { fraud: true, reason: 'RATE_LIMIT' };
-  }
-
-  filtered.push(now);
-  recentActions.set(userId, filtered);
-
-  // ---------------------
-  // SERVER FARM DETECTION
-  // ---------------------
-  const config = getGuildConfig(guildId);
-  const usedCount = Object.keys(config.referrals?.usedServers || {}).length;
-
-  if (usedCount > 8) {
-    return { fraud: true, reason: 'SERVER_FARM_SUSPECTED' };
-  }
-
-  return { fraud: false };
-}
+const codeCooldown = new Map();
 
 // =====================================================
 // ENSURE STRUCTURE
@@ -62,12 +19,52 @@ function ensure(config) {
     };
   }
 
-  if (!config.referrals.codes) config.referrals.codes = {};
-  if (!config.referrals.leaderboard) config.referrals.leaderboard = {};
-  if (!config.referrals.usedServers) config.referrals.usedServers = {};
-  if (!config.referrals.rewardsGiven) config.referrals.rewardsGiven = {};
+  config.referrals.codes ||= {};
+  config.referrals.leaderboard ||= {};
+  config.referrals.usedServers ||= {};
+  config.referrals.rewardsGiven ||= {};
 
   return config;
+}
+
+// =====================================================
+// FRAUD DETECTION (ANTI-ALT / ANTI-FARM)
+// =====================================================
+function detectFraud(guildId, userId, code, ref) {
+  const now = Date.now();
+
+  // 1. SELF REFERRAL
+  if (ref.ownerId === userId) {
+    return { fraud: true, reason: 'SELF_REFERRAL' };
+  }
+
+  // 2. RATE LIMIT PER USER (3 attempts / 10 min)
+  const actions = recentActions.get(userId) || [];
+  const filtered = actions.filter(t => now - t < 10 * 60 * 1000);
+
+  if (filtered.length >= 3) {
+    return { fraud: true, reason: 'RATE_LIMIT' };
+  }
+
+  filtered.push(now);
+  recentActions.set(userId, filtered);
+
+  // 3. CODE BRUTE FORCE PROTECTION
+  const lastUse = codeCooldown.get(code);
+  if (lastUse && now - lastUse < 5000) {
+    return { fraud: true, reason: 'CODE_SPAM' };
+  }
+  codeCooldown.set(code, now);
+
+  // 4. SERVER FARM DETECTION (soft limit)
+  const config = getGuildConfig(guildId);
+  const usedCount = Object.keys(config.referrals?.usedServers || {}).length;
+
+  if (usedCount > 10) {
+    return { fraud: true, reason: 'SERVER_FARM_SUSPECTED' };
+  }
+
+  return { fraud: false };
 }
 
 // =====================================================
@@ -79,11 +76,11 @@ export function createReferralCode(guildId, ownerId, code) {
   config.referrals.codes[code] = {
     ownerId,
     uses: 0,
-    usedBy: []
+    usedBy: [],
+    createdAt: Date.now()
   };
 
   saveGuildConfig(guildId, config);
-
   return code;
 }
 
@@ -99,49 +96,38 @@ export function redeemReferralCode(guildId, code, serverId) {
     return { ok: false, reason: 'INVALID_CODE' };
   }
 
-  // ---------------------
-  // ANTI FRAUD CHECK
-  // ---------------------
+  // 1. FRAUD CHECK
   const fraud = detectFraud(guildId, serverId, code, ref);
-
   if (fraud.fraud) {
-    return {
-      ok: false,
-      reason: `FRAUD_BLOCKED: ${fraud.reason}`
-    };
+    return { ok: false, reason: `FRAUD_BLOCKED_${fraud.reason}` };
   }
 
-  // ---------------------
-  // PREVENT SERVER REUSE
-  // ---------------------
+  // 2. SERVER ALREADY USED THIS CODE
   if (config.referrals.usedServers[serverId]) {
     return { ok: false, reason: 'SERVER_ALREADY_USED_CODE' };
   }
 
-  config.referrals.usedServers[serverId] = true;
+  // mark server used
+  config.referrals.usedServers[serverId] = {
+    code,
+    usedAt: Date.now()
+  };
 
-  // ---------------------
-  // UPDATE CODE
-  // ---------------------
-  ref.usedBy.push(serverId);
-  ref.uses += 1;
-
-  // ---------------------
-  // LEADERBOARD
-  // ---------------------
-  const ownerId = ref.ownerId;
-
-  if (!config.referrals.leaderboard[ownerId]) {
-    config.referrals.leaderboard[ownerId] = 0;
+  // 3. UPDATE CODE
+  if (!ref.usedBy.includes(serverId)) {
+    ref.usedBy.push(serverId);
+    ref.uses += 1;
   }
 
-  config.referrals.leaderboard[ownerId] += 1;
+  // 4. UPDATE LEADERBOARD
+  const ownerId = ref.ownerId;
+
+  config.referrals.leaderboard[ownerId] =
+    (config.referrals.leaderboard[ownerId] || 0) + 1;
 
   const totalUses = config.referrals.leaderboard[ownerId];
 
-  // ---------------------
-  // REWARD TRACKING
-  // ---------------------
+  // 5. REWARD TRACKING
   if (!config.referrals.rewardsGiven[ownerId]) {
     config.referrals.rewardsGiven[ownerId] = [];
   }
@@ -161,9 +147,7 @@ export function redeemReferralCode(guildId, code, serverId) {
     rewards.push('week');
   }
 
-  // ---------------------
-  // APPLY PREMIUM
-  // ---------------------
+  // 6. APPLY PREMIUM
   if (reward) {
     const now = Date.now();
 
@@ -200,7 +184,7 @@ export function redeemReferralCode(guildId, code, serverId) {
 }
 
 // =====================================================
-// GET LEADERBOARD
+// LEADERBOARD
 // =====================================================
 export function getReferralLeaderboard(guildId, limit = 10) {
   const config = ensure(getGuildConfig(guildId));
