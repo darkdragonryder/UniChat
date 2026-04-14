@@ -13,12 +13,15 @@ import {
 import fs from 'fs';
 
 import { translate } from './utils/translate.js';
-import { getGuildConfig, saveGuildConfig } from './utils/guildConfig.js';
+import { getGuildConfig } from './utils/guildConfig.js';
 import { getFlag } from './utils/flags.js';
 
-// =====================================================
-// CLIENT SETUP
-// =====================================================
+// SERVICES
+import { applyPremiumExpiry } from './services/premiumService.js';
+import { updateLeaderboard } from './services/leaderboardService.js';
+import { addReferralPoint } from './services/leaderboardService.js';
+import { redeemReferralCode } from './services/referralService.js';
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -32,17 +35,17 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// =====================================================
+// =====================
 // LOAD COMMANDS
-// =====================================================
+// =====================
 for (const file of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) {
   const cmd = await import(`./commands/${file}`);
   client.commands.set(cmd.default.data.name, cmd.default);
 }
 
-// =====================================================
+// =====================
 // REGISTER COMMANDS
-// =====================================================
+// =====================
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 await rest.put(
@@ -57,152 +60,35 @@ await rest.put(
 
 console.log("✅ Commands registered");
 
-// =====================================================
-// REFERRAL ROLE NAME
-// =====================================================
-const REFERRAL_ROLE_NAME = '🏆 Referral Champion';
+// =====================
+// READY
+// =====================
+client.once('ready', async () => {
+  console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
+});
 
-// =====================================================
-// PREMIUM EXPIRY CHECK
-// =====================================================
-function applyPremiumExpiry(config) {
-  if (!config.premium || !config.premiumExpiry) return config;
-
-  if (Date.now() > config.premiumExpiry) {
-    config.premium = false;
-    config.mode = 'reaction';
-    config.premiumStart = null;
-    config.premiumExpiry = null;
-  }
-
-  return config;
-}
-
-// =====================================================
-// SAFE CONFIG WRAPPER
-// =====================================================
+// =====================
+// SAFE CONFIG
+// =====================
 function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
-  config = applyPremiumExpiry(config);
+  config = applyPremiumExpiry(guildId);
+  config = updateLeaderboard(guildId);
   return config;
 }
 
-// =====================================================
-// REFERRAL REWARD SYSTEM
-// =====================================================
-async function checkReferralRewards(guildId, ownerId, totalUses) {
-  const config = getGuildConfig(guildId);
-
-  if (!config.referrals) return;
-
-  if (!config.referrals.rewardsGiven) {
-    config.referrals.rewardsGiven = {};
-  }
-
-  if (!config.referrals.rewardsGiven[ownerId]) {
-    config.referrals.rewardsGiven[ownerId] = [];
-  }
-
-  const rewards = config.referrals.rewardsGiven[ownerId];
-
-  let reward = null;
-
-  if (totalUses >= 25 && !rewards.includes('lifetime')) reward = 'lifetime';
-  else if (totalUses >= 10 && !rewards.includes('month')) reward = 'month';
-  else if (totalUses >= 5 && !rewards.includes('week')) reward = 'week';
-
-  if (!reward) return;
-
-  const now = Date.now();
-
-  if (reward === 'week') {
-    config.premium = true;
-    config.mode = 'auto';
-    config.premiumStart = now;
-    config.premiumExpiry = now + 7 * 24 * 60 * 60 * 1000;
-  }
-
-  if (reward === 'month') {
-    config.premium = true;
-    config.mode = 'auto';
-    config.premiumStart = now;
-    config.premiumExpiry = now + 30 * 24 * 60 * 60 * 1000;
-  }
-
-  if (reward === 'lifetime') {
-    config.premium = true;
-    config.mode = 'auto';
-    config.premiumStart = now;
-    config.premiumExpiry = null;
-  }
-
-  saveGuildConfig(guildId, config);
-
-  try {
-    const user = await client.users.fetch(ownerId);
-    if (user) {
-      await user.send(
-        `🎉 Referral Reward Unlocked!\n` +
-        `You reached ${totalUses} referrals!\n` +
-        `Reward: ${reward.toUpperCase()} PREMIUM`
-      );
-    }
-  } catch {}
-}
-
-// =====================================================
-// ROLE SYSTEM (TOP REFERRER)
-// =====================================================
-async function updateReferralRole(guild, config) {
-  try {
-    const lb = config?.referrals?.leaderboard || {};
-    const sorted = Object.entries(lb).sort((a, b) => b[1] - a[1]);
-
-    if (!sorted.length) return;
-
-    const topUserId = sorted[0][0];
-
-    let role = guild.roles.cache.find(r => r.name === REFERRAL_ROLE_NAME);
-
-    if (!role) {
-      role = await guild.roles.create({
-        name: REFERRAL_ROLE_NAME,
-        color: 0xFFD700,
-        reason: 'Referral leaderboard reward'
-      });
-    }
-
-    const members = await guild.members.fetch();
-
-    for (const member of members.values()) {
-      if (member.roles.cache.has(role.id) && member.id !== topUserId) {
-        await member.roles.remove(role).catch(() => {});
-      }
-    }
-
-    const topMember = await guild.members.fetch(topUserId).catch(() => null);
-
-    if (topMember && !topMember.roles.cache.has(role.id)) {
-      await topMember.roles.add(role).catch(() => {});
-    }
-
-  } catch (err) {
-    console.log("❌ Role update error:", err);
-  }
-}
-
-// =====================================================
+// =====================
 // SMART FILTER
-// =====================================================
+// =====================
 function shouldSkip(text, lang) {
   if (!text) return true;
   const simpleLatin = /^[a-z0-9\s.,!?'"()-]+$/i.test(text);
   return lang === 'en' && simpleLatin;
 }
 
-// =====================================================
-// PREMIUM AUTO TRANSLATION
-// =====================================================
+// =====================
+// MESSAGE TRANSLATION
+// =====================
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -226,9 +112,9 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// =====================================================
-// REACTION TRANSLATION
-// =====================================================
+// =====================
+// REACTIONS
+// =====================
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
 
@@ -252,13 +138,26 @@ client.on('messageReactionAdd', async (reaction, user) => {
     await message.channel.send(
       `🌍 Translation for ${user.username} (${userLang}):\n${text}`
     );
+  } catch {}
+});
+
+// =====================
+// GUILD MEMBER JOIN (REFERRAL TRACKING HOOK)
+// =====================
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const config = safeConfig(member.guild.id);
+
+    // (You will connect invite/referral detection later here)
+    // Example placeholder:
+    // addReferralPoint(member.guild.id, inviterId);
 
   } catch {}
 });
 
-// =====================================================
+// =====================
 // INTERACTIONS
-// =====================================================
+// =====================
 client.on('interactionCreate', async (interaction) => {
 
   if (interaction.isChatInputCommand()) {
@@ -267,48 +166,16 @@ client.on('interactionCreate', async (interaction) => {
 
     const result = await cmd.execute(interaction);
 
-    // referral hook
+    // REFERRAL REWARD HOOK
     if (interaction.commandName.includes('referral') && result?.success) {
-      await checkReferralRewards(
-        interaction.guild.id,
-        result.ownerId,
-        result.totalUses
-      );
-
       const config = getGuildConfig(interaction.guild.id);
-      await updateReferralRole(interaction.guild, config);
+      await updateLeaderboard(interaction.guild.id);
     }
 
     return;
   }
 
-  if (interaction.isMessageContextMenuCommand()) {
-    const message = interaction.targetMessage;
-    const config = safeConfig(interaction.guild.id);
-
-    const userLang = config.languages?.[interaction.user.id];
-
-    if (!userLang) {
-      return interaction.reply({
-        content: '❌ Please set your language first',
-        ephemeral: true
-      });
-    }
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`translate_${message.id}`)
-        .setLabel('🌍 Translate')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    return interaction.reply({
-      content: 'Click below to translate this message:',
-      components: [row],
-      ephemeral: true
-    });
-  }
-
+  // BUTTONS
   if (interaction.isButton()) {
 
     if (interaction.customId === 'dismiss_translation') {
@@ -337,9 +204,29 @@ client.on('interactionCreate', async (interaction) => {
       ephemeral: true
     });
   }
+
+  // REFERRAL REDEEM (HOOK INTO SERVICE)
+  if (interaction.commandName === 'referral-redeem') {
+    const code = interaction.options.getString('code');
+
+    const result = redeemReferralCode(
+      interaction.guild.id,
+      code,
+      interaction.guild.id
+    );
+
+    if (!result.ok) {
+      return interaction.reply({
+        content: `❌ ${result.reason}`,
+        ephemeral: true
+      });
+    }
+
+    return interaction.reply({
+      content: `🎉 Referral applied successfully!`,
+      ephemeral: true
+    });
+  }
 });
 
-// =====================================================
-// LOGIN
-// =====================================================
 client.login(process.env.TOKEN);
