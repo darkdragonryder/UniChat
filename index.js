@@ -59,7 +59,7 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // =====================
-// READY (FULL SYNC FIX)
+// READY
 // =====================
 client.once('ready', async () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
@@ -86,70 +86,6 @@ function safeConfig(guildId) {
 }
 
 // =====================
-// SMART FILTER
-// =====================
-function shouldSkip(text, lang) {
-  if (!text) return true;
-  const simpleLatin = /^[a-z0-9\s.,!?'"()-]+$/i.test(text);
-  return lang === 'en' && simpleLatin;
-}
-
-// =====================
-// MESSAGE TRANSLATION
-// =====================
-client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.guild) return;
-
-  const config = safeConfig(message.guild.id);
-
-  if (!config.premium || config.mode !== 'auto') return;
-
-  for (const [userId, lang] of Object.entries(config.languages || {})) {
-    if (!lang || lang === 'en') continue;
-    if (shouldSkip(message.content, lang)) continue;
-
-    try {
-      const result = await translate(message.content, lang);
-      const text = result?.text || result;
-
-      const user = await client.users.fetch(userId).catch(() => null);
-      if (!user) continue;
-
-      await user.send(`🌍 Auto Translation (${lang})\n\n${text}`);
-    } catch {}
-  }
-});
-
-// =====================
-// REACTIONS
-// =====================
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot) return;
-
-  try {
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
-
-    const message = reaction.message;
-    if (!message?.content) return;
-
-    const config = safeConfig(message.guild?.id);
-
-    if (reaction.emoji.name !== '🌍') return;
-
-    const userLang = config.languages?.[user.id];
-    if (!userLang) return user.send("❌ Set your language first");
-
-    const result = await translate(message.content, userLang);
-    const text = result?.text || result;
-
-    await message.channel.send(
-      `🌍 Translation for ${user.username} (${userLang}):\n${text}`
-    );
-  } catch {}
-});
-
-// =====================
 // INTERACTIONS
 // =====================
 client.on('interactionCreate', async (interaction) => {
@@ -164,17 +100,22 @@ client.on('interactionCreate', async (interaction) => {
     await cmd.execute(interaction);
 
     // =====================
-    // REFERRAL SYSTEM HOOK (FIXED)
+    // REFERRAL SYSTEM HOOK (FIXED FLOW)
     // =====================
     if (interaction.commandName.includes('referral')) {
       const guild = interaction.guild;
 
+      // 1. UPDATE LEADERBOARD FIRST
+      await updateLeaderboard(guild.id);
+
+      // 2. GET UPDATED CONFIG
       const config = getGuildConfig(guild.id);
       const lb = config.referrals?.leaderboard || {};
 
-      await updateLeaderboard(guild.id);
+      // 3. UPDATE ROLE SYSTEM
       await updateReferralRole(guild, lb);
 
+      // 4. LOG TOP USER
       const top = getTopReferrer(guild.id);
       console.log("🏆 Top referrer:", top);
     }
@@ -215,7 +156,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // =====================
-  // REFERRAL REDEEM (FIXED FLOW)
+  // REFERRAL REDEEM (FIXED)
   // =====================
   if (
     interaction.isChatInputCommand() &&
@@ -236,11 +177,14 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
+    // 1. update leaderboard first
     await updateLeaderboard(interaction.guild.id);
 
+    // 2. get fresh config
     const config = getGuildConfig(interaction.guild.id);
     const lb = config.referrals?.leaderboard || {};
 
+    // 3. sync roles
     await updateReferralRole(interaction.guild, lb);
 
     const top = getTopReferrer(interaction.guild.id);
