@@ -1,11 +1,9 @@
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 
 // ===============================
-// GENERATE LICENSE KEY
+// ENSURE LICENSE STRUCTURE
 // ===============================
-export function generateLicenseKey(guildId, type) {
-  const config = getGuildConfig(guildId);
-
+function ensure(config) {
   if (!config.licenses) {
     config.licenses = {
       devKeys: [],
@@ -14,37 +12,50 @@ export function generateLicenseKey(guildId, type) {
     };
   }
 
+  if (!Array.isArray(config.licenses.devKeys)) config.licenses.devKeys = [];
+  if (!Array.isArray(config.licenses.lifetimeKeys)) config.licenses.lifetimeKeys = [];
+  if (!config.licenses.usedKeys) config.licenses.usedKeys = {};
+
+  return config;
+}
+
+// ===============================
+// GENERATE LICENSE KEY
+// ===============================
+export function generateLicenseKey(guildId, type) {
+  const config = ensure(getGuildConfig(guildId));
+
+  const cleanType = type?.toLowerCase();
+
+  if (!['dev', 'lifetime'].includes(cleanType)) {
+    return { ok: false, reason: 'INVALID_TYPE' };
+  }
+
   const key =
-    type.toUpperCase() +
-    '-' +
+    `${cleanType.toUpperCase()}-` +
     Math.random().toString(36).substring(2, 8).toUpperCase() +
     '-' +
     Date.now().toString(36).toUpperCase();
 
-  if (type === 'dev') {
+  if (cleanType === 'dev') {
     config.licenses.devKeys.push(key);
   }
 
-  if (type === 'lifetime') {
+  if (cleanType === 'lifetime') {
     config.licenses.lifetimeKeys.push(key);
   }
 
   saveGuildConfig(guildId, config);
 
-  return key;
+  return { ok: true, key };
 }
 
 // ===============================
 // VIEW KEYS (ADMIN ONLY)
 // ===============================
 export function getAllLicenseKeys(guildId) {
-  const config = getGuildConfig(guildId);
-
-  const licenses = config.licenses || {
-    devKeys: [],
-    lifetimeKeys: [],
-    usedKeys: {}
-  };
+  const config = ensure(getGuildConfig(guildId));
+  const licenses = config.licenses;
 
   return {
     devKeys: licenses.devKeys.map(k => ({
@@ -63,9 +74,8 @@ export function getAllLicenseKeys(guildId) {
 // GET SINGLE STATUS
 // ===============================
 export function getKeyStatus(guildId, key) {
-  const config = getGuildConfig(guildId);
-
-  const used = config.licenses?.usedKeys?.[key];
+  const config = ensure(getGuildConfig(guildId));
+  const used = config.licenses.usedKeys[key];
 
   if (!used) return { used: false };
 
