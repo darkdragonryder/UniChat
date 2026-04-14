@@ -19,7 +19,7 @@ import { getFlag } from './utils/flags.js';
 // SERVICES
 import { applyPremiumExpiry } from './services/premiumService.js';
 import { updateLeaderboard } from './services/leaderboardService.js';
-import { addReferralPoint } from './services/leaderboardService.js';
+import { addReferralPoint } from './services/referralService.js';
 import { redeemReferralCode } from './services/referralService.js';
 
 const client = new Client({
@@ -72,8 +72,10 @@ client.once('ready', async () => {
 // =====================
 function safeConfig(guildId) {
   let config = getGuildConfig(guildId);
-  config = applyPremiumExpiry(guildId);
-  config = updateLeaderboard(guildId);
+
+  config = applyPremiumExpiry(config);
+  config = updateLeaderboard(config);
+
   return config;
 }
 
@@ -142,14 +144,11 @@ client.on('messageReactionAdd', async (reaction, user) => {
 });
 
 // =====================
-// GUILD MEMBER JOIN (REFERRAL TRACKING HOOK)
+// GUILD MEMBER JOIN (REFERRAL HOOK)
 // =====================
 client.on('guildMemberAdd', async (member) => {
   try {
-    const config = safeConfig(member.guild.id);
-
-    // (You will connect invite/referral detection later here)
-    // Example placeholder:
+    // FUTURE: connect invite/referral tracking here
     // addReferralPoint(member.guild.id, inviterId);
 
   } catch {}
@@ -166,10 +165,10 @@ client.on('interactionCreate', async (interaction) => {
 
     const result = await cmd.execute(interaction);
 
-    // REFERRAL REWARD HOOK
-    if (interaction.commandName.includes('referral') && result?.success) {
+    // REFERRAL UPDATE HOOK
+    if (interaction.commandName.includes('referral')) {
       const config = getGuildConfig(interaction.guild.id);
-      await updateLeaderboard(interaction.guild.id);
+      await updateLeaderboard(config);
     }
 
     return;
@@ -205,7 +204,7 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // REFERRAL REDEEM (HOOK INTO SERVICE)
+  // REFERRAL REDEEM
   if (interaction.commandName === 'referral-redeem') {
     const code = interaction.options.getString('code');
 
