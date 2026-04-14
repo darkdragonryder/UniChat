@@ -6,15 +6,42 @@ import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
 
 // ===============================
+// BADGE RULES
+// ===============================
+const BADGE_LEVELS = [
+  { count: 5, name: '🥈 Trusted Referrer' },
+  { count: 10, name: '🥇 Elite Referrer' },
+  { count: 25, name: '💎 Referral King' },
+  { count: 50, name: '👑 Legend Referrer' }
+];
+
+// ===============================
 // ENSURE STRUCTURE
 // ===============================
 function ensureLeaderboard(config) {
   if (!config.referrals) config.referrals = {};
+
   if (!config.referrals.leaderboard) config.referrals.leaderboard = {};
-  if (!config.referrals.cycleStart) {
-    config.referrals.cycleStart = Date.now();
-  }
+  if (!config.referrals.cycleStart) config.referrals.cycleStart = Date.now();
+
+  if (!config.referrals.badges) config.referrals.badges = {};
+
   return config;
+}
+
+// ===============================
+// BADGE CALCULATOR
+// ===============================
+function getBadge(count) {
+  let badge = '🥉 Rookie';
+
+  for (const level of BADGE_LEVELS) {
+    if (count >= level.count) {
+      badge = level.name;
+    }
+  }
+
+  return badge;
 }
 
 // ===============================
@@ -26,9 +53,9 @@ export function updateLeaderboard(guildId) {
 
   const now = Date.now();
 
-  // reset cycle
   if (now - config.referrals.cycleStart > NINETY_DAYS) {
     config.referrals.leaderboard = {};
+    config.referrals.badges = {};
     config.referrals.cycleStart = now;
   }
 
@@ -37,7 +64,7 @@ export function updateLeaderboard(guildId) {
 }
 
 // ===============================
-// ADD INVITE / REFERRAL POINT
+// ADD REFERRAL POINT
 // ===============================
 export function addReferralPoint(guildId, userId) {
   let config = getGuildConfig(guildId);
@@ -49,8 +76,13 @@ export function addReferralPoint(guildId, userId) {
 
   config.referrals.leaderboard[userId] += 1;
 
+  const count = config.referrals.leaderboard[userId];
+
+  // 🔥 AUTO BADGE ASSIGNMENT
+  config.referrals.badges[userId] = getBadge(count);
+
   saveGuildConfig(guildId, config);
-  return config.referrals.leaderboard[userId];
+  return count;
 }
 
 // ===============================
@@ -69,4 +101,12 @@ export function getTopReferrer(guildId) {
     userId: sorted[0][0],
     count: sorted[0][1]
   };
+}
+
+// ===============================
+// GET USER BADGE
+// ===============================
+export function getUserBadge(guildId, userId) {
+  const config = getGuildConfig(guildId);
+  return config.referrals?.badges?.[userId] || '🥉 Rookie';
 }
