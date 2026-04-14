@@ -4,15 +4,12 @@ import {
   GatewayIntentBits,
   Collection,
   REST,
-  Routes,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder
+  Routes
 } from 'discord.js';
 
 import fs from 'fs';
 import { translate } from './utils/translate.js';
-import { getGuildConfig, saveGuildConfig } from './utils/guildConfig.js';
+import { getGuildConfig } from './utils/guildConfig.js';
 
 const client = new Client({
   intents: [
@@ -24,6 +21,7 @@ const client = new Client({
 
 client.commands = new Collection();
 
+
 // =====================
 // LOAD COMMANDS
 // =====================
@@ -31,6 +29,7 @@ for (const file of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) 
   const cmd = await import(`./commands/${file}`);
   client.commands.set(cmd.default.data.name, cmd.default);
 }
+
 
 // =====================
 // REGISTER COMMANDS
@@ -44,7 +43,7 @@ await rest.put(
       ...client.commands.map(c => c.data.toJSON()),
       {
         name: 'Translate Message',
-        type: 3 // MESSAGE CONTEXT MENU
+        type: 3
       }
     ]
   }
@@ -52,12 +51,14 @@ await rest.put(
 
 console.log("✅ Commands registered");
 
+
 // =====================
 // READY EVENT
 // =====================
 client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
+
 
 // =====================
 // INTERACTIONS
@@ -78,88 +79,35 @@ client.on('interactionCreate', async (interaction) => {
   // ---------------------
   if (interaction.isMessageContextMenuCommand()) {
 
-    if (interaction.commandName === 'Translate Message') {
+    if (interaction.commandName !== 'Translate Message') return;
 
-      const message = interaction.targetMessage;
-      const config = getGuildConfig(interaction.guild.id);
+    const message = interaction.targetMessage;
+    const config = getGuildConfig(interaction.guild.id);
 
-      const userId = interaction.user.id;
+    const userId = interaction.user.id;
+    const userLang = config.languages?.[userId];
 
-      // No language → ask user
-      if (!config.languages[userId]) {
-
-        const menu = new StringSelectMenuBuilder()
-          .setCustomId(`set_language_${message.id}`)
-          .setPlaceholder('🌍 Select your language')
-          .addOptions(
-            new StringSelectMenuOptionBuilder().setLabel('🇬🇧 English').setValue('en'),
-            new StringSelectMenuOptionBuilder().setLabel('🇫🇷 French').setValue('fr'),
-            new StringSelectMenuOptionBuilder().setLabel('🇪🇸 Spanish').setValue('es'),
-            new StringSelectMenuOptionBuilder().setLabel('🇩🇪 German').setValue('de'),
-            new StringSelectMenuOptionBuilder().setLabel('🇮🇹 Italian').setValue('it'),
-            new StringSelectMenuOptionBuilder().setLabel('🇵🇹 Portuguese').setValue('pt')
-          );
-
-        const row = new ActionRowBuilder().addComponents(menu);
-
-        return interaction.reply({
-          content: '🌍 Please select your language:',
-          components: [row],
-          ephemeral: true
-        });
-      }
-
-      // Translate immediately
-      const userLang = config.languages[userId];
-
-      const translated = await translate(message.content, userLang);
-
-      await interaction.channel.send(
-        `🌍 **Translation (${userLang})**:\n${translated}`
-      );
-
+    // MUST set language first
+    if (!userLang) {
       return interaction.reply({
-        content: '✅ Translated',
+        content: '❌ Please set your language first using /setlang',
         ephemeral: true
       });
     }
-  }
 
-  // ---------------------
-  // LANGUAGE SELECT MENU
-  // ---------------------
-  if (interaction.isStringSelectMenu()) {
-
-    if (interaction.customId.startsWith('set_language_')) {
-
-      // IMPORTANT FIX → prevents timeout
-      await interaction.deferReply({ ephemeral: true });
-
-      const messageId = interaction.customId.split('_')[2];
-      const lang = interaction.values[0];
-
-      const config = getGuildConfig(interaction.guild.id);
-
-      config.languages = config.languages || {};
-      config.languages[interaction.user.id] = lang;
-
-      saveGuildConfig(interaction.guild.id, config);
-
-      const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
-
-      if (!message) {
-        return interaction.editReply('❌ Message not found');
-      }
-
-      const translated = await translate(message.content, lang);
-
-      // Post publicly in channel
-      await interaction.channel.send(
-        `🌍 **Translation (${lang})**:\n${translated}`
-      );
-
-      return interaction.editReply('✅ Language saved & translated');
+    if (!message.content || message.content.trim().length === 0) {
+      return interaction.reply({
+        content: '❌ Nothing to translate',
+        ephemeral: true
+      });
     }
+
+    const translated = await translate(message.content, userLang);
+
+    return interaction.reply({
+      content: `🌍 **Translation (${userLang})**:\n${translated}`,
+      ephemeral: true
+    });
   }
 
 });
