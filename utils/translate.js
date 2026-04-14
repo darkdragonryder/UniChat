@@ -1,5 +1,16 @@
+const cache = new Map();
+
 export async function translate(text, targetLang) {
   if (!text || !targetLang) return text;
+
+  const key = `${text}_${targetLang}`;
+
+  // =====================
+  // CACHE (FAST RESPONSE)
+  // =====================
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
 
   try {
     const res = await fetch(
@@ -8,7 +19,15 @@ export async function translate(text, targetLang) {
 
     const data = await res.json();
 
-    return data?.responseData?.translatedText || text;
+    const translated =
+      data?.responseData?.translatedText ||
+      text;
+
+    // prevent useless duplicates
+    cache.set(key, translated);
+
+    return translated;
+
   } catch (err) {
     console.error('Translation error:', err);
     return text;
