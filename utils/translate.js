@@ -1,5 +1,13 @@
+const cache = new Map();
+
 export async function translate(text, targetLang) {
-  if (!text || !targetLang) return { text };
+  if (!text || !targetLang) return text;
+
+  const key = `${text}_${targetLang}`;
+
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
 
   try {
     const res = await fetch(
@@ -8,26 +16,28 @@ export async function translate(text, targetLang) {
 
     const data = await res.json();
 
-    const translatedText =
-      data?.responseData?.translatedText || text;
+    const translated = data?.responseData?.translatedText || text;
 
-    // MyMemory doesn't truly return detection reliably, so we estimate it
-    const matchQuality = data?.responseData?.match || 0;
+    const detected =
+      data?.responseData?.matchedWords?.length
+        ? data.responseData.matchedWords[0]
+        : data?.matches?.[0]?.source || null;
 
-    // Basic heuristic detection (not perfect but stable)
-    let detected = null;
-
-    if (matchQuality > 0.8) {
-      detected = targetLang;
-    }
-
-    return {
-      text: translatedText,
-      detected
+    const result = {
+      text: translated,
+      detected: detected
     };
+
+    cache.set(key, result);
+
+    return result;
 
   } catch (err) {
     console.error('Translation error:', err);
-    return { text };
+
+    return {
+      text,
+      detected: null
+    };
   }
 }
