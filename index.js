@@ -25,7 +25,6 @@ const client = new Client({
 
 client.commands = new Collection();
 
-
 // =====================
 // LOAD COMMANDS
 // =====================
@@ -33,7 +32,6 @@ for (const file of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) 
   const cmd = await import(`./commands/${file}`);
   client.commands.set(cmd.default.data.name, cmd.default);
 }
-
 
 // =====================
 // REGISTER COMMANDS
@@ -55,14 +53,12 @@ await rest.put(
 
 console.log("✅ Commands registered");
 
-
 // =====================
 // READY EVENT
 // =====================
 client.once('ready', () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 });
-
 
 // =====================
 // INTERACTIONS
@@ -113,10 +109,23 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // ---------------------
-  // BUTTON TRANSLATE HANDLER (FIXED)
+  // BUTTON HANDLER
   // ---------------------
   if (interaction.isButton()) {
 
+    // ---------------------
+    // DISMISS BUTTON
+    // ---------------------
+    if (interaction.customId === 'dismiss_translation') {
+      return interaction.update({
+        content: '🧹 Translation closed.',
+        components: []
+      });
+    }
+
+    // ---------------------
+    // TRANSLATE BUTTON
+    // ---------------------
     if (!interaction.customId.startsWith('translate_')) return;
 
     const messageId = interaction.customId.split('_')[1];
@@ -141,33 +150,27 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // =====================
-    // FIXED TRANSLATION HANDLING
-    // =====================
     const result = await translate(message.content, userLang);
 
-const translated = result.text || result;
-const detected = result.detected || null;
+    const translated = result.text || result;
+    const detected = result.detected || null;
 
-return interaction.reply({
-  content:
-    `🌍 **Translation (${userLang})**\n` +
-    `${detected ? `🧠 Detected: ${getFlag(detected)} ${detected}\n\n` : ''}` +
-    `${translated}`,
-  ephemeral: true,
-  components: [
-    {
-      type: 1,
+    return interaction.reply({
+      content:
+        `🌍 **Translation (${userLang})**\n` +
+        `${detected ? `🧠 Detected: ${getFlag(detected)} ${detected}\n\n` : ''}` +
+        `${translated}`,
+      ephemeral: true,
       components: [
-        {
-          type: 2,
-          style: 2,
-          label: '❌ Dismiss',
-          custom_id: 'dismiss_translation'
-        }
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('dismiss_translation')
+            .setLabel('❌ Dismiss')
+            .setStyle(ButtonStyle.Secondary)
+        )
       ]
-    }
-  ]
+    });
+  }
 });
 
 client.login(process.env.TOKEN);
