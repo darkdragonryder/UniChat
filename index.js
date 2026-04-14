@@ -146,18 +146,28 @@ client.on('interactionCreate', async (interaction) => {
     // =====================
     const result = await translate(message.content, userLang);
 
-    const translated = typeof result === 'string' ? result : result.text;
-    const detected = typeof result === 'object' ? result.detected : null;
+const translated = result.text || result;
+const detected = result.detected || null;
 
-    return interaction.reply({
+return interaction.reply({
   content:
     `🌍 **Translation (${userLang})**\n` +
     `${detected ? `🧠 Detected: ${getFlag(detected)} ${detected}\n\n` : ''}` +
     `${translated}`,
-  ephemeral: true
-});
-  }
-
+  ephemeral: true,
+  components: [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 2,
+          label: '❌ Dismiss',
+          custom_id: 'dismiss_translation'
+        }
+      ]
+    }
+  ]
 });
 
 client.login(process.env.TOKEN);
