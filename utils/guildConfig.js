@@ -2,6 +2,9 @@ import fs from 'fs';
 
 const getPath = (guildId) => `./data/${guildId}.json`;
 
+// =====================================================
+// ENSURE DATA FOLDER
+// =====================================================
 function ensureDataFolder() {
   if (!fs.existsSync('./data')) {
     fs.mkdirSync('./data', { recursive: true });
@@ -25,11 +28,26 @@ function defaultConfig() {
     // 🏷️ REFERRAL SYSTEM
     referrals: {
       codes: {},
-      leaderboard: {}
+      leaderboard: {},
+      usedServers: {},
+      rewardsGiven: {},
+      badges: {},
+      cycleStart: Date.now()
     },
 
     // 🔗 REFERRAL LINK (who referred THIS server)
-    referredBy: null
+    referredBy: null,
+
+    // 🏆 ROLE SYSTEM (future-proof)
+    referralRoles: {
+      enabled: true,
+      map: {
+        5: "Trusted Referrer",
+        10: "Elite Referrer",
+        25: "Referral King",
+        50: "Legend Referrer"
+      }
+    }
   };
 }
 
@@ -61,14 +79,29 @@ export function getGuildConfig(guildId) {
 
       mode: parsed.mode || 'reaction',
 
-      // 🏷️ REFERRALS
-      referrals: parsed.referrals || {
-        codes: {},
-        leaderboard: {}
+      // 🏷️ REFERRALS (FULL SAFE MERGE)
+      referrals: {
+        codes: parsed.referrals?.codes || {},
+        leaderboard: parsed.referrals?.leaderboard || {},
+        usedServers: parsed.referrals?.usedServers || {},
+        rewardsGiven: parsed.referrals?.rewardsGiven || {},
+        badges: parsed.referrals?.badges || {},
+        cycleStart: parsed.referrals?.cycleStart || Date.now()
       },
 
       // 🔗 REFERRAL LINK
-      referredBy: parsed.referredBy || null
+      referredBy: parsed.referredBy || null,
+
+      // 🏆 ROLE SYSTEM
+      referralRoles: parsed.referralRoles || {
+        enabled: true,
+        map: {
+          5: "Trusted Referrer",
+          10: "Elite Referrer",
+          25: "Referral King",
+          50: "Legend Referrer"
+        }
+      }
     };
 
   } catch (err) {
@@ -99,14 +132,29 @@ export function saveGuildConfig(guildId, config) {
 
     mode: config.mode || 'reaction',
 
-    // 🏷️ REFERRALS SAVE
-    referrals: config.referrals || {
-      codes: {},
-      leaderboard: {}
+    // 🏷️ REFERRALS SAFE SAVE
+    referrals: {
+      codes: config.referrals?.codes || {},
+      leaderboard: config.referrals?.leaderboard || {},
+      usedServers: config.referrals?.usedServers || {},
+      rewardsGiven: config.referrals?.rewardsGiven || {},
+      badges: config.referrals?.badges || {},
+      cycleStart: config.referrals?.cycleStart || Date.now()
     },
 
     // 🔗 REFERRAL LINK SAVE
-    referredBy: config.referredBy || null
+    referredBy: config.referredBy || null,
+
+    // 🏆 ROLE SYSTEM SAVE
+    referralRoles: config.referralRoles || {
+      enabled: true,
+      map: {
+        5: "Trusted Referrer",
+        10: "Elite Referrer",
+        25: "Referral King",
+        50: "Legend Referrer"
+      }
+    }
   };
 
   fs.writeFileSync(path, JSON.stringify(safeConfig, null, 2), 'utf8');
