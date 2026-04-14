@@ -8,28 +8,31 @@ function ensureDataFolder() {
   }
 }
 
+// =====================================================
+// DEFAULT CONFIG
+// =====================================================
 function defaultConfig() {
   return {
     languages: {},
 
-    // 💎 premium system
+    // 💎 PREMIUM SYSTEM
     premium: false,
     licenseKey: null,
     premiumStart: null,
     premiumExpiry: null,
     mode: 'reaction',
 
-    // 📈 invite system
-    invites: {},
-
-    // 🏆 leaderboard system (3 month cycles)
-    inviteLeaderboard: {
-      cycleStart: Date.now(),
-      users: {}
+    // 🏷️ REFERRAL SYSTEM
+    referrals: {
+      codes: {},
+      leaderboard: {}
     }
   };
 }
 
+// =====================================================
+// GET CONFIG
+// =====================================================
 export function getGuildConfig(guildId) {
   ensureDataFolder();
 
@@ -55,11 +58,10 @@ export function getGuildConfig(guildId) {
 
       mode: parsed.mode || 'reaction',
 
-      invites: parsed.invites || {},
-
-      inviteLeaderboard: parsed.inviteLeaderboard || {
-        cycleStart: Date.now(),
-        users: {}
+      // 🏷️ REFERRALS (SAFE MERGE)
+      referrals: parsed.referrals || {
+        codes: {},
+        leaderboard: {}
       }
     };
 
@@ -73,6 +75,9 @@ export function getGuildConfig(guildId) {
   }
 }
 
+// =====================================================
+// SAVE CONFIG
+// =====================================================
 export function saveGuildConfig(guildId, config) {
   ensureDataFolder();
 
@@ -88,11 +93,10 @@ export function saveGuildConfig(guildId, config) {
 
     mode: config.mode || 'reaction',
 
-    invites: config.invites || {},
-
-    inviteLeaderboard: config.inviteLeaderboard || {
-      cycleStart: Date.now(),
-      users: {}
+    // 🏷️ REFERRALS SAVE
+    referrals: config.referrals || {
+      codes: {},
+      leaderboard: {}
     }
   };
 
