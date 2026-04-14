@@ -87,6 +87,7 @@ client.on('interactionCreate', async (interaction) => {
     const userId = interaction.user.id;
     const userLang = config.languages?.[userId];
 
+    // STEP 2: SMART FILTER (must have language)
     if (!userLang) {
       return interaction.reply({
         content: '❌ Please set your language first using /setlang',
@@ -113,9 +114,7 @@ client.on('interactionCreate', async (interaction) => {
   // ---------------------
   if (interaction.isButton()) {
 
-    // ---------------------
     // DISMISS BUTTON
-    // ---------------------
     if (interaction.customId === 'dismiss_translation') {
       return interaction.update({
         content: '🧹 Translation closed.',
@@ -123,9 +122,7 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // ---------------------
     // TRANSLATE BUTTON
-    // ---------------------
     if (!interaction.customId.startsWith('translate_')) return;
 
     const messageId = interaction.customId.split('_')[1];
@@ -146,6 +143,19 @@ client.on('interactionCreate', async (interaction) => {
     if (!userLang) {
       return interaction.reply({
         content: '❌ Please set your language using /setlang',
+        ephemeral: true
+      });
+    }
+
+    const content = message.content.toLowerCase();
+
+    // STEP 3: SKIP SAME LANGUAGE (basic heuristic)
+    const isLikelyEnglish =
+      /^[a-z0-9\s.,!?'"()-]+$/i.test(content);
+
+    if (userLang === 'en' && isLikelyEnglish) {
+      return interaction.reply({
+        content: '🧠 Already in your language — no translation needed',
         ephemeral: true
       });
     }
