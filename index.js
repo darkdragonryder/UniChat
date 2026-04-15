@@ -12,6 +12,9 @@ import fs from 'fs';
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 
+// 🔥 CORE (ADD THESE WHEN READY)
+import { isPremium } from './services/UniChatCore.js';
+
 // ==============================
 // CLIENT
 // ==============================
@@ -58,10 +61,38 @@ await rest.put(
 console.log("✅ Bot Ready");
 
 // ==============================
-// READY EVENT
+// READY
 // ==============================
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
+});
+
+// ==============================
+// MESSAGE CREATE (🔥 FREE + PREMIUM TRANSLATION HOOK)
+// ==============================
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  const config = getGuildConfig(message.guild.id);
+  if (!config) return;
+
+  // 🔹 PREMIUM AUTO TRANSLATE (ONLY IF ENABLED)
+  if (isPremium(message.guild.id)) {
+
+    const targetLang = config.autoTranslateLang || 'en';
+
+    try {
+      const result = await translate(message.content, targetLang);
+
+      return message.reply({
+        content: `🌍 ${result?.text || result}`,
+        allowedMentions: { repliedUser: false }
+      });
+
+    } catch (err) {
+      console.log("Premium translate error:", err);
+    }
+  }
 });
 
 // ==============================
@@ -81,7 +112,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // --------------------------
-    // TRANSLATE BUTTON
+    // TRANSLATE BUTTON (FREE FEATURE)
     // --------------------------
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('translate_')) {
@@ -101,6 +132,13 @@ client.on('interactionCreate', async (interaction) => {
           ephemeral: true
         });
       }
+    }
+
+    // --------------------------
+    // CONTEXT MENU (FREE FEATURE)
+    // --------------------------
+    if (interaction.isMessageContextMenuCommand?.()) {
+      // reserved for 🇺🇸🇯🇵🇫🇷 reaction-based translation later
     }
 
   } catch (err) {
