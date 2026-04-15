@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { validateKey, useKey } from '../services/licenseStore.js';
+import { applyLicenseKey } from '../services/UniChatCore.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -14,6 +15,9 @@ export default {
   async execute(interaction) {
     const key = interaction.options.getString('key');
 
+    // =========================
+    // VALIDATE KEY
+    // =========================
     const result = validateKey(key);
 
     if (!result.valid) {
@@ -23,10 +27,35 @@ export default {
       });
     }
 
+    // =========================
+    // APPLY LICENSE (CORE LOGIC)
+    // =========================
+    const apply = applyLicenseKey(
+      interaction.guild.id,
+      interaction.user.id,
+      key
+    );
+
+    if (!apply.ok) {
+      return interaction.reply({
+        content: `❌ Failed to apply license`,
+        ephemeral: true
+      });
+    }
+
+    // =========================
+    // MARK KEY AS USED
+    // =========================
     useKey(key, interaction.guild.id);
 
+    // =========================
+    // RESPONSE
+    // =========================
     return interaction.reply({
-      content: '✅ License activated successfully',
+      content:
+        `✅ License activated!\n\n` +
+        `⭐ Type: **${apply.type}**\n` +
+        `⏳ Duration: **${apply.days ?? 'lifetime'}**`,
       ephemeral: true
     });
   }
