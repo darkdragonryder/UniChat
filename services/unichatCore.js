@@ -1,5 +1,5 @@
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { useKey, validateKey } from './licenseStore.js';
+import { validateKey, useKey } from './licenseStore.js';
 
 // =====================================================
 // OWNER
@@ -21,10 +21,11 @@ export function isPremium(guildId) {
 }
 
 // =====================================================
-// ENABLE PREMIUM
+// ENABLE PREMIUM (DIRECT OVERRIDE)
 // =====================================================
 export function enablePremium(guildId, durationMs) {
   const config = getGuildConfig(guildId);
+
   const now = Date.now();
 
   config.premium = true;
@@ -36,7 +37,7 @@ export function enablePremium(guildId, durationMs) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY
+// APPLY LICENSE (SINGLE SOURCE OF TRUTH)
 // =====================================================
 export function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -54,7 +55,8 @@ export function applyLicenseKey(guildId, userId, key) {
     lifetime: null
   };
 
-  const days = durationMap[entry.type] ?? entry.durationDays;
+  const days = entry.durationDays ?? durationMap[entry.type];
+
   const now = Date.now();
 
   config.premium = true;
@@ -67,7 +69,8 @@ export function applyLicenseKey(guildId, userId, key) {
     config.premiumExpiry = now + days * 86400000;
   }
 
-  useKey(key, guildId);
+  // mark used in DB (ONLY HERE)
+  useKey(key, guildId, userId);
 
   saveGuildConfig(guildId, config);
 
@@ -79,7 +82,7 @@ export function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// REFERRALS
+// REFERRALS (SIMPLE + SAFE)
 // =====================================================
 export function rewardReferral(config, referrerId) {
   config.referrals ??= { leaderboard: {} };
@@ -109,15 +112,4 @@ export function getTopReferrer(guildId) {
     userId: lb[0][0],
     count: lb[0][1]
   };
-}
-
-// =====================================================
-// CONFIG HELPERS
-// =====================================================
-export function getConfig(guildId) {
-  return getGuildConfig(guildId);
-}
-
-export function setConfig(guildId, config) {
-  return saveGuildConfig(guildId, config);
 }
