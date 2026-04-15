@@ -29,9 +29,16 @@ function getLeaderboard(config) {
 }
 
 // ===============================
-// GET OR CREATE ROLE (SAFE)
+// ROLE CACHE (GLOBAL PER RUN)
+// ===============================
+const roleCache = new Map();
+
+// ===============================
+// GET OR CREATE ROLE (SAFE + CACHED)
 // ===============================
 async function getOrCreateRole(guild, name, color) {
+  if (roleCache.has(name)) return roleCache.get(name);
+
   let role = guild.roles.cache.find(r => r.name === name);
 
   if (!role) {
@@ -42,50 +49,42 @@ async function getOrCreateRole(guild, name, color) {
     });
   }
 
+  roleCache.set(name, role);
   return role;
 }
 
 // ===============================
-// MAIN ROLE SYNC (FIXED)
+// MAIN ROLE SYNC (OPTIMIZED)
 // ===============================
 export async function updateReferralRole(guild, leaderboard = null) {
   try {
     const config = getGuildConfig(guild.id);
     const lb = leaderboard || getLeaderboard(config);
 
+    if (!lb || Object.keys(lb).length === 0) return;
+
     const members = await guild.members.fetch();
 
-    // cache roles to avoid repeated creation
-    const roleCache = new Map();
-
     for (const [userId, count] of Object.entries(lb)) {
-
-      const member = members.get(userId) || await guild.members.fetch(userId).catch(() => null);
+      const member = members.get(userId);
       if (!member) continue;
 
       const tier = getRoleTier(count);
 
-      let role = roleCache.get(tier.name);
+      const role = await getOrCreateRole(guild, tier.name, tier.color);
 
-      if (!role) {
-        role = await getOrCreateRole(guild, tier.name, tier.color);
-        roleCache.set(tier.name, role);
-      }
+      // REMOVE OLD ROLES (only ones in system)
+      const currentRoles = member.roles.cache;
 
-      // ===============================
-      // REMOVE OLD REFERRAL ROLES
-      // ===============================
       for (const t of ROLE_TIERS) {
         const r = guild.roles.cache.find(x => x.name === t.name);
-        if (r && member.roles.cache.has(r.id)) {
+        if (r && currentRoles.has(r.id) && r.id !== role.id) {
           await member.roles.remove(r).catch(() => {});
         }
       }
 
-      // ===============================
       // APPLY CORRECT ROLE
-      // ===============================
-      if (!member.roles.cache.has(role.id)) {
+      if (!currentRoles.has(role.id)) {
         await member.roles.add(role).catch(() => {});
       }
     }
