@@ -1,22 +1,97 @@
 <!DOCTYPE html>
 <html>
-<head><title>UniChat</title></head>
-<body>
-<h1>🌐 UniChat Dashboard</h1>
-<pre id="stats"></pre>
+<head>
+  <title>UniChat Dashboard</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
 
+    input, button {
+      padding: 10px;
+      margin-top: 10px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    #msg {
+      margin-top: 10px;
+      color: lightgreen;
+    }
+
+    pre {
+      background: #222;
+      padding: 10px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>🌐 UniChat Dashboard</h1>
+
+<pre id="stats">Loading...</pre>
+
+<h3>Add Access</h3>
 <input id="user" placeholder="User ID">
 <button onclick="add()">Add Access</button>
 
-<script>
-fetch('/stats').then(r=>r.json()).then(d=>{
-document.getElementById('stats').innerText=JSON.stringify(d,null,2)
-});
+<div id="msg"></div>
 
-function add(){
-fetch('/access',{method:'POST',headers:{'Content-Type':'application/json'},
-body:JSON.stringify({user:document.getElementById('user').value})})
+<script>
+
+async function loadStats() {
+  try {
+    const res = await fetch('/stats');
+    const data = await res.json();
+    document.getElementById('stats').innerText =
+      JSON.stringify(data, null, 2);
+  } catch (err) {
+    document.getElementById('stats').innerText = "Failed to load stats";
+  }
 }
+
+loadStats();
+
+// refresh every 10 seconds
+setInterval(loadStats, 10000);
+
+async function add() {
+  const user = document.getElementById('user').value.trim();
+  const msg = document.getElementById('msg');
+
+  if (!user) {
+    msg.innerText = "❌ Please enter a user ID";
+    return;
+  }
+
+  try {
+    const res = await fetch('/access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    msg.innerText = res.ok
+      ? "✅ Access granted successfully"
+      : "❌ Failed to grant access";
+
+    loadStats();
+
+  } catch (err) {
+    msg.innerText = "❌ Server error";
+  }
+}
+
 </script>
+
 </body>
 </html>
