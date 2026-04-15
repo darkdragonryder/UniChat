@@ -15,6 +15,8 @@ function ensureDataFolder() {
 // DEFAULT CONFIG
 // =====================================================
 function defaultConfig() {
+  const now = Date.now();
+
   return {
     languages: {},
 
@@ -39,7 +41,7 @@ function defaultConfig() {
       usedServers: {},
       rewardsGiven: {},
       badges: {},
-      cycleStart: Date.now()
+      cycleStart: now
     },
 
     // 🔗 REFERRAL LINK
@@ -59,7 +61,7 @@ function defaultConfig() {
 }
 
 // =====================================================
-// SAFE MERGE HELPERS
+// SAFE VALUE HELPER
 // =====================================================
 function safe(obj, fallback) {
   return obj !== undefined && obj !== null ? obj : fallback;
@@ -82,44 +84,26 @@ export function getGuildConfig(guildId) {
 
     const parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
 
+    const base = defaultConfig();
+
     return {
-      languages: safe(parsed.languages, {}),
+      ...base,
+      ...parsed,
 
-      // PREMIUM
-      premium: safe(parsed.premium, false),
-      licenseKey: safe(parsed.licenseKey, null),
-      premiumStart: safe(parsed.premiumStart, null),
-      premiumExpiry: safe(parsed.premiumExpiry, null),
-      mode: safe(parsed.mode, 'reaction'),
-
-      // LICENSES
       licenses: {
-        devKeys: safe(parsed.licenses?.devKeys, []),
-        lifetimeKeys: safe(parsed.licenses?.lifetimeKeys, []),
-        usedKeys: safe(parsed.licenses?.usedKeys, {})
+        ...base.licenses,
+        ...(parsed.licenses || {})
       },
 
-      // REFERRALS
       referrals: {
-        codes: safe(parsed.referrals?.codes, {}),
-        leaderboard: safe(parsed.referrals?.leaderboard, {}),
-        usedServers: safe(parsed.referrals?.usedServers, {}),
-        rewardsGiven: safe(parsed.referrals?.rewardsGiven, {}),
-        badges: safe(parsed.referrals?.badges, {}),
-        cycleStart: safe(parsed.referrals?.cycleStart, Date.now())
+        ...base.referrals,
+        ...(parsed.referrals || {})
       },
 
-      referredBy: safe(parsed.referredBy, null),
-
-      referralRoles: safe(parsed.referralRoles, {
-        enabled: true,
-        map: {
-          5: "Trusted Referrer",
-          10: "Elite Referrer",
-          25: "Referral King",
-          50: "Legend Referrer"
-        }
-      })
+      referralRoles: {
+        ...base.referralRoles,
+        ...(parsed.referralRoles || {})
+      }
     };
 
   } catch (err) {
@@ -133,7 +117,7 @@ export function getGuildConfig(guildId) {
 }
 
 // =====================================================
-// SAVE CONFIG
+// SAVE CONFIG (SAFE WRITE)
 // =====================================================
 export function saveGuildConfig(guildId, config) {
   ensureDataFolder();
@@ -143,21 +127,18 @@ export function saveGuildConfig(guildId, config) {
   const safeConfig = {
     languages: safe(config.languages, {}),
 
-    // PREMIUM
     premium: safe(config.premium, false),
     licenseKey: safe(config.licenseKey, null),
     premiumStart: safe(config.premiumStart, null),
     premiumExpiry: safe(config.premiumExpiry, null),
     mode: safe(config.mode, 'reaction'),
 
-    // LICENSES
     licenses: {
       devKeys: safe(config.licenses?.devKeys, []),
       lifetimeKeys: safe(config.licenses?.lifetimeKeys, []),
       usedKeys: safe(config.licenses?.usedKeys, {})
     },
 
-    // REFERRALS
     referrals: {
       codes: safe(config.referrals?.codes, {}),
       leaderboard: safe(config.referrals?.leaderboard, {}),
@@ -169,16 +150,20 @@ export function saveGuildConfig(guildId, config) {
 
     referredBy: safe(config.referredBy, null),
 
-    referralRoles: safe(config.referralRoles, {
-      enabled: true,
-      map: {
+    referralRoles: {
+      enabled: safe(config.referralRoles?.enabled, true),
+      map: safe(config.referralRoles?.map, {
         5: "Trusted Referrer",
         10: "Elite Referrer",
         25: "Referral King",
         50: "Legend Referrer"
-      }
-    })
+      })
+    }
   };
 
-  fs.writeFileSync(path, JSON.stringify(safeConfig, null, 2), 'utf8');
+  // 🔒 atomic-style write (prevents partial JSON corruption)
+  const tmpPath = `${path}.tmp`;
+
+  fs.writeFileSync(tmpPath, JSON.stringify(safeConfig, null, 2), 'utf8');
+  fs.renameSync(tmpPath, path);
 }
