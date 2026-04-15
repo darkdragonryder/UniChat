@@ -1,5 +1,5 @@
-import { getGuildConfig, saveGuildConfig } from './utils/guildConfig.js';
-import { useKey, validateKey } from './services/licenseStore.js';
+import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
+import { useKey, validateKey } from './licenseStore.js';
 
 // =====================================================
 // OWNER
@@ -21,7 +21,7 @@ export function isPremium(guildId) {
 }
 
 // =====================================================
-// ENABLE PREMIUM (DIRECT)
+// ENABLE PREMIUM
 // =====================================================
 export function enablePremium(guildId, durationMs) {
   const config = getGuildConfig(guildId);
@@ -36,7 +36,7 @@ export function enablePremium(guildId, durationMs) {
 }
 
 // =====================================================
-// 🔑 APPLY LICENSE KEY (CORE FLOW)
+// APPLY LICENSE KEY
 // =====================================================
 export function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -55,7 +55,6 @@ export function applyLicenseKey(guildId, userId, key) {
   };
 
   const days = durationMap[entry.type] ?? entry.durationDays;
-
   const now = Date.now();
 
   config.premium = true;
@@ -68,7 +67,6 @@ export function applyLicenseKey(guildId, userId, key) {
     config.premiumExpiry = now + days * 86400000;
   }
 
-  // mark key used (IMPORTANT FIX)
   useKey(key, guildId);
 
   saveGuildConfig(guildId, config);
@@ -81,11 +79,10 @@ export function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// 👥 REFERRAL REWARD HOOK (NOW COMPLETE STRUCTURE)
+// REFERRALS
 // =====================================================
 export function rewardReferral(config, referrerId) {
-  if (!config?.referrals) return config;
-
+  config.referrals ??= { leaderboard: {} };
   config.referrals.leaderboard ??= {};
 
   config.referrals.leaderboard[referrerId] =
