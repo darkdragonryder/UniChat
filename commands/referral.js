@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { createReferralCode } from '../services/referralService.js';
+import { createReferralCode } from '../utils/referralService.js';
 
 function generateReferralCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -19,20 +19,19 @@ export default {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
-
     const code = generateReferralCode();
 
-    // create code
-    createReferralCode(guildId, userId, code);
+    createReferralCode(
+      interaction.guild.id,
+      interaction.user.id,
+      code
+    );
 
     return interaction.reply({
       content:
         `🎉 **Referral Code Generated!**\n\n` +
-        `🔑 Code: \`${code}\`\n\n` +
-        `📌 Share this with server owners\n` +
-        `💎 Rewards are tracked automatically`,
+        `🔑 \`${code}\`\n\n` +
+        `Share this with other server owners.`,
       ephemeral: true
     });
   }
