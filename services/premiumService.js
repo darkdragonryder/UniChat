@@ -1,15 +1,15 @@
 export function applyPremiumExpiry(config) {
   if (!config) return config;
 
-  // not premium → skip
+  // No premium → nothing to do
   if (!config.premium) return config;
-
-  // lifetime/dev → no expiry → keep premium
-  if (!config.premiumExpiry) return config;
 
   const now = Date.now();
 
-  // expired
+  // No expiry = lifetime / manual mode → keep active
+  if (!config.premiumExpiry) return config;
+
+  // Expired check
   if (now > config.premiumExpiry) {
     config.premium = false;
     config.mode = 'reaction';
