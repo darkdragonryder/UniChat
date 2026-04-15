@@ -16,37 +16,47 @@ function ensure() {
 }
 
 // =====================================================
-// ADD LICENSE KEY (ADMIN)
+// LOAD DB (SAFE WRAPPER)
+// =====================================================
+function loadDB() {
+  ensure();
+  return JSON.parse(fs.readFileSync(PATH, 'utf8'));
+}
+
+// =====================================================
+// SAVE DB (SAFE WRITE)
+// =====================================================
+function saveDB(db) {
+  fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
+}
+
+// =====================================================
+// ADD LICENSE KEY
 // =====================================================
 export function addLicenseKey(key, data = {}) {
-  ensure();
-  const db = JSON.parse(fs.readFileSync(PATH, 'utf8'));
+  const db = loadDB();
 
   db.keys[key] = {
     used: false,
     type: data.type || 'dev',
     durationDays: data.durationDays || 30,
 
-    // FIXED METADATA
     createdAt: Date.now(),
     usedAt: null,
     usedByGuild: null,
     usedByUser: null,
 
-    // REFERRAL TRACKING (NEW)
     referredBy: data.referredBy || null
   };
 
-  fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
+  saveDB(db);
 }
 
 // =====================================================
 // VALIDATE KEY
 // =====================================================
 export function validateKey(key) {
-  ensure();
-  const db = JSON.parse(fs.readFileSync(PATH, 'utf8'));
-
+  const db = loadDB();
   const entry = db.keys[key];
 
   if (!entry) {
@@ -61,12 +71,10 @@ export function validateKey(key) {
 }
 
 // =====================================================
-// USE KEY (MARK AS USED)
+// USE KEY
 // =====================================================
 export function useKey(key, guildId, userId = null) {
-  ensure();
-  const db = JSON.parse(fs.readFileSync(PATH, 'utf8'));
-
+  const db = loadDB();
   const entry = db.keys[key];
 
   if (!entry) return false;
@@ -76,6 +84,6 @@ export function useKey(key, guildId, userId = null) {
   entry.usedByUser = userId;
   entry.usedAt = Date.now();
 
-  fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
+  saveDB(db);
   return true;
 }
