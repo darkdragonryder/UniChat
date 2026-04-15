@@ -6,7 +6,7 @@ import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
 
 // ===============================
-// BADGE RULES
+// BADGE LEVELS
 // ===============================
 const BADGE_LEVELS = [
   { count: 5, name: '🥈 Trusted Referrer' },
@@ -16,16 +16,20 @@ const BADGE_LEVELS = [
 ];
 
 // ===============================
-// SAFE ENSURE STRUCTURE
+// ENSURE STRUCTURE
 // ===============================
 function ensureLeaderboard(config) {
   if (!config.referrals) {
-    config.referrals = {};
+    config.referrals = {
+      leaderboard: {},
+      badges: {},
+      cycleStart: Date.now()
+    };
   }
 
-  if (!config.referrals.leaderboard) config.referrals.leaderboard = {};
-  if (!config.referrals.badges) config.referrals.badges = {};
-  if (!config.referrals.cycleStart) config.referrals.cycleStart = Date.now();
+  config.referrals.leaderboard ||= {};
+  config.referrals.badges ||= {};
+  config.referrals.cycleStart ||= Date.now();
 
   return config;
 }
@@ -49,8 +53,7 @@ function getBadge(count) {
 // UPDATE LEADERBOARD (90 DAY RESET)
 // ===============================
 export function updateLeaderboard(guildId) {
-  let config = getGuildConfig(guildId);
-  config = ensureLeaderboard(config);
+  const config = ensureLeaderboard(getGuildConfig(guildId));
 
   const now = Date.now();
 
@@ -68,21 +71,17 @@ export function updateLeaderboard(guildId) {
 // ADD REFERRAL POINT
 // ===============================
 export function addReferralPoint(guildId, userId) {
-  let config = getGuildConfig(guildId);
-  config = ensureLeaderboard(config);
+  const config = ensureLeaderboard(getGuildConfig(guildId));
 
-  if (!config.referrals.leaderboard[userId]) {
-    config.referrals.leaderboard[userId] = 0;
-  }
-
-  config.referrals.leaderboard[userId] += 1;
+  config.referrals.leaderboard[userId] =
+    (config.referrals.leaderboard[userId] || 0) + 1;
 
   const count = config.referrals.leaderboard[userId];
 
-  // 🔥 AUTO BADGE ASSIGNMENT
   config.referrals.badges[userId] = getBadge(count);
 
   saveGuildConfig(guildId, config);
+
   return count;
 }
 
@@ -90,18 +89,17 @@ export function addReferralPoint(guildId, userId) {
 // GET TOP USER
 // ===============================
 export function getTopReferrer(guildId) {
-  let config = getGuildConfig(guildId);
-  config = ensureLeaderboard(config);
+  const config = ensureLeaderboard(getGuildConfig(guildId));
 
-  const entries = Object.entries(config.referrals.leaderboard);
+  const entries = Object.entries(config.referrals.leaderboard || {});
 
   if (!entries.length) return null;
 
-  const sorted = entries.sort((a, b) => b[1] - a[1]);
+  entries.sort((a, b) => b[1] - a[1]);
 
   return {
-    userId: sorted[0][0],
-    count: sorted[0][1]
+    userId: entries[0][0],
+    count: entries[0][1]
   };
 }
 
@@ -111,5 +109,5 @@ export function getTopReferrer(guildId) {
 export function getUserBadge(guildId, userId) {
   const config = ensureLeaderboard(getGuildConfig(guildId));
 
-  return config.referrals.badges[userId] || '🥉 Rookie';
+  return config.referrals.badges?.[userId] || '🥉 Rookie';
 }
