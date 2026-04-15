@@ -8,10 +8,9 @@ const BADGE_LEVELS = [5, 10, 25, 50];
 export async function updateReferralRoles(guild, member, referralCount) {
   const config = getGuildConfig(guild.id);
 
-  const roleSystem = config.referralRoles || {};
-  if (!roleSystem.enabled) return;
+  if (!config || !config.referralRoles?.enabled) return;
 
-  const roleMap = roleSystem.map || {};
+  const roleMap = config.referralRoles.map || {};
   const allRoles = Object.values(roleMap);
 
   // ===============================
@@ -41,17 +40,26 @@ export async function updateReferralRoles(guild, member, referralCount) {
   }
 
   // ===============================
-  // REMOVE OLD REFERRAL ROLES (SAFE LOOP)
+  // REMOVE OLD REFERRAL ROLES (SAFE PARALLEL)
   // ===============================
+  const removalPromises = [];
+
   for (const rName of allRoles) {
     const existingRole = guild.roles.cache.find(r => r.name === rName);
 
     if (!existingRole) continue;
 
-    if (member.roles.cache.has(existingRole.id) && existingRole.name !== targetRoleName) {
-      await member.roles.remove(existingRole).catch(() => {});
+    if (
+      member.roles.cache.has(existingRole.id) &&
+      existingRole.name !== targetRoleName
+    ) {
+      removalPromises.push(
+        member.roles.remove(existingRole).catch(() => {})
+      );
     }
   }
+
+  await Promise.all(removalPromises);
 
   // ===============================
   // APPLY NEW ROLE
