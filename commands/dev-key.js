@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createDevKey } from '../services/UniChatCore.js';
+import { generateLicenseKey } from '../services/licenseStore.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -32,7 +32,6 @@ export default {
       });
     }
 
-    // duration mapping (IMPORTANT FIX)
     const durationMap = {
       dev: 7,
       '7day': 7,
@@ -43,7 +42,7 @@ export default {
 
     const days = durationMap[type];
 
-    const key = createDevKey(type, days);
+    const key = generateLicenseKey(type, days);
 
     return interaction.reply({
       content:
