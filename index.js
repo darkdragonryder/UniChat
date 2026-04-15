@@ -13,7 +13,7 @@ import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 
 // ==============================
-// CORE CLIENT
+// CLIENT
 // ==============================
 const client = new Client({
   intents: [
@@ -85,18 +85,19 @@ client.on('interactionCreate', async (interaction) => {
     // --------------------------
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('translate_')) {
+
         const msgId = interaction.customId.split('_')[1];
 
         const msg = await interaction.channel.messages.fetch(msgId).catch(() => null);
         if (!msg) return;
 
         const config = getGuildConfig(interaction.guild.id);
-        const lang = config.languages?.[interaction.user.id] || 'en';
+        const lang = config?.languages?.[interaction.user.id] || 'en';
 
         const result = await translate(msg.content, lang);
 
         return interaction.reply({
-          content: `🌍 ${result?.text || result.text || result}`,
+          content: `🌍 ${result?.text || result}`,
           ephemeral: true
         });
       }
