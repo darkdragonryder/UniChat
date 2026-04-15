@@ -6,6 +6,10 @@ export default {
     .setDescription('Check if the bot is responding'),
 
   async execute(interaction) {
-    await interaction.reply('🏓 UniChat is working!');
+    // safe immediate response
+    await interaction.reply({
+      content: '🏓 UniChat is working!',
+      ephemeral: true
+    });
   }
 };
