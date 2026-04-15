@@ -2,16 +2,23 @@ import { getGuildConfig } from '../utils/guildConfig.js';
 
 const BADGE_LEVELS = [5, 10, 25, 50];
 
+// ===============================
+// UPDATE REFERRAL ROLE
+// ===============================
 export async function updateReferralRoles(guild, member, referralCount) {
   const config = getGuildConfig(guild.id);
 
-  if (!config.referralRoles?.enabled) return;
+  const roleSystem = config.referralRoles || {};
+  if (!roleSystem.enabled) return;
 
-  const roleMap = config.referralRoles.map || {};
+  const roleMap = roleSystem.map || {};
+  const allRoles = Object.values(roleMap);
 
+  // ===============================
+  // FIND BEST MATCHING ROLE
+  // ===============================
   let targetRoleName = null;
 
-  // find highest matching role
   for (const level of BADGE_LEVELS) {
     if (referralCount >= level && roleMap[level]) {
       targetRoleName = roleMap[level];
@@ -20,28 +27,35 @@ export async function updateReferralRoles(guild, member, referralCount) {
 
   if (!targetRoleName) return;
 
+  // ===============================
+  // GET OR CREATE ROLE
+  // ===============================
   let role = guild.roles.cache.find(r => r.name === targetRoleName);
 
-  // create role if missing
   if (!role) {
     role = await guild.roles.create({
       name: targetRoleName,
       color: 0xFFD700,
-      reason: "Referral badge system auto role"
+      reason: 'Referral badge system auto role'
     });
   }
 
-  // remove old referral roles
-  const allRoles = Object.values(roleMap);
-
+  // ===============================
+  // REMOVE OLD REFERRAL ROLES (SAFE LOOP)
+  // ===============================
   for (const rName of allRoles) {
-    const r = guild.roles.cache.find(x => x.name === rName);
-    if (r && member.roles.cache.has(r.id) && r.name !== targetRoleName) {
-      await member.roles.remove(r).catch(() => {});
+    const existingRole = guild.roles.cache.find(r => r.name === rName);
+
+    if (!existingRole) continue;
+
+    if (member.roles.cache.has(existingRole.id) && existingRole.name !== targetRoleName) {
+      await member.roles.remove(existingRole).catch(() => {});
     }
   }
 
-  // add correct role
+  // ===============================
+  // APPLY NEW ROLE
+  // ===============================
   if (!member.roles.cache.has(role.id)) {
     await member.roles.add(role).catch(() => {});
   }
