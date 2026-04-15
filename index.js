@@ -12,8 +12,8 @@ import fs from 'fs';
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 
-// 🔥 CORE (ADD THESE WHEN READY)
-import { isPremium } from './services/UniChatCore.js';
+// 🔥 CORE (FIXED IMPORT PATH + CASE)
+import { isPremium } from './services/unichatCore.js';
 
 // ==============================
 // CLIENT
@@ -101,9 +101,6 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
   try {
 
-    // --------------------------
-    // SLASH COMMANDS
-    // --------------------------
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -111,9 +108,6 @@ client.on('interactionCreate', async (interaction) => {
       await cmd.execute(interaction);
     }
 
-    // --------------------------
-    // TRANSLATE BUTTON (FREE FEATURE)
-    // --------------------------
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('translate_')) {
 
@@ -132,13 +126,6 @@ client.on('interactionCreate', async (interaction) => {
           ephemeral: true
         });
       }
-    }
-
-    // --------------------------
-    // CONTEXT MENU (FREE FEATURE)
-    // --------------------------
-    if (interaction.isMessageContextMenuCommand?.()) {
-      // reserved for 🇺🇸🇯🇵🇫🇷 reaction-based translation later
     }
 
   } catch (err) {
