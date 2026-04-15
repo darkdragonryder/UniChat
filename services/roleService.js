@@ -8,11 +8,28 @@ const ROLE_TIERS = [
   { count: 50, name: '👑 Legend Referrer', color: 0xe74c3c }
 ];
 
+// ===============================
+// GET BEST TIER
+// ===============================
 function getTier(count) {
-  return [...ROLE_TIERS].reverse().find(t => count >= t.count) || ROLE_TIERS[0];
+  return [...ROLE_TIERS]
+    .reverse()
+    .find(t => count >= t.count) || ROLE_TIERS[0];
 }
 
+// ===============================
+// ROLE CACHE (prevents duplicate creation spam)
+// ===============================
+const roleCache = new Map();
+
+// ===============================
+// GET OR CREATE ROLE
+// ===============================
 async function getOrCreateRole(guild, tier) {
+  if (roleCache.has(tier.name)) {
+    return roleCache.get(tier.name);
+  }
+
   let role = guild.roles.cache.find(r => r.name === tier.name);
 
   if (!role) {
@@ -23,26 +40,44 @@ async function getOrCreateRole(guild, tier) {
     });
   }
 
+  roleCache.set(tier.name, role);
   return role;
 }
 
+// ===============================
+// MAIN ROLE SYNC
+// ===============================
 export async function updateReferralRole(guild, leaderboard = {}) {
   try {
     const config = getGuildConfig(guild.id);
-    const lb = leaderboard || config?.referrals?.leaderboard || {};
+
+    const lb =
+      leaderboard && Object.keys(leaderboard).length > 0
+        ? leaderboard
+        : config?.referrals?.leaderboard || {};
 
     if (!lb || Object.keys(lb).length === 0) return;
 
-    const members = await guild.members.fetch();
+    // safer fetch (prevents crash on large servers)
+    const members = await guild.members.fetch().catch(() => null);
+    if (!members) return;
+
+    const roleCacheLocal = new Map();
 
     for (const [userId, count] of Object.entries(lb)) {
       const member = members.get(userId);
       if (!member) continue;
 
       const tier = getTier(count);
-      const role = await getOrCreateRole(guild, tier);
 
-      // remove old roles
+      let role = roleCacheLocal.get(tier.name);
+
+      if (!role) {
+        role = await getOrCreateRole(guild, tier);
+        roleCacheLocal.set(tier.name, role);
+      }
+
+      // remove old roles (only referral roles)
       for (const t of ROLE_TIERS) {
         const r = guild.roles.cache.find(x => x.name === t.name);
         if (r && member.roles.cache.has(r.id) && r.id !== role.id) {
@@ -50,11 +85,12 @@ export async function updateReferralRole(guild, leaderboard = {}) {
         }
       }
 
-      // apply role
+      // apply correct role
       if (!member.roles.cache.has(role.id)) {
         await member.roles.add(role).catch(() => {});
       }
     }
+
   } catch (err) {
     console.log("Role sync error:", err);
   }
