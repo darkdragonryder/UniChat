@@ -12,7 +12,7 @@ import fs from 'fs';
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 
-// 🔥 CORE (FIXED IMPORT PATH + CASE)
+// 🔥 CORE
 import { isPremium } from './services/unichatCore.js';
 
 // ==============================
@@ -68,30 +68,30 @@ client.once('ready', async () => {
 });
 
 // ==============================
-// MESSAGE CREATE (🔥 FREE + PREMIUM TRANSLATION HOOK)
+// MESSAGE CREATE
 // ==============================
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  try {
+    if (!message.guild || message.author.bot) return;
 
-  const config = getGuildConfig(message.guild.id);
-  if (!config) return;
+    const config = getGuildConfig(message.guild.id);
+    if (!config) return;
 
-  // 🔹 PREMIUM AUTO TRANSLATE (ONLY IF ENABLED)
-  if (isPremium(message.guild.id)) {
+    // 🔹 PREMIUM AUTO TRANSLATE
+    if (isPremium(message.guild.id)) {
 
-    const targetLang = config.autoTranslateLang || 'en';
+      const targetLang = config.autoTranslateLang || 'en';
 
-    try {
       const result = await translate(message.content, targetLang);
 
       return message.reply({
         content: `🌍 ${result?.text || result}`,
         allowedMentions: { repliedUser: false }
       });
-
-    } catch (err) {
-      console.log("Premium translate error:", err);
     }
+
+  } catch (err) {
+    console.log("Message error:", err);
   }
 });
 
@@ -101,6 +101,7 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
   try {
 
+    // SLASH COMMANDS
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -108,6 +109,7 @@ client.on('interactionCreate', async (interaction) => {
       await cmd.execute(interaction);
     }
 
+    // TRANSLATE BUTTON
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('translate_')) {
 
