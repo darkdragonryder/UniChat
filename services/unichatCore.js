@@ -2,28 +2,28 @@ import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 import { validateKey, useKey } from './licenseStore.js';
 
 // =====================================================
-// OWNER
+// OWNER CHECK
 // =====================================================
 export function isOwner(userId) {
   return userId === process.env.OWNER_ID;
 }
 
 // =====================================================
-// PREMIUM CHECK
+// PREMIUM CHECK (READ ONLY)
 // =====================================================
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
 
   if (!config?.premium) return false;
-  if (!config.premiumExpiry) return true;
+  if (config.premiumExpiry === null) return true;
 
   return Date.now() < config.premiumExpiry;
 }
 
 // =====================================================
-// ENABLE PREMIUM (DIRECT OVERRIDE)
+// MANUAL PREMIUM OVERRIDE (ADMIN ONLY USE)
 // =====================================================
-export function enablePremium(guildId, durationMs) {
+export function enablePremium(guildId, durationMs = null) {
   const config = getGuildConfig(guildId);
 
   const now = Date.now();
@@ -37,7 +37,7 @@ export function enablePremium(guildId, durationMs) {
 }
 
 // =====================================================
-// APPLY LICENSE (SINGLE SOURCE OF TRUTH)
+// APPLY LICENSE KEY (SINGLE SOURCE OF TRUTH)
 // =====================================================
 export function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -63,13 +63,13 @@ export function applyLicenseKey(guildId, userId, key) {
   config.mode = 'license';
   config.premiumStart = now;
 
-  if (!days || entry.type === 'lifetime') {
+  if (entry.type === 'lifetime' || !days) {
     config.premiumExpiry = null;
   } else {
     config.premiumExpiry = now + days * 86400000;
   }
 
-  // mark used in DB (ONLY HERE)
+  // IMPORTANT: only ONE place handles key usage
   useKey(key, guildId, userId);
 
   saveGuildConfig(guildId, config);
@@ -82,11 +82,12 @@ export function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// REFERRALS (SIMPLE + SAFE)
+// REFERRAL SYSTEM (PURE LOGIC ONLY)
 // =====================================================
 export function rewardReferral(config, referrerId) {
-  config.referrals ??= { leaderboard: {} };
-  config.referrals.leaderboard ??= {};
+  if (!config.referrals) {
+    config.referrals = { leaderboard: {} };
+  }
 
   config.referrals.leaderboard[referrerId] =
     (config.referrals.leaderboard[referrerId] || 0) + 1;
@@ -95,7 +96,7 @@ export function rewardReferral(config, referrerId) {
 }
 
 // =====================================================
-// LEADERBOARD
+// LEADERBOARD HELPERS
 // =====================================================
 export function getLeaderboard(guildId) {
   const config = getGuildConfig(guildId);
@@ -106,6 +107,7 @@ export function getLeaderboard(guildId) {
 
 export function getTopReferrer(guildId) {
   const lb = getLeaderboard(guildId);
+
   if (!lb.length) return null;
 
   return {
