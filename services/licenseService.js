@@ -12,9 +12,9 @@ function ensure(config) {
     };
   }
 
-  if (!Array.isArray(config.licenses.devKeys)) config.licenses.devKeys = [];
-  if (!Array.isArray(config.licenses.lifetimeKeys)) config.licenses.lifetimeKeys = [];
-  if (!config.licenses.usedKeys) config.licenses.usedKeys = {};
+  config.licenses.devKeys ||= [];
+  config.licenses.lifetimeKeys ||= [];
+  config.licenses.usedKeys ||= {};
 
   return config;
 }
@@ -23,13 +23,13 @@ function ensure(config) {
 // GENERATE LICENSE KEY
 // ===============================
 export function generateLicenseKey(guildId, type) {
-  const config = ensure(getGuildConfig(guildId));
-
-  const cleanType = type?.toLowerCase();
+  const cleanType = (type || '').toLowerCase();
 
   if (!['dev', 'lifetime'].includes(cleanType)) {
     return { ok: false, reason: 'INVALID_TYPE' };
   }
+
+  const config = ensure(getGuildConfig(guildId));
 
   const key =
     `${cleanType.toUpperCase()}-` +
@@ -60,12 +60,12 @@ export function getAllLicenseKeys(guildId) {
   return {
     devKeys: licenses.devKeys.map(k => ({
       key: k,
-      used: !!licenses.usedKeys[k]
+      used: !!licenses.usedKeys?.[k]
     })),
 
     lifetimeKeys: licenses.lifetimeKeys.map(k => ({
       key: k,
-      used: !!licenses.usedKeys[k]
+      used: !!licenses.usedKeys?.[k]
     }))
   };
 }
@@ -75,7 +75,8 @@ export function getAllLicenseKeys(guildId) {
 // ===============================
 export function getKeyStatus(guildId, key) {
   const config = ensure(getGuildConfig(guildId));
-  const used = config.licenses.usedKeys[key];
+
+  const used = config.licenses.usedKeys?.[key];
 
   if (!used) return { used: false };
 
