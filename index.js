@@ -12,7 +12,7 @@ import fs from 'fs';
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 
-// 🔥 CORE
+// CORE
 import { isPremium } from './services/unichatCore.js';
 
 // ==============================
@@ -63,12 +63,12 @@ console.log("✅ Bot Ready");
 // ==============================
 // READY
 // ==============================
-client.once('ready', async () => {
+client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 });
 
 // ==============================
-// MESSAGE CREATE
+// MESSAGE CREATE (PREMIUM AUTO TRANSLATE)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
@@ -77,18 +77,19 @@ client.on('messageCreate', async (message) => {
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
-    // 🔹 PREMIUM AUTO TRANSLATE
-    if (isPremium(message.guild.id)) {
+    // PREMIUM ONLY
+    if (!isPremium(message.guild.id)) return;
 
-      const targetLang = config.autoTranslateLang || 'en';
+    const targetLang = config.autoTranslateLang || 'en';
 
-      const result = await translate(message.content, targetLang);
+    const result = await translate(message.content, targetLang);
 
-      return message.reply({
-        content: `🌍 ${result?.text || result}`,
-        allowedMentions: { repliedUser: false }
-      });
-    }
+    if (!result) return;
+
+    return message.reply({
+      content: `🌍 ${result?.text || result}`,
+      allowedMentions: { repliedUser: false }
+    });
 
   } catch (err) {
     console.log("Message error:", err);
@@ -109,25 +110,24 @@ client.on('interactionCreate', async (interaction) => {
       await cmd.execute(interaction);
     }
 
-    // TRANSLATE BUTTON
+    // BUTTON TRANSLATE
     if (interaction.isButton()) {
-      if (interaction.customId.startsWith('translate_')) {
+      if (!interaction.customId?.startsWith('translate_')) return;
 
-        const msgId = interaction.customId.split('_')[1];
+      const msgId = interaction.customId.split('_')[1];
 
-        const msg = await interaction.channel.messages.fetch(msgId).catch(() => null);
-        if (!msg) return;
+      const msg = await interaction.channel?.messages.fetch(msgId).catch(() => null);
+      if (!msg) return;
 
-        const config = getGuildConfig(interaction.guild.id);
-        const lang = config?.languages?.[interaction.user.id] || 'en';
+      const config = getGuildConfig(interaction.guild.id);
+      const lang = config?.languages?.[interaction.user.id] || 'en';
 
-        const result = await translate(msg.content, lang);
+      const result = await translate(msg.content, lang);
 
-        return interaction.reply({
-          content: `🌍 ${result?.text || result}`,
-          ephemeral: true
-        });
-      }
+      return interaction.reply({
+        content: `🌍 ${result?.text || result}`,
+        ephemeral: true
+      });
     }
 
   } catch (err) {
