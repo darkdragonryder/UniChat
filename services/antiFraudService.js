@@ -4,12 +4,12 @@ const codeCooldown = new Map();
 export function checkFraud({ userId, ownerId, code }) {
   const now = Date.now();
 
-  // self use
+  // 1. Self-use
   if (userId === ownerId) {
     return { ok: false, reason: 'SELF_USE' };
   }
 
-  // rate limit
+  // 2. Rate limit (3 uses / 10 min)
   const actions = recentActions.get(userId) || [];
   const recent = actions.filter(t => now - t < 10 * 60 * 1000);
 
@@ -20,7 +20,7 @@ export function checkFraud({ userId, ownerId, code }) {
   recent.push(now);
   recentActions.set(userId, recent);
 
-  // spam protection
+  // 3. Code spam protection
   const last = codeCooldown.get(code);
   if (last && now - last < 5000) {
     return { ok: false, reason: 'CODE_SPAM' };
