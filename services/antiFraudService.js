@@ -1,4 +1,4 @@
-import { getGuildConfig } from './referralService.js';
+import { getGuildConfig } from '../utils/guildConfig.js';
 
 // ==============================
 // SIMPLE FRAUD DETECTION CACHE
@@ -19,13 +19,15 @@ export function isRateLimited(userId) {
 
   // remove old entries (10 min window)
   const filtered = timestamps.filter(t => now - t < 10 * 60 * 1000);
-  recentActions.set(userId, filtered);
 
   if (filtered.length >= 3) {
+    recentActions.set(userId, filtered);
     return true;
   }
 
   filtered.push(now);
+  recentActions.set(userId, filtered);
+
   return false;
 }
 
@@ -38,7 +40,7 @@ export function detectFraud(guildId, userId, code) {
   const ref = config.referrals?.codes?.[code];
   if (!ref) return { fraud: false };
 
-  // SELF USE CHECK
+  // SELF REFERRAL CHECK
   if (ref.ownerId === userId) {
     return { fraud: true, reason: 'SELF_REFERRAL' };
   }
@@ -48,7 +50,7 @@ export function detectFraud(guildId, userId, code) {
     return { fraud: true, reason: 'RATE_LIMIT' };
   }
 
-  // MULTI SERVER FARM CHECK
+  // SERVER FARM CHECK
   const usedServers = config.referrals?.usedServers || {};
   const usageCount = Object.keys(usedServers).length;
 
