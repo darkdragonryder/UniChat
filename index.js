@@ -41,14 +41,19 @@ const commandFiles = fs.existsSync('./commands')
   : [];
 
 for (const file of commandFiles) {
-  const cmd = await import(`./commands/${file}`);
+  try {
+    const cmd = await import(`./commands/${file}`);
 
-  if (!cmd?.default?.data?.name) {
-    console.log(`⚠️ Invalid command file: ${file}`);
-    continue;
+    if (!cmd?.default?.data?.name) {
+      console.log(`⚠️ Invalid command file: ${file}`);
+      continue;
+    }
+
+    client.commands.set(cmd.default.data.name, cmd.default);
+
+  } catch (err) {
+    console.log(`❌ Failed loading command ${file}:`, err);
   }
-
-  client.commands.set(cmd.default.data.name, cmd.default);
 }
 
 // =====================
@@ -78,15 +83,16 @@ client.once('ready', async () => {
     ? fs.readdirSync('./services')
     : [];
 
-  console.log("📁 SERVICES FOLDER CHECK:", serviceFiles);
+  console.log("📁 SERVICES CHECK:", serviceFiles);
 
-  // 🔥 ROLE SYNC
+  // 🔥 SAFE ROLE SYNC ON START
   for (const guild of client.guilds.cache.values()) {
     try {
       const config = getGuildConfig(guild.id);
       const lb = config.referrals?.leaderboard || {};
 
       await updateReferralRole(guild, lb);
+
     } catch (err) {
       console.log("Role sync error:", err);
     }
@@ -94,81 +100,90 @@ client.once('ready', async () => {
 });
 
 // =====================
-// SAFE CONFIG
+// SAFE CONFIG WRAPPER
 // =====================
 function safeConfig(guildId) {
-  let config = getGuildConfig(guildId);
-  return applyPremiumExpiry(config);
+  try {
+    let config = getGuildConfig(guildId);
+    return applyPremiumExpiry(config);
+  } catch (err) {
+    console.log("Config error:", err);
+    return null;
+  }
 }
 
 // =====================
 // INTERACTIONS
 // =====================
 client.on('interactionCreate', async (interaction) => {
+  try {
 
-  // =====================
-  // SLASH COMMANDS
-  // =====================
-  if (interaction.isChatInputCommand()) {
-    const cmd = client.commands.get(interaction.commandName);
-    if (!cmd) return;
+    // =====================
+    // SLASH COMMANDS
+    // =====================
+    if (interaction.isChatInputCommand()) {
+      const cmd = client.commands.get(interaction.commandName);
+      if (!cmd) return;
 
-    await cmd.execute(interaction);
+      await cmd.execute(interaction);
 
-    // REFERRAL COMMANDS ONLY
-    if (interaction.commandName.includes('referral')) {
-      const guildId = interaction.guild.id;
+      // REFERRAL COMMANDS ONLY
+      if (interaction.commandName.includes('referral')) {
+        const guildId = interaction.guild.id;
 
-      await updateLeaderboard(guildId);
+        await updateLeaderboard(guildId);
 
-      const config = getGuildConfig(guildId);
-      const lb = config.referrals?.leaderboard || {};
+        const config = getGuildConfig(guildId);
+        const lb = config.referrals?.leaderboard || {};
 
-      await updateReferralRole(interaction.guild, lb);
+        await updateReferralRole(interaction.guild, lb);
 
-      const top = getTopReferrer(guildId);
-      console.log("🏆 Top referrer:", top);
+        const top = getTopReferrer(guildId);
+        console.log("🏆 Top referrer:", top);
+      }
+
+      return;
     }
 
-    return;
-  }
+    // =====================
+    // BUTTONS
+    // =====================
+    if (interaction.isButton()) {
 
-  // =====================
-  // BUTTONS
-  // =====================
-  if (interaction.isButton()) {
+      if (interaction.customId === 'dismiss_translation') {
+        return interaction.update({
+          content: '🧹 Closed',
+          components: []
+        });
+      }
 
-    if (interaction.customId === 'dismiss_translation') {
-      return interaction.update({
-        content: '🧹 Closed',
-        components: []
+      if (!interaction.customId.startsWith('translate_')) return;
+
+      const messageId = interaction.customId.split('_')[1];
+
+      const message = await interaction.channel.messages
+        .fetch(messageId)
+        .catch(() => null);
+
+      if (!message?.content) return;
+
+      const config = safeConfig(interaction.guild.id);
+      if (!config) return;
+
+      const userLang = config.languages?.[interaction.user.id];
+
+      const result = await translate(message.content, userLang);
+      const text = result?.text || result;
+
+      return interaction.reply({
+        content: `🌍 Translation (${userLang || 'auto'}):\n${text}`,
+        ephemeral: true
       });
     }
 
-    if (!interaction.customId.startsWith('translate_')) return;
-
-    const messageId = interaction.customId.split('_')[1];
-
-    const message = await interaction.channel.messages
-      .fetch(messageId)
-      .catch(() => null);
-
-    if (!message?.content) return;
-
-    const config = safeConfig(interaction.guild.id);
-    const userLang = config.languages?.[interaction.user.id];
-
-    const result = await translate(message.content, userLang);
-    const text = result?.text || result;
-
-    return interaction.reply({
-      content: `🌍 Translation (${userLang || 'auto'}):\n${text}`,
-      ephemeral: true
-    });
+  } catch (err) {
+    console.log("Interaction error:", err);
   }
-
-  // =====================
-  // (REMOVED DUPLICATE BLOCK FIX)
-  // =====================
 });
+
 client.login(process.env.TOKEN);
