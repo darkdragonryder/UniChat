@@ -8,10 +8,10 @@ const BADGE_LEVELS = [5, 10, 25, 50];
 export async function updateReferralRoles(guild, member, referralCount) {
   const config = getGuildConfig(guild.id);
 
-  if (!config || !config.referralRoles?.enabled) return;
+  if (!config?.referralRoles?.enabled) return;
 
-  const roleMap = config.referralRoles.map || {};
-  const allRoles = Object.values(roleMap);
+  const roleMap = config.referralRoles?.map || {};
+  const allRoles = Object.values(roleMap || {});
 
   // ===============================
   // FIND BEST MATCHING ROLE
@@ -40,26 +40,21 @@ export async function updateReferralRoles(guild, member, referralCount) {
   }
 
   // ===============================
-  // REMOVE OLD REFERRAL ROLES (SAFE PARALLEL)
+  // REMOVE OLD ROLES (SAFE)
   // ===============================
-  const removalPromises = [];
+  await Promise.all(
+    allRoles.map(async (rName) => {
+      const existingRole = guild.roles.cache.find(r => r.name === rName);
+      if (!existingRole) return;
 
-  for (const rName of allRoles) {
-    const existingRole = guild.roles.cache.find(r => r.name === rName);
-
-    if (!existingRole) continue;
-
-    if (
-      member.roles.cache.has(existingRole.id) &&
-      existingRole.name !== targetRoleName
-    ) {
-      removalPromises.push(
-        member.roles.remove(existingRole).catch(() => {})
-      );
-    }
-  }
-
-  await Promise.all(removalPromises);
+      if (
+        member.roles.cache.has(existingRole.id) &&
+        existingRole.name !== targetRoleName
+      ) {
+        await member.roles.remove(existingRole).catch(() => {});
+      }
+    })
+  );
 
   // ===============================
   // APPLY NEW ROLE
