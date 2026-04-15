@@ -11,8 +11,6 @@ import fs from 'fs';
 
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
-
-// CORE
 import { isPremium } from './services/unichatCore.js';
 
 // ==============================
@@ -61,32 +59,32 @@ await rest.put(
 console.log("✅ Bot Ready");
 
 // ==============================
-// READY
+// READY EVENT
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 });
 
 // ==============================
-// MESSAGE CREATE (PREMIUM AUTO TRANSLATE)
+// MESSAGE CREATE (PREMIUM ONLY)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
 
+    // safe config fetch
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
-    // PREMIUM ONLY
+    // premium gate
     if (!isPremium(message.guild.id)) return;
 
     const targetLang = config.autoTranslateLang || 'en';
 
     const result = await translate(message.content, targetLang);
-
     if (!result) return;
 
-    return message.reply({
+    await message.reply({
       content: `🌍 ${result?.text || result}`,
       allowedMentions: { repliedUser: false }
     });
@@ -108,18 +106,22 @@ client.on('interactionCreate', async (interaction) => {
       if (!cmd) return;
 
       await cmd.execute(interaction);
+      return;
     }
 
-    // BUTTON TRANSLATE
+    // BUTTON TRANSLATION (FREE FEATURE)
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
 
       const msgId = interaction.customId.split('_')[1];
 
-      const msg = await interaction.channel?.messages.fetch(msgId).catch(() => null);
+      const msg = await interaction.channel?.messages
+        .fetch(msgId)
+        .catch(() => null);
+
       if (!msg) return;
 
-      const config = getGuildConfig(interaction.guild.id);
+      const config = getGuildConfig(interaction.guild?.id);
       const lang = config?.languages?.[interaction.user.id] || 'en';
 
       const result = await translate(msg.content, lang);
