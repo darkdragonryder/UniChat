@@ -12,10 +12,9 @@ import fs from 'fs';
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 
-import { applyPremiumExpiry } from './services/premiumService.js';
-import { updateLeaderboard, getTopReferrer } from './services/leaderboardService.js';
-import { updateReferralRole } from './services/roleService.js';
-
+// ==============================
+// CORE CLIENT
+// ==============================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -27,7 +26,9 @@ const client = new Client({
 
 client.commands = new Collection();
 
+// ==============================
 // LOAD COMMANDS
+// ==============================
 const commandFiles = fs.existsSync('./commands')
   ? fs.readdirSync('./commands').filter(f => f.endsWith('.js'))
   : [];
@@ -39,7 +40,9 @@ for (const file of commandFiles) {
   }
 }
 
+// ==============================
 // REGISTER COMMANDS
+// ==============================
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
 await rest.put(
@@ -54,38 +57,32 @@ await rest.put(
 
 console.log("✅ Bot Ready");
 
-// READY
+// ==============================
+// READY EVENT
+// ==============================
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
-
-  for (const guild of client.guilds.cache.values()) {
-    const config = getGuildConfig(guild.id);
-    await updateReferralRole(guild, config?.referrals?.leaderboard || {});
-  }
 });
 
+// ==============================
 // INTERACTIONS
+// ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
+
+    // --------------------------
+    // SLASH COMMANDS
+    // --------------------------
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
 
       await cmd.execute(interaction);
-
-      if (interaction.commandName.includes('referral')) {
-        const guildId = interaction.guild.id;
-
-        await updateLeaderboard(guildId);
-
-        const config = getGuildConfig(guildId);
-
-        await updateReferralRole(interaction.guild, config?.referrals?.leaderboard || {});
-
-        console.log("🏆 Top:", getTopReferrer(guildId));
-      }
     }
 
+    // --------------------------
+    // TRANSLATE BUTTON
+    // --------------------------
     if (interaction.isButton()) {
       if (interaction.customId.startsWith('translate_')) {
         const msgId = interaction.customId.split('_')[1];
@@ -93,17 +90,18 @@ client.on('interactionCreate', async (interaction) => {
         const msg = await interaction.channel.messages.fetch(msgId).catch(() => null);
         if (!msg) return;
 
-        const config = applyPremiumExpiry(getGuildConfig(interaction.guild.id));
-        const lang = config.languages?.[interaction.user.id];
+        const config = getGuildConfig(interaction.guild.id);
+        const lang = config.languages?.[interaction.user.id] || 'en';
 
         const result = await translate(msg.content, lang);
 
         return interaction.reply({
-          content: `🌍 ${result?.text || result}`,
+          content: `🌍 ${result?.text || result.text || result}`,
           ephemeral: true
         });
       }
     }
+
   } catch (err) {
     console.log("Interaction error:", err);
   }
