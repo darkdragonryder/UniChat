@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 import { validateKey, useKey } from '../services/licenseStore.js';
-import { applyLicenseKey } from '../services/UniChatCore.js';
+import { applyLicenseKey } from '../services/unichatCore.js';
 
 export default {
   data: new SlashCommandBuilder()

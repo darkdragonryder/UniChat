@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { validateKey, useKey } from '../services/licenseStore.js';
-import { applyLicenseKey } from '../services/uniChatCore.js';
+import { applyLicenseKey } from '../services/unichatCore.js';
 
 export default {
   data: new SlashCommandBuilder()
