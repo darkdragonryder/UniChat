@@ -1,20 +1,15 @@
 import { getGuildConfig, saveGuildConfig } from './utils/guildConfig.js';
-import { validateKey } from './services/licenseStore.js';
-
-// =====================================================
-// CORE STATE
-// =====================================================
-const OWNER_ID = process.env.OWNER_ID;
+import { useKey, validateKey } from './services/licenseStore.js';
 
 // =====================================================
 // OWNER
 // =====================================================
 export function isOwner(userId) {
-  return userId === OWNER_ID;
+  return userId === process.env.OWNER_ID;
 }
 
 // =====================================================
-// PREMIUM SYSTEM
+// PREMIUM CHECK
 // =====================================================
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
@@ -26,22 +21,22 @@ export function isPremium(guildId) {
 }
 
 // =====================================================
-// ENABLE PREMIUM
+// ENABLE PREMIUM (DIRECT)
 // =====================================================
-export function enablePremium(guildId, durationMs = 30 * 86400000) {
+export function enablePremium(guildId, durationMs) {
   const config = getGuildConfig(guildId);
   const now = Date.now();
 
   config.premium = true;
-  config.mode = 'auto';
+  config.mode = 'manual';
   config.premiumStart = now;
-  config.premiumExpiry = now + durationMs;
+  config.premiumExpiry = durationMs ? now + durationMs : null;
 
   saveGuildConfig(guildId, config);
 }
 
 // =====================================================
-// 🔑 LICENSE ACTIVATION (NEW - IMPORTANT)
+// 🔑 APPLY LICENSE KEY (CORE FLOW)
 // =====================================================
 export function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -51,31 +46,30 @@ export function applyLicenseKey(guildId, userId, key) {
 
   const entry = result.entry;
 
-  const now = Date.now();
-
   const durationMap = {
-    'dev': 7,
+    dev: 7,
     '7day': 7,
     '14day': 14,
     '30day': 30,
-    'lifetime': null
+    lifetime: null
   };
 
-  const days = entry.durationDays || durationMap[entry.type];
+  const days = durationMap[entry.type] ?? entry.durationDays;
+
+  const now = Date.now();
 
   config.premium = true;
   config.mode = 'license';
   config.premiumStart = now;
 
-  if (days === null || entry.type === 'lifetime') {
+  if (!days || entry.type === 'lifetime') {
     config.premiumExpiry = null;
   } else {
-    config.premiumExpiry = now + (days * 86400000);
+    config.premiumExpiry = now + days * 86400000;
   }
 
-  // mark key as used
-  entry.used = true;
-  entry.usedBy = guildId;
+  // mark key used (IMPORTANT FIX)
+  useKey(key, guildId);
 
   saveGuildConfig(guildId, config);
 
@@ -87,10 +81,12 @@ export function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// 👥 REFERRAL REWARD (NEW)
+// 👥 REFERRAL REWARD HOOK (NOW COMPLETE STRUCTURE)
 // =====================================================
-export function rewardReferralIfNeeded(config, referrerId) {
-  if (!config?.referrals?.leaderboard) return config;
+export function rewardReferral(config, referrerId) {
+  if (!config?.referrals) return config;
+
+  config.referrals.leaderboard ??= {};
 
   config.referrals.leaderboard[referrerId] =
     (config.referrals.leaderboard[referrerId] || 0) + 1;
@@ -99,7 +95,7 @@ export function rewardReferralIfNeeded(config, referrerId) {
 }
 
 // =====================================================
-// LEADERBOARD HELPERS
+// LEADERBOARD
 // =====================================================
 export function getLeaderboard(guildId) {
   const config = getGuildConfig(guildId);
