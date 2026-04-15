@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { generateLicenseKey } from '../services/licenseService.js';
+import { createDevKey } from '../services/UniChatCore.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -28,17 +28,10 @@ export default {
       });
     }
 
-    const result = generateLicenseKey(interaction.guild.id, type);
-
-    if (!result.ok) {
-      return interaction.reply({
-        content: `❌ Failed: ${result.reason}`,
-        ephemeral: true
-      });
-    }
+    const key = createDevKey(type, type === 'lifetime' ? 9999 : 30);
 
     return interaction.reply({
-      content: `✅ ${type.toUpperCase()} key generated:\n\`${result.key}\``,
+      content: `✅ ${type.toUpperCase()} key generated:\n\`${key}\``,
       ephemeral: true
     });
   }
