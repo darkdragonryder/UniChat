@@ -16,19 +16,30 @@ const BADGE_LEVELS = [
 ];
 
 // ===============================
-// ENSURE STRUCTURE
+// ENSURE STRUCTURE (SAFE GLOBAL ALIGNMENT)
 // ===============================
 function ensureLeaderboard(config) {
+  if (!config) return config;
+
   if (!config.referrals) {
     config.referrals = {
       leaderboard: {},
       badges: {},
-      cycleStart: Date.now()
+      cycleStart: Date.now(),
+
+      // compatibility with other services
+      codes: {},
+      usedServers: {},
+      rewardsGiven: {}
     };
   }
 
   config.referrals.leaderboard ||= {};
   config.referrals.badges ||= {};
+  config.referrals.codes ||= {};
+  config.referrals.usedServers ||= {};
+  config.referrals.rewardsGiven ||= {};
+
   config.referrals.cycleStart ||= Date.now();
 
   return config;
@@ -53,7 +64,10 @@ function getBadge(count) {
 // UPDATE LEADERBOARD (90 DAY RESET)
 // ===============================
 export function updateLeaderboard(guildId) {
-  const config = ensureLeaderboard(getGuildConfig(guildId));
+  const raw = getGuildConfig(guildId);
+  const config = ensureLeaderboard(raw);
+
+  if (!config) return null;
 
   const now = Date.now();
 
@@ -72,6 +86,7 @@ export function updateLeaderboard(guildId) {
 // ===============================
 export function addReferralPoint(guildId, userId) {
   const config = ensureLeaderboard(getGuildConfig(guildId));
+  if (!config) return 0;
 
   config.referrals.leaderboard[userId] =
     (config.referrals.leaderboard[userId] || 0) + 1;
@@ -90,8 +105,9 @@ export function addReferralPoint(guildId, userId) {
 // ===============================
 export function getTopReferrer(guildId) {
   const config = ensureLeaderboard(getGuildConfig(guildId));
+  if (!config) return null;
 
-  const entries = Object.entries(config.referrals.leaderboard || {});
+  const entries = Object.entries(config.referrals.leaderboard);
 
   if (!entries.length) return null;
 
@@ -108,6 +124,7 @@ export function getTopReferrer(guildId) {
 // ===============================
 export function getUserBadge(guildId, userId) {
   const config = ensureLeaderboard(getGuildConfig(guildId));
+  if (!config) return '🥉 Rookie';
 
   return config.referrals.badges?.[userId] || '🥉 Rookie';
 }
