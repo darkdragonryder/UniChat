@@ -1,20 +1,16 @@
-import express from 'express';
-import fs from 'fs';
-import { getStats } from '../utils/stats.js';
+config = {
+  premium: false,
+  mode: "reaction",
+  premiumStart: null,
+  premiumExpiry: null,
+  licenseKey: null,
 
-const app = express();
-app.use(express.json());
-app.use(express.static('dashboard/public'));
+  languages: {},
 
-app.get('/stats', (req, res) => {
-  res.json(getStats());
-});
-
-app.post('/access', (req, res) => {
-  const config = JSON.parse(fs.readFileSync('./config.json'));
-  config.allowedUsers.push(req.body.user);
-  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
-  res.send("OK");
-});
-
-app.listen(3000, () => console.log("🌍 Dashboard running"));
+  referrals: {
+    codes: {},
+    leaderboard: {},
+    usedServers: {},
+    rewardsGiven: {}
+  }
+}
