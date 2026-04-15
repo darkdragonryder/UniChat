@@ -1,6 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { redeemReferralCode } from '../utils/referralService.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 
 function normalize(code) {
   return code.trim().toUpperCase();
@@ -22,23 +21,27 @@ export default {
     const userId = interaction.user.id;
     const code = normalize(interaction.options.getString('code'));
 
-    // =====================================================
-    // APPLY REDEMPTION LOGIC (CENTRALISED)
-    // =====================================================
+    // =========================
+    // CALL SERVICE
+    // =========================
     const result = redeemReferralCode(guildId, userId, code);
 
-    // =====================================================
-    // ERROR HANDLING
-    // =====================================================
-    if (!result.success) {
+    // =========================
+    // ERROR HANDLING (FIXED)
+    // =========================
+    if (!result.ok) {
       let msg = '❌ Invalid referral code.';
 
-      if (result.reason === 'SELF_USE') {
+      if (result.reason === 'SELF_REFERRAL') {
         msg = '❌ You cannot use your own referral code.';
       }
 
       if (result.reason === 'ALREADY_USED') {
         msg = '❌ This server has already used a referral code.';
+      }
+
+      if (result.reason?.startsWith('FRAUD_BLOCKED')) {
+        msg = '🚫 Suspicious activity detected. Try again later.';
       }
 
       return interaction.reply({
@@ -47,9 +50,9 @@ export default {
       });
     }
 
-    // =====================================================
+    // =========================
     // SUCCESS RESPONSE
-    // =====================================================
+    // =========================
     let rewardText = '';
 
     if (result.reward === 'week') rewardText = '🎁 7 Days Premium Unlocked!';
@@ -60,8 +63,7 @@ export default {
       content:
         `🎉 **Referral Activated!**\n\n` +
         `✔ Code accepted\n` +
-        `✔ Linked to system\n` +
-        `✔ Total uses: ${result.totalUses}\n` +
+        `✔ Total uses: ${result.totalUses || 0}` +
         (rewardText ? `\n${rewardText}` : ''),
       ephemeral: true
     });
