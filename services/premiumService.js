@@ -1,12 +1,16 @@
 export function applyPremiumExpiry(config) {
-  if (!config) return config;
+  if (!config || typeof config !== 'object') return config;
+
+  // ensure safe defaults
+  config.premium ??= false;
+  config.mode ??= 'reaction';
 
   // No premium → nothing to do
   if (!config.premium) return config;
 
   const now = Date.now();
 
-  // No expiry = lifetime / manual mode → keep active
+  // Lifetime / manual mode → no expiry
   if (!config.premiumExpiry) return config;
 
   // Expired check
