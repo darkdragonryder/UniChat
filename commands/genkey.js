@@ -1,15 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { generateLicenseKey } from '../services/licenseService.js';
+import { addLicenseKey } from '../services/licenseStore.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('genkey')
-    .setDescription('Generate a license key (OWNER ONLY)')
-    .addStringOption(opt =>
-      opt.setName('type')
-        .setDescription('dev or lifetime')
-        .setRequired(true)
-    ),
+    .setDescription('Generate license key (OWNER ONLY)'),
 
   async execute(interaction) {
     if (interaction.user.id !== process.env.OWNER_ID) {
@@ -19,26 +14,12 @@ export default {
       });
     }
 
-    const type = interaction.options.getString('type')?.toLowerCase();
+    const key = 'PREM-' + Math.random().toString(36).substring(2, 18).toUpperCase();
 
-    if (!['dev', 'lifetime'].includes(type)) {
-      return interaction.reply({
-        content: '❌ Invalid type. Use dev or lifetime',
-        ephemeral: true
-      });
-    }
-
-    const result = generateLicenseKey(interaction.guild.id, type);
-
-    if (!result.ok) {
-      return interaction.reply({
-        content: `❌ Failed: ${result.reason}`,
-        ephemeral: true
-      });
-    }
+    addLicenseKey(key, 'dev', 30);
 
     return interaction.reply({
-      content: `🔑 Generated ${type.toUpperCase()} Key:\n\`${result.key}\``,
+      content: `🔑 Key generated:\n\`${key}\``,
       ephemeral: true
     });
   }
