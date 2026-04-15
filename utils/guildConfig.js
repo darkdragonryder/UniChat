@@ -2,18 +2,18 @@ import fs from 'fs';
 
 const getPath = (guildId) => `./data/${guildId}.json`;
 
-// =====================================================
+// ==============================
 // ENSURE DATA FOLDER
-// =====================================================
+// ==============================
 function ensureDataFolder() {
   if (!fs.existsSync('./data')) {
     fs.mkdirSync('./data', { recursive: true });
   }
 }
 
-// =====================================================
+// ==============================
 // DEFAULT CONFIG
-// =====================================================
+// ==============================
 function defaultConfig() {
   const now = Date.now();
 
@@ -40,7 +40,6 @@ function defaultConfig() {
       leaderboard: {},
       usedServers: {},
       rewardsGiven: {},
-      badges: {},
       cycleStart: now
     },
 
@@ -60,16 +59,9 @@ function defaultConfig() {
   };
 }
 
-// =====================================================
-// SAFE VALUE HELPER
-// =====================================================
-function safe(obj, fallback) {
-  return obj !== undefined && obj !== null ? obj : fallback;
-}
-
-// =====================================================
+// ==============================
 // GET CONFIG
-// =====================================================
+// ==============================
 export function getGuildConfig(guildId) {
   ensureDataFolder();
 
@@ -83,9 +75,10 @@ export function getGuildConfig(guildId) {
     }
 
     const parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
-
     const base = defaultConfig();
 
+    // IMPORTANT FIX:
+    // deep merge instead of shallow spread (prevents undefined overwrites)
     return {
       ...base,
       ...parsed,
@@ -111,57 +104,39 @@ export function getGuildConfig(guildId) {
 
     const config = defaultConfig();
     fs.writeFileSync(path, JSON.stringify(config, null, 2));
-
     return config;
   }
 }
 
-// =====================================================
-// SAVE CONFIG (SAFE WRITE)
-// =====================================================
+// ==============================
+// SAVE CONFIG (SAFE + CONSISTENT)
+// ==============================
 export function saveGuildConfig(guildId, config) {
   ensureDataFolder();
 
   const path = getPath(guildId);
 
   const safeConfig = {
-    languages: safe(config.languages, {}),
+    ...defaultConfig(),
 
-    premium: safe(config.premium, false),
-    licenseKey: safe(config.licenseKey, null),
-    premiumStart: safe(config.premiumStart, null),
-    premiumExpiry: safe(config.premiumExpiry, null),
-    mode: safe(config.mode, 'reaction'),
+    ...config,
 
     licenses: {
-      devKeys: safe(config.licenses?.devKeys, []),
-      lifetimeKeys: safe(config.licenses?.lifetimeKeys, []),
-      usedKeys: safe(config.licenses?.usedKeys, {})
+      ...defaultConfig().licenses,
+      ...(config.licenses || {})
     },
 
     referrals: {
-      codes: safe(config.referrals?.codes, {}),
-      leaderboard: safe(config.referrals?.leaderboard, {}),
-      usedServers: safe(config.referrals?.usedServers, {}),
-      rewardsGiven: safe(config.referrals?.rewardsGiven, {}),
-      badges: safe(config.referrals?.badges, {}),
-      cycleStart: safe(config.referrals?.cycleStart, Date.now())
+      ...defaultConfig().referrals,
+      ...(config.referrals || {})
     },
 
-    referredBy: safe(config.referredBy, null),
-
     referralRoles: {
-      enabled: safe(config.referralRoles?.enabled, true),
-      map: safe(config.referralRoles?.map, {
-        5: "Trusted Referrer",
-        10: "Elite Referrer",
-        25: "Referral King",
-        50: "Legend Referrer"
-      })
+      ...defaultConfig().referralRoles,
+      ...(config.referralRoles || {})
     }
   };
 
-  // 🔒 atomic-style write (prevents partial JSON corruption)
   const tmpPath = `${path}.tmp`;
 
   fs.writeFileSync(tmpPath, JSON.stringify(safeConfig, null, 2), 'utf8');
