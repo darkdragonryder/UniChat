@@ -20,6 +20,15 @@ export default {
     const config = getGuildConfig(guildId);
 
     // =========================
+    // SAFETY INIT
+    // =========================
+    config.referrals ||= {
+      leaderboard: {}
+    };
+
+    config.referrals.leaderboard ||= {};
+
+    // =========================
     // ALREADY PREMIUM CHECK
     // =========================
     if (config.premium) {
@@ -30,11 +39,11 @@ export default {
     }
 
     // =========================
-    // VALIDATE LICENSE KEY
+    // VALIDATE KEY
     // =========================
     const result = validateKey(key);
 
-    if (!result.valid) {
+    if (!result?.valid) {
       return interaction.reply({
         content: '❌ Invalid or expired license key.',
         ephemeral: true
@@ -59,35 +68,28 @@ export default {
     config.premiumExpiry = now + thirtyDays;
 
     // =========================
-    // 🎁 REFERRAL REWARD TRIGGER
+    // REFERRAL REWARD (SAFE)
     // =========================
-    if (config.referredBy) {
+    if (config.referredBy?.ownerId) {
       const ownerId = config.referredBy.ownerId;
 
-      if (ownerId) {
-        if (!config.referrals.leaderboard[ownerId]) {
-          config.referrals.leaderboard[ownerId] = 0;
-        }
+      config.referrals.leaderboard[ownerId] =
+        (config.referrals.leaderboard[ownerId] || 0) + 1;
 
-        config.referrals.leaderboard[ownerId] += 1;
+      try {
+        const user = await interaction.client.users.fetch(ownerId);
 
-        try {
-          const user = await interaction.client.users.fetch(ownerId);
-
-          if (user) {
-            await user.send(
-              `🎉 You earned a referral reward!\n` +
-              `A server you referred just activated premium!`
-            );
-          }
-        } catch (err) {
-          console.log("❌ Failed to notify referrer");
-        }
+        await user.send(
+          `🎉 Referral reward earned!\n` +
+          `A server you referred activated premium.`
+        );
+      } catch {
+        console.log("❌ Failed to notify referrer");
       }
     }
 
     // =========================
-    // SAVE CONFIG
+    // SAVE
     // =========================
     saveGuildConfig(guildId, config);
 
