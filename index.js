@@ -34,10 +34,20 @@ const client = new Client({
 client.commands = new Collection();
 
 // =====================
-// LOAD COMMANDS
+// LOAD COMMANDS (SAFE)
 // =====================
-for (const file of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) {
+const commandFiles = fs.existsSync('./commands')
+  ? fs.readdirSync('./commands').filter(f => f.endsWith('.js'))
+  : [];
+
+for (const file of commandFiles) {
   const cmd = await import(`./commands/${file}`);
+
+  if (!cmd?.default?.data?.name) {
+    console.log(`⚠️ Invalid command file: ${file}`);
+    continue;
+  }
+
   client.commands.set(cmd.default.data.name, cmd.default);
 }
 
@@ -64,16 +74,13 @@ console.log("✅ Commands registered");
 client.once('ready', async () => {
   console.log(`🚀 UniChat LIVE: ${client.user.tag}`);
 
-  // 📁 SERVICES FOLDER CHECK (RAILWAY DEBUG)
-  const fsMod = await import('fs');
+  const serviceFiles = fs.existsSync('./services')
+    ? fs.readdirSync('./services')
+    : [];
 
-  const serviceFiles = fsMod.default.existsSync('./services')
-    ? fsMod.default.readdirSync('./services')
-    : null;
+  console.log("📁 SERVICES FOLDER CHECK:", serviceFiles);
 
-  console.log("📁 SERVICES FOLDER CHECK:", serviceFiles || "MISSING");
-
-  // 🔥 FULL ROLE SYNC ON START
+  // 🔥 ROLE SYNC
   for (const guild of client.guilds.cache.values()) {
     try {
       const config = getGuildConfig(guild.id);
@@ -99,29 +106,36 @@ function safeConfig(guildId) {
 // =====================
 client.on('interactionCreate', async (interaction) => {
 
+  // =====================
+  // SLASH COMMANDS
+  // =====================
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) return;
 
     await cmd.execute(interaction);
 
+    // REFERRAL COMMANDS ONLY
     if (interaction.commandName.includes('referral')) {
-      const guild = interaction.guild;
+      const guildId = interaction.guild.id;
 
-      await updateLeaderboard(guild.id);
+      await updateLeaderboard(guildId);
 
-      const config = getGuildConfig(guild.id);
+      const config = getGuildConfig(guildId);
       const lb = config.referrals?.leaderboard || {};
 
-      await updateReferralRole(guild, lb);
+      await updateReferralRole(interaction.guild, lb);
 
-      const top = getTopReferrer(guild.id);
+      const top = getTopReferrer(guildId);
       console.log("🏆 Top referrer:", top);
     }
 
     return;
   }
 
+  // =====================
+  // BUTTONS
+  // =====================
   if (interaction.isButton()) {
 
     if (interaction.customId === 'dismiss_translation') {
@@ -133,8 +147,10 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.customId.startsWith('translate_')) return;
 
+    const messageId = interaction.customId.split('_')[1];
+
     const message = await interaction.channel.messages
-      .fetch(interaction.customId.split('_')[1])
+      .fetch(messageId)
       .catch(() => null);
 
     if (!message?.content) return;
@@ -146,45 +162,13 @@ client.on('interactionCreate', async (interaction) => {
     const text = result?.text || result;
 
     return interaction.reply({
-      content: `🌍 Translation (${userLang}):\n${text}`,
+      content: `🌍 Translation (${userLang || 'auto'}):\n${text}`,
       ephemeral: true
     });
   }
 
-  if (
-    interaction.isChatInputCommand() &&
-    interaction.commandName === 'referral-redeem'
-  ) {
-    const code = interaction.options.getString('code');
-
-    const result = redeemReferralCode(
-      interaction.guild.id,
-      interaction.user.id,
-      code
-    );
-
-    if (!result.ok) {
-      return interaction.reply({
-        content: `❌ ${result.reason}`,
-        ephemeral: true
-      });
-    }
-
-    await updateLeaderboard(interaction.guild.id);
-
-    const config = getGuildConfig(interaction.guild.id);
-    const lb = config.referrals?.leaderboard || {};
-
-    await updateReferralRole(interaction.guild, lb);
-
-    const top = getTopReferrer(interaction.guild.id);
-    console.log("🏆 Updated top referrer:", top);
-
-    return interaction.reply({
-      content: `🎉 Referral applied successfully!`,
-      ephemeral: true
-    });
-  }
+  // =====================
+  // (REMOVED DUPLICATE BLOCK FIX)
+  // =====================
 });
-
 client.login(process.env.TOKEN);
