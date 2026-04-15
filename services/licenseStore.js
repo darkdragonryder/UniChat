@@ -1,5 +1,5 @@
- import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { getLicenseStore } from './licenseStore.js';
+import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
+import { getLicenseStore, saveLicenseStore } from './licenseStore.js';
 
 // ===============================
 // ACTIVATE LICENSE
@@ -13,7 +13,7 @@ export function activateLicense(guildId, key, userId) {
   // ===============================
   // ALREADY USED (GLOBAL CHECK)
   // ===============================
-  if (store.usedKeys[key]) {
+  if (store.usedKeys?.[key]) {
     return { ok: false, reason: 'KEY_ALREADY_USED' };
   }
 
@@ -33,7 +33,7 @@ export function activateLicense(guildId, key, userId) {
       userId
     };
 
-    return finalize(config, store);
+    return finalize(guildId, config, store);
   }
 
   // ===============================
@@ -52,23 +52,24 @@ export function activateLicense(guildId, key, userId) {
       userId
     };
 
-    return finalize(config, store);
+    return finalize(guildId, config, store);
   }
 
   return { ok: false, reason: 'INVALID_KEY' };
 }
 
 // ===============================
-// SAVE BOTH
+// FINALIZE SAVE (SINGLE SOURCE OF TRUTH)
 // ===============================
-function finalize(config, store) {
-  const fs = require('fs');
-  fs.writeFileSync('./data/licenses.json', JSON.stringify(store, null, 2));
+function finalize(guildId, config, store) {
+  // save global license store (NO fs manual writes)
+  saveLicenseStore(store);
 
-  saveGuildConfig(config.guildId, config);
+  // save guild config properly
+  saveGuildConfig(guildId, config);
 
   return {
     ok: true,
-    type: store.usedKeys ? 'activated' : 'unknown'
+    type: config.premium ? 'activated' : 'unknown'
   };
 }
