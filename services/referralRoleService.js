@@ -1,5 +1,8 @@
 import { getGuildConfig } from '../utils/guildConfig.js';
 
+// =====================================================
+// ROLE TIERS
+// =====================================================
 const ROLE_TIERS = [
   { count: 5, name: '🥉 Rookie Referrer', color: 0x95a5a6 },
   { count: 10, name: '🥈 Trusted Referrer', color: 0x3498db },
@@ -7,41 +10,86 @@ const ROLE_TIERS = [
   { count: 50, name: '👑 Legend Referrer', color: 0xe74c3c }
 ];
 
+// =====================================================
+// ROLE CACHE (PER GUILD)
+// =====================================================
+const roleCache = new Map();
+
+// =====================================================
+// GET TIER
+// =====================================================
 function getTier(count) {
   return [...ROLE_TIERS].reverse().find(t => count >= t.count);
 }
 
+// =====================================================
+// GET OR CREATE ROLE (CACHED)
+// =====================================================
 async function getOrCreateRole(guild, tier) {
+  const cacheKey = `${guild.id}_${tier.name}`;
+
+  if (roleCache.has(cacheKey)) {
+    return roleCache.get(cacheKey);
+  }
+
   let role = guild.roles.cache.find(r => r.name === tier.name);
 
   if (!role) {
-    role = await guild.roles.create({
-      name: tier.name,
-      color: tier.color,
-      reason: 'Referral system role'
-    });
-  }
-
-  return role;
-}
-
-export async function applyReferralRole(guild, member, count) {
-  const tier = getTier(count);
-  if (!tier) return;
-
-  const role = await getOrCreateRole(guild, tier);
-
-  // remove old roles
-  for (const t of ROLE_TIERS) {
-    const r = guild.roles.cache.find(x => x.name === t.name);
-
-    if (r && member.roles.cache.has(r.id) && r.id !== role.id) {
-      await member.roles.remove(r).catch(() => {});
+    try {
+      role = await guild.roles.create({
+        name: tier.name,
+        color: tier.color,
+        reason: 'Referral system role'
+      });
+    } catch (err) {
+      console.log('Role create error:', err);
+      return null;
     }
   }
 
-  // add correct role
-  if (!member.roles.cache.has(role.id)) {
-    await member.roles.add(role).catch(() => {});
+  roleCache.set(cacheKey, role);
+  return role;
+}
+
+// =====================================================
+// MAIN APPLY FUNCTION
+// =====================================================
+export async function applyReferralRole(guild, member, count) {
+  try {
+    const tier = getTier(count);
+    if (!tier) return;
+
+    const role = await getOrCreateRole(guild, tier);
+    if (!role) return;
+
+    // ===============================
+    // REMOVE OLD ROLES (SAFE + FAST)
+    // ===============================
+    const removalPromises = [];
+
+    for (const t of ROLE_TIERS) {
+      if (t.name === tier.name) continue;
+
+      const existing = guild.roles.cache.find(r => r.name === t.name);
+      if (!existing) continue;
+
+      if (member.roles.cache.has(existing.id)) {
+        removalPromises.push(
+          member.roles.remove(existing).catch(() => {})
+        );
+      }
+    }
+
+    await Promise.all(removalPromises);
+
+    // ===============================
+    // ADD CORRECT ROLE
+    // ===============================
+    if (!member.roles.cache.has(role.id)) {
+      await member.roles.add(role).catch(() => {});
+    }
+
+  } catch (err) {
+    console.log('Referral role error:', err);
   }
 }
