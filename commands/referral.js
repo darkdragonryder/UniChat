@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { createReferralCode } from '../utils/referralService.js';
+import { createReferralCode } from '../services/referralService.js';
 
 function generateReferralCode() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -24,6 +24,7 @@ export default {
 
     const code = generateReferralCode();
 
+    // create code
     createReferralCode(guildId, userId, code);
 
     return interaction.reply({
