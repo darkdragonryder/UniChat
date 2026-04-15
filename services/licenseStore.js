@@ -16,18 +16,33 @@ function ensure() {
 }
 
 // =====================================================
-// LOAD DB (SAFE WRAPPER)
+// LOAD DB (SAFE)
 // =====================================================
 function loadDB() {
   ensure();
-  return JSON.parse(fs.readFileSync(PATH, 'utf8'));
+
+  try {
+    const raw = fs.readFileSync(PATH, 'utf8');
+    const db = JSON.parse(raw);
+
+    if (!db.keys) db.keys = {};
+
+    return db;
+  } catch (err) {
+    console.error('License DB read error:', err);
+    return { keys: {} };
+  }
 }
 
 // =====================================================
-// SAVE DB (SAFE WRITE)
+// SAVE DB (SAFE)
 // =====================================================
 function saveDB(db) {
-  fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
+  try {
+    fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
+  } catch (err) {
+    console.error('License DB write error:', err);
+  }
 }
 
 // =====================================================
@@ -35,6 +50,8 @@ function saveDB(db) {
 // =====================================================
 export function addLicenseKey(key, data = {}) {
   const db = loadDB();
+
+  if (db.keys[key]) return false;
 
   db.keys[key] = {
     used: false,
@@ -50,6 +67,22 @@ export function addLicenseKey(key, data = {}) {
   };
 
   saveDB(db);
+  return true;
+}
+
+// =====================================================
+// GENERATE LICENSE KEY (DEV TOOL)
+// =====================================================
+export function generateLicenseKey(type, durationDays) {
+  const key =
+    `${type.toUpperCase()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+
+  addLicenseKey(key, {
+    type,
+    durationDays
+  });
+
+  return key;
 }
 
 // =====================================================
@@ -78,6 +111,8 @@ export function useKey(key, guildId, userId = null) {
   const entry = db.keys[key];
 
   if (!entry) return false;
+
+  if (entry.used) return false;
 
   entry.used = true;
   entry.usedByGuild = guildId;
