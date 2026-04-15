@@ -1,3 +1,5 @@
+import { getGuildConfig } from '../utils/guildConfig.js';
+
 const ROLE_TIERS = [
   { count: 5, name: '🥉 Rookie Referrer', color: 0x95a5a6 },
   { count: 10, name: '🥈 Trusted Referrer', color: 0x3498db },
@@ -16,7 +18,7 @@ async function getOrCreateRole(guild, tier) {
     role = await guild.roles.create({
       name: tier.name,
       color: tier.color,
-      reason: 'Referral system'
+      reason: 'Referral system role'
     });
   }
 
@@ -29,13 +31,16 @@ export async function applyReferralRole(guild, member, count) {
 
   const role = await getOrCreateRole(guild, tier);
 
+  // remove old roles
   for (const t of ROLE_TIERS) {
     const r = guild.roles.cache.find(x => x.name === t.name);
+
     if (r && member.roles.cache.has(r.id) && r.id !== role.id) {
       await member.roles.remove(r).catch(() => {});
     }
   }
 
+  // add correct role
   if (!member.roles.cache.has(role.id)) {
     await member.roles.add(role).catch(() => {});
   }
