@@ -4,6 +4,8 @@ import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 // ENSURE LICENSE STRUCTURE
 // ===============================
 function ensure(config) {
+  if (!config) config = {};
+
   if (!config.licenses) {
     config.licenses = {
       devKeys: [],
@@ -37,11 +39,10 @@ export function generateLicenseKey(guildId, type) {
     '-' +
     Date.now().toString(36).toUpperCase();
 
+  // store key
   if (cleanType === 'dev') {
     config.licenses.devKeys.push(key);
-  }
-
-  if (cleanType === 'lifetime') {
+  } else {
     config.licenses.lifetimeKeys.push(key);
   }
 
@@ -58,14 +59,14 @@ export function getAllLicenseKeys(guildId) {
   const licenses = config.licenses;
 
   return {
-    devKeys: licenses.devKeys.map(k => ({
+    devKeys: (licenses.devKeys || []).map(k => ({
       key: k,
-      used: !!licenses.usedKeys?.[k]
+      used: Boolean(licenses.usedKeys?.[k])
     })),
 
-    lifetimeKeys: licenses.lifetimeKeys.map(k => ({
+    lifetimeKeys: (licenses.lifetimeKeys || []).map(k => ({
       key: k,
-      used: !!licenses.usedKeys?.[k]
+      used: Boolean(licenses.usedKeys?.[k])
     }))
   };
 }
@@ -75,15 +76,14 @@ export function getAllLicenseKeys(guildId) {
 // ===============================
 export function getKeyStatus(guildId, key) {
   const config = ensure(getGuildConfig(guildId));
-
   const used = config.licenses.usedKeys?.[key];
 
   if (!used) return { used: false };
 
   return {
     used: true,
-    type: used.type,
-    usedAt: used.usedAt,
-    guildId: used.guildId
+    type: used.type || null,
+    usedAt: used.usedAt || null,
+    guildId: used.guildId || null
   };
 }
