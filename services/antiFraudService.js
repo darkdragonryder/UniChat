@@ -1,8 +1,3 @@
-import { getGuildConfig } from '../utils/guildConfig.js';
-
-// =====================================================
-// ROLE TIERS
-// =====================================================
 const ROLE_TIERS = [
   { count: 5, name: '🥉 Rookie Referrer', color: 0x95a5a6 },
   { count: 10, name: '🥈 Trusted Referrer', color: 0x3498db },
@@ -23,7 +18,7 @@ function getTier(count) {
 }
 
 // =====================================================
-// GET OR CREATE ROLE (CACHED)
+// GET OR CREATE ROLE
 // =====================================================
 async function getOrCreateRole(guild, tier) {
   const cacheKey = `${guild.id}_${tier.name}`;
@@ -52,7 +47,7 @@ async function getOrCreateRole(guild, tier) {
 }
 
 // =====================================================
-// MAIN APPLY FUNCTION
+// APPLY ROLE (MAIN EXPORT)
 // =====================================================
 export async function applyReferralRole(guild, member, count) {
   try {
@@ -62,9 +57,7 @@ export async function applyReferralRole(guild, member, count) {
     const role = await getOrCreateRole(guild, tier);
     if (!role) return;
 
-    // ===============================
-    // REMOVE OLD ROLES (SAFE + FAST)
-    // ===============================
+    // REMOVE OLD ROLES
     const removalPromises = [];
 
     for (const t of ROLE_TIERS) {
@@ -82,9 +75,7 @@ export async function applyReferralRole(guild, member, count) {
 
     await Promise.all(removalPromises);
 
-    // ===============================
     // ADD CORRECT ROLE
-    // ===============================
     if (!member.roles.cache.has(role.id)) {
       await member.roles.add(role).catch(() => {});
     }
