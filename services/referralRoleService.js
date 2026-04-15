@@ -1,8 +1,3 @@
-import { getGuildConfig } from '../utils/guildConfig.js';
-
-// =====================================================
-// ROLE TIERS
-// =====================================================
 const ROLE_TIERS = [
   { count: 5, name: '🥉 Rookie Referrer', color: 0x95a5a6 },
   { count: 10, name: '🥈 Trusted Referrer', color: 0x3498db },
@@ -23,7 +18,7 @@ function getTier(count) {
 }
 
 // =====================================================
-// GET OR CREATE ROLE (CACHED)
+// GET OR CREATE ROLE
 // =====================================================
 async function getOrCreateRole(guild, tier) {
   const cacheKey = `${guild.id}_${tier.name}`;
@@ -52,7 +47,7 @@ async function getOrCreateRole(guild, tier) {
 }
 
 // =====================================================
-// MAIN APPLY FUNCTION
+// APPLY REFERRAL ROLE
 // =====================================================
 export async function applyReferralRole(guild, member, count) {
   try {
@@ -62,29 +57,24 @@ export async function applyReferralRole(guild, member, count) {
     const role = await getOrCreateRole(guild, tier);
     if (!role) return;
 
-    // ===============================
-    // REMOVE OLD ROLES (SAFE + FAST)
-    // ===============================
-    const removalPromises = [];
+    // REMOVE OLD ROLES
+    const removals = [];
 
     for (const t of ROLE_TIERS) {
       if (t.name === tier.name) continue;
 
       const existing = guild.roles.cache.find(r => r.name === t.name);
-      if (!existing) continue;
 
-      if (member.roles.cache.has(existing.id)) {
-        removalPromises.push(
+      if (existing && member.roles.cache.has(existing.id)) {
+        removals.push(
           member.roles.remove(existing).catch(() => {})
         );
       }
     }
 
-    await Promise.all(removalPromises);
+    await Promise.all(removals);
 
-    // ===============================
     // ADD CORRECT ROLE
-    // ===============================
     if (!member.roles.cache.has(role.id)) {
       await member.roles.add(role).catch(() => {});
     }
