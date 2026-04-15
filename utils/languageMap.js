@@ -1,34 +1,34 @@
 export function normalizeLang(lang) {
-  if (!lang) return 'EN';
+  if (!lang) return 'en';
 
   const map = {
     // English
-    'en': 'EN',
-    'en-us': 'EN-US',
-    'en-gb': 'EN-GB',
+    'en': 'en',
+    'en-us': 'en-us',
+    'en-gb': 'en-gb',
 
     // European
-    'fr': 'FR',
-    'es': 'ES',
-    'de': 'DE',
-    'it': 'IT',
+    'fr': 'fr',
+    'es': 'es',
+    'de': 'de',
+    'it': 'it',
 
-    // Portuguese variants
-    'pt': 'PT',
-    'pt-pt': 'PT-PT',
-    'pt-br': 'PT-BR',
+    // Portuguese
+    'pt': 'pt',
+    'pt-pt': 'pt-pt',
+    'pt-br': 'pt-br',
 
     // Eastern Europe / Russia
-    'ru': 'RU',
+    'ru': 'ru',
 
     // Asia
-    'ja': 'JA',
-    'ko': 'KO',
-    'zh': 'ZH',
+    'ja': 'ja',
+    'ko': 'ko',
+    'zh': 'zh',
 
     // Middle East
-    'ar': 'AR'
+    'ar': 'ar'
   };
 
-  return map[lang.toLowerCase()] || lang.toUpperCase();
+  return map[String(lang).toLowerCase()] || String(lang).toLowerCase();
 }
