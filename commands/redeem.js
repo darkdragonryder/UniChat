@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { validateKey, useKey } from '../utils/licenses.js';
+import { validateKey, useKey } from '../services/licenseStore.js';
+import { applyLicenseKey } from '../services/UniChatCore.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -23,10 +24,9 @@ export default {
     // SAFETY INIT
     // =========================
     config.referrals ||= {
-      leaderboard: {}
+      leaderboard: {},
+      usedServers: {}
     };
-
-    config.referrals.leaderboard ||= {};
 
     // =========================
     // ALREADY PREMIUM CHECK
@@ -51,55 +51,36 @@ export default {
     }
 
     // =========================
-    // CONSUME KEY
+    // APPLY PREMIUM (CORE LOGIC)
+    // =========================
+    const applied = applyLicenseKey(guildId, interaction.user.id, key);
+
+    if (!applied?.ok) {
+      return interaction.reply({
+        content: '❌ Failed to activate license.',
+        ephemeral: true
+      });
+    }
+
+    // =========================
+    // MARK KEY USED (PERSISTENT STORE)
     // =========================
     useKey(key, guildId);
 
     // =========================
-    // ACTIVATE PREMIUM
-    // =========================
-    const now = Date.now();
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-
-    config.premium = true;
-    config.mode = 'auto';
-    config.licenseKey = key;
-    config.premiumStart = now;
-    config.premiumExpiry = now + thirtyDays;
-
-    // =========================
-    // REFERRAL REWARD (SAFE)
-    // =========================
-    if (config.referredBy?.ownerId) {
-      const ownerId = config.referredBy.ownerId;
-
-      config.referrals.leaderboard[ownerId] =
-        (config.referrals.leaderboard[ownerId] || 0) + 1;
-
-      try {
-        const user = await interaction.client.users.fetch(ownerId);
-
-        await user.send(
-          `🎉 Referral reward earned!\n` +
-          `A server you referred activated premium.`
-        );
-      } catch {
-        console.log("❌ Failed to notify referrer");
-      }
-    }
-
-    // =========================
-    // SAVE
+    // SAVE CONFIG
     // =========================
     saveGuildConfig(guildId, config);
 
+    // =========================
+    // RESPONSE
+    // =========================
     return interaction.reply({
       content:
         `💎 **Premium Activated!**\n\n` +
-        `✔ Auto Translation Enabled\n` +
-        `✔ 30 Day Access Granted\n` +
-        `✔ License Verified\n` +
-        `${config.referredBy ? '🎁 Referral Reward Applied!' : ''}`,
+        `✔ Type: **${applied.type}**\n` +
+        `⏳ Duration: **${applied.days ?? 'lifetime'} days**\n` +
+        `✔ License Verified`,
       ephemeral: true
     });
   }
