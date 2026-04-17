@@ -42,12 +42,14 @@ export default {
 
     const days = durationMap[type];
 
+    // 🔑 GENERATE KEY (STORED IN JSON)
     const key = generateLicenseKey(type, days);
 
     return interaction.reply({
       content:
         `✅ ${type.toUpperCase()} key generated:\n\n` +
-        `\`${key}\``,
+        `🔑 \`${key}\`\n\n` +
+        `⏳ Duration: **${days ?? 'lifetime'} days**`,
       ephemeral: true
     });
   }
