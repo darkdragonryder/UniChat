@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 // =====================================================
-// STABLE PATH (FIXES EMPTY FILE ISSUE IN RAILWAY/CODESPACES)
+// STABLE PATH
 // =====================================================
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const PATH = path.join(DATA_DIR, 'licenses.json');
@@ -25,7 +25,7 @@ function ensure() {
 }
 
 // =====================================================
-// LOAD DB (SAFE)
+// LOAD DB
 // =====================================================
 function loadDB() {
   ensure();
@@ -44,7 +44,7 @@ function loadDB() {
 }
 
 // =====================================================
-// SAVE DB (SAFE)
+// SAVE DB
 // =====================================================
 function saveDB(db) {
   try {
@@ -60,10 +60,7 @@ function saveDB(db) {
 export function addLicenseKey(key, data = {}) {
   const db = loadDB();
 
-  if (db.keys[key]) {
-    console.log('⚠️ Key already exists:', key);
-    return false;
-  }
+  if (db.keys[key]) return false;
 
   db.keys[key] = {
     used: false,
@@ -79,9 +76,6 @@ export function addLicenseKey(key, data = {}) {
   };
 
   saveDB(db);
-
-  console.log('✅ License saved:', key);
-
   return true;
 }
 
@@ -94,14 +88,10 @@ export function generateLicenseKey(type, durationDays) {
     .slice(2, 10)
     .toUpperCase()}`;
 
-  const saved = addLicenseKey(key, {
+  addLicenseKey(key, {
     type,
     durationDays
   });
-
-  if (!saved) {
-    console.log('❌ Failed to save key:', key);
-  }
 
   return key;
 }
@@ -109,4 +99,36 @@ export function generateLicenseKey(type, durationDays) {
 // =====================================================
 // VALIDATE KEY
 // =====================================================
-export function validateKey(key)
+export function validateKey(key) {
+  const db = loadDB();
+  const entry = db.keys[key];
+
+  if (!entry) {
+    return { valid: false, reason: 'INVALID_KEY' };
+  }
+
+  if (entry.used) {
+    return { valid: false, reason: 'ALREADY_USED' };
+  }
+
+  return { valid: true, entry };
+}
+
+// =====================================================
+// USE KEY
+// =====================================================
+export function useKey(key, guildId, userId = null) {
+  const db = loadDB();
+  const entry = db.keys[key];
+
+  if (!entry) return false;
+  if (entry.used) return false;
+
+  entry.used = true;
+  entry.usedByGuild = guildId;
+  entry.usedByUser = userId;
+  entry.usedAt = Date.now();
+
+  saveDB(db);
+  return true;
+}
