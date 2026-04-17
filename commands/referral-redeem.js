@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
+import { redeemReferralCode } from '../services/referralService.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -15,69 +15,34 @@ export default {
     try {
       const code = interaction.options.getString('code');
 
-      const config = getGuildConfig(interaction.guild.id);
+      const result = await redeemReferralCode(
+        interaction.guild.id,
+        interaction.user.id,
+        code
+      );
 
-      // =========================
-      // SAFE INIT
-      // =========================
-      config.referrals ??= {};
-      config.referrals.codes ??= {};
-      config.referrals.usedServers ??= {};
-      config.referrals.leaderboard ??= {};
+      if (!result.valid) {
+        const errors = {
+          INVALID_CODE: '❌ Invalid code',
+          SELF_USE: '❌ You cannot use your own code',
+          ALREADY_USED: '❌ You already used a referral code'
+        };
 
-      const ref = config.referrals.codes[code];
-
-      if (!ref) {
         return interaction.reply({
-          content: '❌ Invalid code',
+          content: errors[result.reason] || '❌ Error',
           ephemeral: true
         });
       }
-
-      // self-use protection
-      if (ref.ownerId === interaction.user.id) {
-        return interaction.reply({
-          content: '❌ You cannot use your own code',
-          ephemeral: true
-        });
-      }
-
-      // already used check
-      if (config.referrals.usedServers[interaction.user.id]) {
-        return interaction.reply({
-          content: '❌ You already used a referral code',
-          ephemeral: true
-        });
-      }
-
-      // ensure array exists
-      ref.usedBy ??= [];
-
-      // mark used
-      config.referrals.usedServers[interaction.user.id] = {
-        code,
-        usedAt: Date.now()
-      };
-
-      ref.usedBy.push(interaction.user.id);
-
-      // update leaderboard
-      config.referrals.leaderboard[ref.ownerId] =
-        (config.referrals.leaderboard[ref.ownerId] || 0) + 1;
-
-      const total = config.referrals.leaderboard[ref.ownerId];
-
-      saveGuildConfig(interaction.guild.id, config);
 
       return interaction.reply({
         content:
           `🎉 Referral successful!\n\n` +
-          `⭐ Total referrals: **${total}**`,
+          `⭐ Owner got +1 referral`,
         ephemeral: true
       });
 
     } catch (err) {
-      console.log('referral-redeem error:', err);
+      console.log('Referral redeem error:', err);
 
       return interaction.reply({
         content: '❌ Command error occurred',
