@@ -18,8 +18,9 @@ export default {
 
   async execute(interaction) {
     try {
-      const code = interaction.options.getString('code');
+      const guildId = interaction.guild.id;
       const userId = interaction.user.id;
+      const code = interaction.options.getString('code');
 
       await interaction.deferReply({ ephemeral: true });
 
@@ -42,7 +43,7 @@ export default {
       // =========================
       // ALREADY USED CHECK
       // =========================
-      const alreadyUsed = await hasUserUsedReferral(userId);
+      const alreadyUsed = await hasUserUsedReferral(guildId, userId);
 
       if (alreadyUsed) {
         return interaction.editReply('❌ You already used a referral code');
@@ -51,9 +52,13 @@ export default {
       // =========================
       // APPLY REFERRAL
       // =========================
-      await useReferral(code, userId);
+      const result = await useReferral(guildId, userId, code);
 
-      const total = await getReferralCount(ref.ownerId);
+      if (!result.ok) {
+        return interaction.editReply(`❌ ${result.reason}`);
+      }
+
+      const total = await getReferralCount(guildId, result.ownerId);
 
       return interaction.editReply(
         `🎉 Referral successful!\n\n` +
@@ -63,10 +68,12 @@ export default {
     } catch (err) {
       console.log('referral-redeem error:', err);
 
-      return interaction.reply({
-        content: '❌ Command error occurred',
-        ephemeral: true
-      });
+      if (!interaction.replied) {
+        return interaction.reply({
+          content: '❌ Command error occurred',
+          ephemeral: true
+        });
+      }
     }
   }
 };
