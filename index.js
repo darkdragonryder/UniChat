@@ -66,7 +66,7 @@ client.once('ready', () => {
 });
 
 // ==============================
-// MESSAGE CREATE (PREMIUM ONLY)
+// MESSAGE CREATE (PREMIUM AUTO TRANSLATE)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
@@ -82,7 +82,6 @@ client.on('messageCreate', async (message) => {
     const result = await translate(message.content, targetLang);
     if (!result) return;
 
-    // ✅ FIX: no reply spam chains
     await message.channel.send({
       content: `🌍 ${result?.text || result}`
     });
@@ -93,12 +92,14 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS
+// INTERACTIONS (FIXED TIMEOUT VERSION)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
 
+    // =========================
     // SLASH COMMANDS
+    // =========================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -107,27 +108,38 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // BUTTON TRANSLATION (FREE)
+    // =========================
+    // BUTTON TRANSLATION (FIXED)
+    // =========================
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
 
-      const msgId = interaction.customId.split('_')[1];
+      await interaction.deferReply({ ephemeral: true });
 
-      const msg = await interaction.channel?.messages
-        .fetch(msgId)
-        .catch(() => null);
+      try {
+        const msgId = interaction.customId.split('_')[1];
 
-      if (!msg) return;
+        const msg = await interaction.channel?.messages
+          .fetch(msgId)
+          .catch(() => null);
 
-      const config = getGuildConfig(interaction.guild?.id);
-      const lang = config?.languages?.[interaction.user.id] || 'en';
+        if (!msg) {
+          return interaction.editReply('❌ Message not found');
+        }
 
-      const result = await translate(msg.content, lang);
+        const config = getGuildConfig(interaction.guild?.id);
+        const lang = config?.languages?.[interaction.user.id] || 'en';
 
-      return interaction.reply({
-        content: `🌍 ${result?.text || result}`,
-        ephemeral: true
-      });
+        const result = await translate(msg.content, lang);
+
+        return interaction.editReply({
+          content: `🌍 ${result?.text || result}`
+        });
+
+      } catch (err) {
+        console.log("Translate button error:", err);
+        return interaction.editReply('❌ Translation failed');
+      }
     }
 
   } catch (err) {
