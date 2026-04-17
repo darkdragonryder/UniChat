@@ -12,47 +12,62 @@ export default {
     ),
 
   async execute(interaction) {
+    try {
+      // =========================
+      // OWNER CHECK
+      // =========================
+      if (interaction.user.id !== process.env.OWNER_ID) {
+        return interaction.reply({
+          content: '❌ No permission',
+          ephemeral: true
+        });
+      }
 
-    if (interaction.user.id !== process.env.OWNER_ID) {
+      const type = interaction.options.getString('type')?.toLowerCase();
+
+      const validTypes = ['dev', '7day', '14day', '30day', 'lifetime'];
+
+      if (!validTypes.includes(type)) {
+        return interaction.reply({
+          content: '❌ Invalid type. Use: dev, 7day, 14day, 30day, lifetime',
+          ephemeral: true
+        });
+      }
+
+      const durationMap = {
+        dev: 7,
+        '7day': 7,
+        '14day': 14,
+        '30day': 30,
+        lifetime: null
+      };
+
+      const days = durationMap[type];
+
+      console.log('🔑 Generating license:', type, days);
+
+      // =========================
+      // GENERATE KEY (NOW SAFE FOR DB LAYER)
+      // =========================
+      const key = await generateLicenseKey(type, days);
+
+      console.log('✅ Generated key:', key);
+
       return interaction.reply({
-        content: '❌ No permission',
+        content:
+          `✅ ${type.toUpperCase()} key generated:\n\n` +
+          `🔑 \`${key}\`\n\n` +
+          `⏳ Duration: **${days ?? 'lifetime'} days**`,
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.log('devkey error:', err);
+
+      return interaction.reply({
+        content: '❌ Failed to generate license key',
         ephemeral: true
       });
     }
-
-    const type = interaction.options.getString('type')?.toLowerCase();
-
-    const validTypes = ['dev', '7day', '14day', '30day', 'lifetime'];
-
-    if (!validTypes.includes(type)) {
-      return interaction.reply({
-        content: '❌ Invalid type. Use: dev, 7day, 14day, 30day, lifetime',
-        ephemeral: true
-      });
-    }
-
-    const durationMap = {
-      dev: 7,
-      '7day': 7,
-      '14day': 14,
-      '30day': 30,
-      lifetime: null
-    };
-
-    const days = durationMap[type];
-
-    console.log('🔑 Generating license:', type, days);
-
-    const key = generateLicenseKey(type, days);
-
-    console.log('✅ Generated key:', key);
-
-    return interaction.reply({
-      content:
-        `✅ ${type.toUpperCase()} key generated:\n\n` +
-        `🔑 \`${key}\`\n\n` +
-        `⏳ Duration: **${days ?? 'lifetime'} days**`,
-      ephemeral: true
-    });
   }
 };
