@@ -18,10 +18,12 @@ async function translateDeepL(text, targetLang) {
 
   const data = await res.json();
 
-  const translated = data?.translations?.[0]?.text;
-  const detected = data?.translations?.[0]?.detected_source_language;
+  if (!data?.translations?.length) {
+    throw new Error('DeepL empty response');
+  }
 
-  if (!translated) throw new Error('DeepL failed');
+  const translated = data.translations[0].text;
+  const detected = data.translations[0].detected_source_language;
 
   return {
     text: translated,
@@ -30,11 +32,11 @@ async function translateDeepL(text, targetLang) {
 }
 
 // ==============================
-// MYMEMORY FALLBACK
+// MYMEMORY FALLBACK (FIXED)
 // ==============================
 async function translateMyMemory(text, targetLang) {
   const res = await fetch(
-    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
   );
 
   const data = await res.json();
@@ -62,13 +64,13 @@ export async function translate(text, targetLang) {
   let result;
 
   try {
-    // 1. TRY DEEPL FIRST
+    // PRIMARY: DEEPL
     result = await translateDeepL(text, targetLang);
   } catch (err) {
     console.log('DeepL failed, using fallback:', err.message);
 
     try {
-      // 2. FALLBACK
+      // FALLBACK
       result = await translateMyMemory(text, targetLang);
     } catch (fallbackErr) {
       console.error('All translation failed:', fallbackErr);
@@ -80,6 +82,10 @@ export async function translate(text, targetLang) {
     }
   }
 
-  cache.set(key, result);
+  // only cache valid results
+  if (result?.text) {
+    cache.set(key, result);
+  }
+
   return result;
 }
