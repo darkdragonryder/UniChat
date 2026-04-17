@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 
 // =====================================================
-// STABLE PATH
+// FIXED RAILWAY SAFE PATH
 // =====================================================
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = path.resolve('/app/data');
 const PATH = path.join(DATA_DIR, 'licenses.json');
 
 // =====================================================
@@ -20,7 +20,7 @@ function ensure() {
       fs.writeFileSync(PATH, JSON.stringify({ keys: {} }, null, 2));
     }
   } catch (err) {
-    console.error('❌ Ensure failed:', err);
+    console.error('❌ ensure() failed:', err);
   }
 }
 
@@ -38,7 +38,7 @@ function loadDB() {
 
     return db;
   } catch (err) {
-    console.error('❌ License DB read error:', err);
+    console.error('❌ loadDB error:', err);
     return { keys: {} };
   }
 }
@@ -50,7 +50,7 @@ function saveDB(db) {
   try {
     fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
   } catch (err) {
-    console.error('❌ License DB write error:', err);
+    console.error('❌ saveDB error:', err);
   }
 }
 
@@ -70,9 +70,7 @@ export function addLicenseKey(key, data = {}) {
     createdAt: Date.now(),
     usedAt: null,
     usedByGuild: null,
-    usedByUser: null,
-
-    referredBy: data.referredBy || null
+    usedByUser: null
   };
 
   saveDB(db);
@@ -88,10 +86,7 @@ export function generateLicenseKey(type, durationDays) {
     .slice(2, 10)
     .toUpperCase()}`;
 
-  addLicenseKey(key, {
-    type,
-    durationDays
-  });
+  addLicenseKey(key, { type, durationDays });
 
   return key;
 }
