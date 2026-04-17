@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { createReferralCode, getReferral } from '../services/referralService.js';
+import { createReferralCode } from '../services/referralService.js';
+import db from '../services/db.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -8,6 +9,7 @@ export default {
 
   async execute(interaction) {
     try {
+      const guildId = interaction.guild.id;
       const userId = interaction.user.id;
 
       await interaction.deferReply({ ephemeral: true });
@@ -15,7 +17,10 @@ export default {
       // =========================
       // CHECK EXISTING CODE
       // =========================
-      const existing = await getReferralByOwner(userId);
+      const existing = await db.get(
+        `SELECT * FROM referral_codes WHERE guildId = ? AND ownerId = ?`,
+        [guildId, userId]
+      );
 
       if (existing) {
         return interaction.editReply(
@@ -26,7 +31,7 @@ export default {
       // =========================
       // CREATE NEW CODE
       // =========================
-      const code = await createReferralCode(userId);
+      const code = await createReferralCode(guildId, userId);
 
       return interaction.editReply(
         `🎉 Referral code created!\n\n` +
@@ -37,22 +42,12 @@ export default {
     } catch (err) {
       console.log('referral command error:', err);
 
-      return interaction.reply({
-        content: '❌ Command error occurred',
-        ephemeral: true
-      });
+      if (!interaction.replied) {
+        return interaction.reply({
+          content: '❌ Command error occurred',
+          ephemeral: true
+        });
+      }
     }
   }
 };
-
-// ==============================
-// HELPER (GET BY OWNER)
-// ==============================
-async function getReferralByOwner(userId) {
-  const db = await (await import('../services/db.js')).default;
-
-  return db.get(
-    `SELECT * FROM referrals WHERE ownerId = ?`,
-    [userId]
-  );
-}
