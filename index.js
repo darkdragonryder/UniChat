@@ -9,9 +9,20 @@ import {
 
 import fs from 'fs';
 
+// 🔥 IMPORTANT: initialize DB FIRST
+import './services/db.js';
+
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 import { isPremium } from './services/unichatCore.js';
+
+// ==============================
+// SAFETY CHECK
+// ==============================
+if (!process.env.TOKEN || !process.env.CLIENT_ID) {
+  console.error('❌ Missing TOKEN or CLIENT_ID in .env');
+  process.exit(1);
+}
 
 // ==============================
 // CLIENT
@@ -28,16 +39,22 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS
+// LOAD COMMANDS (SAFE)
 // ==============================
 const commandFiles = fs.existsSync('./commands')
   ? fs.readdirSync('./commands').filter(f => f.endsWith('.js'))
   : [];
 
 for (const file of commandFiles) {
-  const cmd = await import(`./commands/${file}`);
-  if (cmd?.default?.data?.name) {
-    client.commands.set(cmd.default.data.name, cmd.default);
+  try {
+    const cmd = await import(`./commands/${file}`);
+
+    if (cmd?.default?.data?.name && cmd?.default?.execute) {
+      client.commands.set(cmd.default.data.name, cmd.default);
+    }
+
+  } catch (err) {
+    console.log(`❌ Failed loading command ${file}:`, err);
   }
 }
 
@@ -46,17 +63,21 @@ for (const file of commandFiles) {
 // ==============================
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-await rest.put(
-  Routes.applicationCommands(process.env.CLIENT_ID),
-  {
-    body: [
-      ...client.commands.map(c => c.data.toJSON()),
-      { name: 'Translate Message', type: 3 }
-    ]
-  }
-);
+try {
+  await rest.put(
+    Routes.applicationCommands(process.env.CLIENT_ID),
+    {
+      body: [
+        ...client.commands.map(c => c.data.toJSON()),
+        { name: 'Translate Message', type: 3 }
+      ]
+    }
+  );
 
-console.log("✅ Bot Ready");
+  console.log("✅ Commands registered");
+} catch (err) {
+  console.log("❌ Command registration failed:", err);
+}
 
 // ==============================
 // READY EVENT
@@ -92,14 +113,12 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS (FIXED TIMEOUT VERSION)
+// INTERACTIONS
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
 
-    // =========================
     // SLASH COMMANDS
-    // =========================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -108,38 +127,30 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // =========================
-    // BUTTON TRANSLATION (FIXED)
-    // =========================
+    // BUTTON TRANSLATION
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
 
       await interaction.deferReply({ ephemeral: true });
 
-      try {
-        const msgId = interaction.customId.split('_')[1];
+      const msgId = interaction.customId.split('_')[1];
 
-        const msg = await interaction.channel?.messages
-          .fetch(msgId)
-          .catch(() => null);
+      const msg = await interaction.channel?.messages
+        .fetch(msgId)
+        .catch(() => null);
 
-        if (!msg) {
-          return interaction.editReply('❌ Message not found');
-        }
-
-        const config = getGuildConfig(interaction.guild?.id);
-        const lang = config?.languages?.[interaction.user.id] || 'en';
-
-        const result = await translate(msg.content, lang);
-
-        return interaction.editReply({
-          content: `🌍 ${result?.text || result}`
-        });
-
-      } catch (err) {
-        console.log("Translate button error:", err);
-        return interaction.editReply('❌ Translation failed');
+      if (!msg) {
+        return interaction.editReply('❌ Message not found');
       }
+
+      const config = getGuildConfig(interaction.guild?.id);
+      const lang = config?.languages?.[interaction.user.id] || 'en';
+
+      const result = await translate(msg.content, lang);
+
+      return interaction.editReply({
+        content: `🌍 ${result?.text || result}`
+      });
     }
 
   } catch (err) {
