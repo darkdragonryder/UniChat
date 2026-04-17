@@ -1,5 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { redeemReferralCode } from '../services/referralService.js';
+import {
+  getReferral,
+  useReferral,
+  hasUserUsedReferral,
+  getReferralCount
+} from '../services/referralService.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -14,35 +19,49 @@ export default {
   async execute(interaction) {
     try {
       const code = interaction.options.getString('code');
+      const userId = interaction.user.id;
 
-      const result = await redeemReferralCode(
-        interaction.guild.id,
-        interaction.user.id,
-        code
-      );
+      await interaction.deferReply({ ephemeral: true });
 
-      if (!result.valid) {
-        const errors = {
-          INVALID_CODE: '❌ Invalid code',
-          SELF_USE: '❌ You cannot use your own code',
-          ALREADY_USED: '❌ You already used a referral code'
-        };
+      // =========================
+      // CHECK CODE EXISTS
+      // =========================
+      const ref = await getReferral(code);
 
-        return interaction.reply({
-          content: errors[result.reason] || '❌ Error',
-          ephemeral: true
-        });
+      if (!ref) {
+        return interaction.editReply('❌ Invalid code');
       }
 
-      return interaction.reply({
-        content:
-          `🎉 Referral successful!\n\n` +
-          `⭐ Owner got +1 referral`,
-        ephemeral: true
-      });
+      // =========================
+      // SELF USE BLOCK
+      // =========================
+      if (ref.ownerId === userId) {
+        return interaction.editReply('❌ You cannot use your own code');
+      }
+
+      // =========================
+      // ALREADY USED CHECK
+      // =========================
+      const alreadyUsed = await hasUserUsedReferral(userId);
+
+      if (alreadyUsed) {
+        return interaction.editReply('❌ You already used a referral code');
+      }
+
+      // =========================
+      // APPLY REFERRAL
+      // =========================
+      await useReferral(code, userId);
+
+      const total = await getReferralCount(ref.ownerId);
+
+      return interaction.editReply(
+        `🎉 Referral successful!\n\n` +
+        `⭐ Total referrals: **${total}**`
+      );
 
     } catch (err) {
-      console.log('Referral redeem error:', err);
+      console.log('referral-redeem error:', err);
 
       return interaction.reply({
         content: '❌ Command error occurred',
