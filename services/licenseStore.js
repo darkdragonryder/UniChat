@@ -16,7 +16,7 @@ function ensure() {
 }
 
 // =====================================================
-// LOAD DB (SAFE)
+// LOAD DB
 // =====================================================
 function loadDB() {
   ensure();
@@ -35,7 +35,7 @@ function loadDB() {
 }
 
 // =====================================================
-// SAVE DB (SAFE)
+// SAVE DB
 // =====================================================
 function saveDB(db) {
   try {
@@ -71,7 +71,7 @@ export function addLicenseKey(key, data = {}) {
 }
 
 // =====================================================
-// GENERATE LICENSE KEY (DEV TOOL)
+// GENERATE LICENSE KEY
 // =====================================================
 export function generateLicenseKey(type, durationDays) {
   const key =
@@ -104,7 +104,7 @@ export function validateKey(key) {
 }
 
 // =====================================================
-// USE KEY
+// USE KEY (ONLY CALLED FROM CORE LOGIC)
 // =====================================================
 export function useKey(key, guildId, userId = null) {
   const db = loadDB();
