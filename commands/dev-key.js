@@ -13,7 +13,6 @@ export default {
 
   async execute(interaction) {
 
-    // OWNER CHECK
     if (interaction.user.id !== process.env.OWNER_ID) {
       return interaction.reply({
         content: '❌ No permission',
@@ -42,8 +41,11 @@ export default {
 
     const days = durationMap[type];
 
-    // 🔑 GENERATE KEY (STORED IN JSON)
+    console.log('🔑 Generating license:', type, days);
+
     const key = generateLicenseKey(type, days);
+
+    console.log('✅ Generated key:', key);
 
     return interaction.reply({
       content:
