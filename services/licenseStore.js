@@ -1,47 +1,56 @@
 import fs from 'fs';
+import path from 'path';
 
-const PATH = './data/licenses.json';
+// =====================================================
+// STABLE PATH (FIXES EMPTY FILE ISSUE IN RAILWAY/CODESPACES)
+// =====================================================
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const PATH = path.join(DATA_DIR, 'licenses.json');
 
 // =====================================================
 // ENSURE FILE EXISTS
 // =====================================================
 function ensure() {
-  if (!fs.existsSync('./data')) {
-    fs.mkdirSync('./data', { recursive: true });
-  }
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
 
-  if (!fs.existsSync(PATH)) {
-    fs.writeFileSync(PATH, JSON.stringify({ keys: {} }, null, 2));
+    if (!fs.existsSync(PATH)) {
+      fs.writeFileSync(PATH, JSON.stringify({ keys: {} }, null, 2));
+    }
+  } catch (err) {
+    console.error('❌ Ensure failed:', err);
   }
 }
 
 // =====================================================
-// LOAD DB
+// LOAD DB (SAFE)
 // =====================================================
 function loadDB() {
   ensure();
 
   try {
     const raw = fs.readFileSync(PATH, 'utf8');
-    const db = JSON.parse(raw);
+    const db = JSON.parse(raw || '{}');
 
     if (!db.keys) db.keys = {};
 
     return db;
   } catch (err) {
-    console.error('License DB read error:', err);
+    console.error('❌ License DB read error:', err);
     return { keys: {} };
   }
 }
 
 // =====================================================
-// SAVE DB
+// SAVE DB (SAFE)
 // =====================================================
 function saveDB(db) {
   try {
     fs.writeFileSync(PATH, JSON.stringify(db, null, 2));
   } catch (err) {
-    console.error('License DB write error:', err);
+    console.error('❌ License DB write error:', err);
   }
 }
 
@@ -51,12 +60,15 @@ function saveDB(db) {
 export function addLicenseKey(key, data = {}) {
   const db = loadDB();
 
-  if (db.keys[key]) return false;
+  if (db.keys[key]) {
+    console.log('⚠️ Key already exists:', key);
+    return false;
+  }
 
   db.keys[key] = {
     used: false,
     type: data.type || 'dev',
-    durationDays: data.durationDays || 30,
+    durationDays: data.durationDays ?? 30,
 
     createdAt: Date.now(),
     usedAt: null,
@@ -67,6 +79,9 @@ export function addLicenseKey(key, data = {}) {
   };
 
   saveDB(db);
+
+  console.log('✅ License saved:', key);
+
   return true;
 }
 
@@ -74,13 +89,19 @@ export function addLicenseKey(key, data = {}) {
 // GENERATE LICENSE KEY
 // =====================================================
 export function generateLicenseKey(type, durationDays) {
-  const key =
-    `${type.toUpperCase()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+  const key = `${type.toUpperCase()}-${Math.random()
+    .toString(36)
+    .slice(2, 10)
+    .toUpperCase()}`;
 
-  addLicenseKey(key, {
+  const saved = addLicenseKey(key, {
     type,
     durationDays
   });
+
+  if (!saved) {
+    console.log('❌ Failed to save key:', key);
+  }
 
   return key;
 }
@@ -88,37 +109,4 @@ export function generateLicenseKey(type, durationDays) {
 // =====================================================
 // VALIDATE KEY
 // =====================================================
-export function validateKey(key) {
-  const db = loadDB();
-  const entry = db.keys[key];
-
-  if (!entry) {
-    return { valid: false, reason: 'INVALID_KEY' };
-  }
-
-  if (entry.used) {
-    return { valid: false, reason: 'ALREADY_USED' };
-  }
-
-  return { valid: true, entry };
-}
-
-// =====================================================
-// USE KEY (ONLY CALLED FROM CORE LOGIC)
-// =====================================================
-export function useKey(key, guildId, userId = null) {
-  const db = loadDB();
-  const entry = db.keys[key];
-
-  if (!entry) return false;
-
-  if (entry.used) return false;
-
-  entry.used = true;
-  entry.usedByGuild = guildId;
-  entry.usedByUser = userId;
-  entry.usedAt = Date.now();
-
-  saveDB(db);
-  return true;
-}
+export function validateKey(key)
