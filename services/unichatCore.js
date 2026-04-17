@@ -15,13 +15,15 @@ export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
 
   if (!config?.premium) return false;
+
+  // lifetime check
   if (config.premiumExpiry === null) return true;
 
   return Date.now() < config.premiumExpiry;
 }
 
 // =====================================================
-// MANUAL PREMIUM OVERRIDE (ADMIN ONLY USE)
+// MANUAL PREMIUM OVERRIDE
 // =====================================================
 export function enablePremium(guildId, durationMs = null) {
   const config = getGuildConfig(guildId);
@@ -37,12 +39,14 @@ export function enablePremium(guildId, durationMs = null) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY (SINGLE SOURCE OF TRUTH)
+// APPLY LICENSE KEY (SOURCE OF TRUTH)
 // =====================================================
-export function applyLicenseKey(guildId, userId, key) {
+export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
 
-  const result = validateKey(key);
+  // IMPORTANT: support async validation
+  const result = await validateKey(key);
+
   if (!result.valid) return result;
 
   const entry = result.entry;
@@ -69,8 +73,8 @@ export function applyLicenseKey(guildId, userId, key) {
     config.premiumExpiry = now + days * 86400000;
   }
 
-  // IMPORTANT: only ONE place handles key usage
-  useKey(key, guildId, userId);
+  // IMPORTANT: only ONE place marks key as used
+  await useKey(key, guildId, userId);
 
   saveGuildConfig(guildId, config);
 
@@ -82,12 +86,11 @@ export function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// REFERRAL SYSTEM (PURE LOGIC ONLY)
+// REFERRAL SYSTEM (UNCHANGED SAFE LOGIC)
 // =====================================================
 export function rewardReferral(config, referrerId) {
-  if (!config.referrals) {
-    config.referrals = { leaderboard: {} };
-  }
+  config.referrals ??= { leaderboard: {} };
+  config.referrals.leaderboard ??= {};
 
   config.referrals.leaderboard[referrerId] =
     (config.referrals.leaderboard[referrerId] || 0) + 1;
