@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
+import { createReferralCode, getReferral } from '../services/referralService.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -7,46 +7,52 @@ export default {
     .setDescription('Create or view your referral code'),
 
   async execute(interaction) {
-    const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
+    try {
+      const userId = interaction.user.id;
 
-    const config = getGuildConfig(guildId);
+      await interaction.deferReply({ ephemeral: true });
 
-    // INIT SAFE STRUCTURE
-    config.referrals ??= {
-      codes: {},
-      leaderboard: {},
-      usedServers: {}
-    };
+      // =========================
+      // CHECK EXISTING CODE
+      // =========================
+      const existing = await getReferralByOwner(userId);
 
-    // CHECK IF USER ALREADY HAS CODE
-    let existingCode = Object.keys(config.referrals.codes)
-      .find(code => config.referrals.codes[code].ownerId === userId);
+      if (existing) {
+        return interaction.editReply(
+          `🔗 Your referral code:\n\n\`${existing.code}\``
+        );
+      }
 
-    if (existingCode) {
+      // =========================
+      // CREATE NEW CODE
+      // =========================
+      const code = await createReferralCode(userId);
+
+      return interaction.editReply(
+        `🎉 Referral code created!\n\n` +
+        `🔗 Your code: \`${code}\`\n\n` +
+        `Share this to earn rewards when someone buys premium!`
+      );
+
+    } catch (err) {
+      console.log('referral command error:', err);
+
       return interaction.reply({
-        content: `🔗 Your referral code:\n\n\`${existingCode}\``,
+        content: '❌ Command error occurred',
         ephemeral: true
       });
     }
-
-    // CREATE NEW CODE
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-
-    config.referrals.codes[code] = {
-      ownerId: userId,
-      usedBy: [],
-      createdAt: Date.now()
-    };
-
-    saveGuildConfig(guildId, config);
-
-    return interaction.reply({
-      content:
-        `🎉 Referral code created!\n\n` +
-        `🔗 Your code: \`${code}\`\n\n` +
-        `Share this to earn rewards when someone buys premium!`,
-      ephemeral: true
-    });
   }
 };
+
+// ==============================
+// HELPER (GET BY OWNER)
+// ==============================
+async function getReferralByOwner(userId) {
+  const db = await (await import('../services/db.js')).default;
+
+  return db.get(
+    `SELECT * FROM referrals WHERE ownerId = ?`,
+    [userId]
+  );
+}
