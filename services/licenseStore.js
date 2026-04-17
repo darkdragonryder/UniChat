@@ -10,7 +10,7 @@ const dbPromise = open({
 });
 
 // ==============================
-// INIT TABLE
+// INIT DB (SAFE)
 // ==============================
 async function init() {
   const db = await dbPromise;
@@ -18,8 +18,8 @@ async function init() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS licenses (
       key TEXT PRIMARY KEY,
-      used INTEGER,
-      type TEXT,
+      used INTEGER DEFAULT 0,
+      type TEXT NOT NULL,
       durationDays INTEGER,
       createdAt INTEGER,
       usedAt INTEGER,
@@ -27,26 +27,34 @@ async function init() {
       usedByUser TEXT
     )
   `);
+
+  console.log('✅ License DB ready');
 }
 
-// run once
-init();
+init().catch(err => {
+  console.error('❌ DB init failed:', err);
+});
 
 // ==============================
 // GENERATE KEY
 // ==============================
 export async function generateLicenseKey(type, durationDays) {
+  const db = await dbPromise;
+
   const key = `${type.toUpperCase()}-${Math.random()
     .toString(36)
     .slice(2, 10)
     .toUpperCase()}`;
 
-  const db = await dbPromise;
-
   await db.run(
-    `INSERT INTO licenses VALUES (?, 0, ?, ?, ?, NULL, NULL, NULL)`,
-    [key, type, durationDays ?? 30, Date.now()]
+    `INSERT INTO licenses (
+      key, used, type, durationDays, createdAt,
+      usedAt, usedByGuild, usedByUser
+    ) VALUES (?, 0, ?, ?, ?, NULL, NULL, NULL)`,
+    [key, type, durationDays ?? null, Date.now()]
   );
+
+  console.log('🔑 License created:', key);
 
   return key;
 }
@@ -62,8 +70,13 @@ export async function validateKey(key) {
     [key]
   );
 
-  if (!row) return { valid: false, reason: 'INVALID_KEY' };
-  if (row.used) return { valid: false, reason: 'ALREADY_USED' };
+  if (!row) {
+    return { valid: false, reason: 'INVALID_KEY' };
+  }
+
+  if (row.used === 1) {
+    return { valid: false, reason: 'ALREADY_USED' };
+  }
 
   return { valid: true, entry: row };
 }
@@ -75,11 +88,11 @@ export async function useKey(key, guildId, userId = null) {
   const db = await dbPromise;
 
   const row = await db.get(
-    `SELECT * FROM licenses WHERE key = ?`,
+    `SELECT used FROM licenses WHERE key = ?`,
     [key]
   );
 
-  if (!row || row.used) return false;
+  if (!row || row.used === 1) return false;
 
   await db.run(
     `UPDATE licenses
@@ -90,6 +103,8 @@ export async function useKey(key, guildId, userId = null) {
      WHERE key = ?`,
     [guildId, userId, Date.now(), key]
   );
+
+  console.log('✅ License used:', key);
 
   return true;
 }
