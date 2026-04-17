@@ -13,45 +13,59 @@ export default {
     ),
 
   async execute(interaction) {
-    const key = interaction.options.getString('key');
+    try {
+      const key = interaction.options.getString('key');
 
-    // =========================
-    // VALIDATE KEY
-    // =========================
-    const result = validateKey(key);
+      // 🔥 IMPORTANT: prevents timeout
+      await interaction.deferReply({ ephemeral: true });
 
-    if (!result.valid) {
-      return interaction.reply({
-        content: `❌ ${result.reason}`,
-        ephemeral: true
-      });
-    }
+      // =========================
+      // VALIDATE KEY
+      // =========================
+      const result = validateKey(key);
 
-    // =========================
-    // APPLY LICENSE (ONLY SOURCE OF TRUTH)
-    // =========================
-    const apply = applyLicenseKey(
-      interaction.guild.id,
-      interaction.user.id,
-      key
-    );
+      if (!result.valid) {
+        return interaction.editReply(`❌ ${result.reason}`);
+      }
 
-    if (!apply.ok) {
-      return interaction.reply({
-        content: `❌ Failed to apply license`,
-        ephemeral: true
-      });
-    }
+      // =========================
+      // APPLY LICENSE
+      // =========================
+      let apply;
 
-    // =========================
-    // RESPONSE
-    // =========================
-    return interaction.reply({
-      content:
+      try {
+        apply = applyLicenseKey(
+          interaction.guild.id,
+          interaction.user.id,
+          key
+        );
+      } catch (err) {
+        console.log('applyLicenseKey error:', err);
+        return interaction.editReply('❌ Internal license error');
+      }
+
+      if (!apply || !apply.ok) {
+        return interaction.editReply('❌ Failed to apply license');
+      }
+
+      // =========================
+      // RESPONSE
+      // =========================
+      return interaction.editReply(
         `✅ License activated!\n\n` +
         `⭐ Type: **${apply.type}**\n` +
-        `⏳ Duration: **${apply.days ?? 'lifetime'}**`,
-      ephemeral: true
-    });
+        `⏳ Duration: **${apply.days ?? 'lifetime'}**`
+      );
+
+    } catch (err) {
+      console.log('License command crash:', err);
+
+      if (!interaction.replied && !interaction.deferred) {
+        return interaction.reply({
+          content: '❌ Command error occurred',
+          ephemeral: true
+        });
+      }
+    }
   }
 };
