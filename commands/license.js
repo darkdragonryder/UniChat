@@ -16,25 +16,25 @@ export default {
     try {
       const key = interaction.options.getString('key');
 
-      // 🔥 IMPORTANT: prevents timeout
+      // 🔥 prevents "application did not respond"
       await interaction.deferReply({ ephemeral: true });
 
       // =========================
-      // VALIDATE KEY
+      // VALIDATE KEY (NOW ASYNC)
       // =========================
-      const result = validateKey(key);
+      const result = await validateKey(key);
 
       if (!result.valid) {
         return interaction.editReply(`❌ ${result.reason}`);
       }
 
       // =========================
-      // APPLY LICENSE
+      // APPLY LICENSE (ASYNC SAFE)
       // =========================
       let apply;
 
       try {
-        apply = applyLicenseKey(
+        apply = await applyLicenseKey(
           interaction.guild.id,
           interaction.user.id,
           key
@@ -44,7 +44,7 @@ export default {
         return interaction.editReply('❌ Internal license error');
       }
 
-      if (!apply || !apply.ok) {
+      if (!apply || apply.ok === false) {
         return interaction.editReply('❌ Failed to apply license');
       }
 
