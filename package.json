@@ -8,10 +8,12 @@
     "dashboard": "node dashboard/server.js"
   },
   "dependencies": {
+    "@vitalets/google-translate-api": "latest",
+    "axios": "^1.6.6",
     "discord.js": "^14.11.0",
     "dotenv": "^16.3.1",
-    "axios": "^1.6.6",
-    "@vitalets/google-translate-api": "latest",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   }
 }
