@@ -9,14 +9,16 @@ export function isOwner(userId) {
 }
 
 // =====================================================
-// PREMIUM CHECK (READ ONLY)
+// PREMIUM CHECK (SAFE + FIXED)
 // =====================================================
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
 
-  if (!config?.premium) return false;
+  if (!config) return false;
 
-  // lifetime check
+  if (!config.premium) return false;
+
+  // lifetime support
   if (config.premiumExpiry === null) return true;
 
   return Date.now() < config.premiumExpiry;
@@ -27,6 +29,8 @@ export function isPremium(guildId) {
 // =====================================================
 export function enablePremium(guildId, durationMs = null) {
   const config = getGuildConfig(guildId);
+
+  if (!config) return;
 
   const now = Date.now();
 
@@ -39,12 +43,16 @@ export function enablePremium(guildId, durationMs = null) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY (SOURCE OF TRUTH)
+// APPLY LICENSE KEY (STABLE VERSION)
 // =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
 
-  // IMPORTANT: support async validation
+  if (!config) {
+    return { ok: false, reason: 'NO_CONFIG' };
+  }
+
+  // validate
   const result = await validateKey(key);
 
   if (!result.valid) return result;
@@ -67,14 +75,19 @@ export async function applyLicenseKey(guildId, userId, key) {
   config.mode = 'license';
   config.premiumStart = now;
 
-  if (entry.type === 'lifetime' || !days) {
+  if (!days || entry.type === 'lifetime') {
     config.premiumExpiry = null;
   } else {
     config.premiumExpiry = now + days * 86400000;
   }
 
-  // IMPORTANT: only ONE place marks key as used
-  await useKey(key, guildId, userId);
+  // mark key used safely
+  try {
+    await useKey(key, guildId, userId);
+  } catch (err) {
+    console.log('useKey error:', err);
+    return { ok: false, reason: 'KEY_USE_FAILED' };
+  }
 
   saveGuildConfig(guildId, config);
 
@@ -86,9 +99,11 @@ export async function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// REFERRAL SYSTEM (UNCHANGED SAFE LOGIC)
+// REFERRAL SYSTEM (UNCHANGED BUT SAFE)
 // =====================================================
 export function rewardReferral(config, referrerId) {
+  if (!config) return config;
+
   config.referrals ??= { leaderboard: {} };
   config.referrals.leaderboard ??= {};
 
