@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { validateKey } from '../services/licenseStore.js';
 import { applyLicenseKey } from '../services/unichatCore.js';
 
 export default {
@@ -15,17 +16,29 @@ export default {
     const key = interaction.options.getString('key');
 
     // =========================
-    // APPLY LICENSE (SINGLE SOURCE OF TRUTH)
+    // VALIDATE KEY
     // =========================
-    const result = applyLicenseKey(
+    const result = validateKey(key);
+
+    if (!result.valid) {
+      return interaction.reply({
+        content: `❌ ${result.reason}`,
+        ephemeral: true
+      });
+    }
+
+    // =========================
+    // APPLY LICENSE (ONLY SOURCE OF TRUTH)
+    // =========================
+    const apply = applyLicenseKey(
       interaction.guild.id,
       interaction.user.id,
       key
     );
 
-    if (!result?.ok) {
+    if (!apply.ok) {
       return interaction.reply({
-        content: `❌ ${result?.reason || 'Invalid or used key'}`,
+        content: `❌ Failed to apply license`,
         ephemeral: true
       });
     }
@@ -36,8 +49,8 @@ export default {
     return interaction.reply({
       content:
         `✅ License activated!\n\n` +
-        `⭐ Type: **${result.type}**\n` +
-        `⏳ Duration: **${result.days ?? 'lifetime'} days**`,
+        `⭐ Type: **${apply.type}**\n` +
+        `⏳ Duration: **${apply.days ?? 'lifetime'}**`,
       ephemeral: true
     });
   }
