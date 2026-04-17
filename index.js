@@ -72,11 +72,9 @@ client.on('messageCreate', async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
 
-    // safe config fetch
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
-    // premium gate
     if (!isPremium(message.guild.id)) return;
 
     const targetLang = config.autoTranslateLang || 'en';
@@ -84,9 +82,9 @@ client.on('messageCreate', async (message) => {
     const result = await translate(message.content, targetLang);
     if (!result) return;
 
-    await message.reply({
-      content: `🌍 ${result?.text || result}`,
-      allowedMentions: { repliedUser: false }
+    // ✅ FIX: no reply spam chains
+    await message.channel.send({
+      content: `🌍 ${result?.text || result}`
     });
 
   } catch (err) {
@@ -109,7 +107,7 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // BUTTON TRANSLATION (FREE FEATURE)
+    // BUTTON TRANSLATION (FREE)
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
 
