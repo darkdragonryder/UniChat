@@ -1,64 +1,42 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { applyLicenseKey } from '../services/unichatCore.js';
+import { validateKey, useKey } from '../services/licenseStore.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('redeem')
-    .setDescription('Redeem a premium license key')
-    .addStringOption(option =>
-      option
-        .setName('key')
-        .setDescription('Your license key')
+    .setDescription('Redeem a license key')
+    .addStringOption(opt =>
+      opt.setName('key')
+        .setDescription('License key')
         .setRequired(true)
     ),
 
   async execute(interaction) {
-    const key = interaction.options.getString('key');
-    const guildId = interaction.guild.id;
+    try {
+      const key = interaction.options.getString('key');
 
-    const config = getGuildConfig(guildId);
+      const result = await validateKey(key);
 
-    config.referrals ||= {
-      leaderboard: {},
-      usedServers: {}
-    };
+      if (!result.valid) {
+        return interaction.reply({
+          content: `❌ Invalid key (${result.reason})`,
+          ephemeral: true
+        });
+      }
 
-    if (config.premium) {
+      await useKey(key, interaction.guild.id, interaction.user.id);
+
       return interaction.reply({
-        content: '⚠️ This server already has premium active.',
+        content: '✅ License activated!',
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.log(err);
+      return interaction.reply({
+        content: '❌ Failed to redeem key',
         ephemeral: true
       });
     }
-
-    // ✅ FIX: must await
-    const applied = await applyLicenseKey(guildId, interaction.user.id, key);
-
-    if (!applied?.ok) {
-      return interaction.reply({
-        content: '❌ Invalid, used, or expired license key.',
-        ephemeral: true
-      });
-    }
-
-    saveGuildConfig(guildId, config);
-
-    const durationText =
-      applied.days === null || applied.type === 'lifetime'
-        ? 'lifetime'
-        : `${applied.days} days`;
-
-    const expiryText = applied.expiry
-      ? `<t:${Math.floor(applied.expiry / 1000)}:R>`
-      : 'lifetime';
-
-    return interaction.reply({
-      content:
-        `💎 **Premium Activated!**\n\n` +
-        `✔ Type: **${applied.type}**\n` +
-        `⏳ Duration: **${durationText}**\n` +
-        `📅 Expires: ${expiryText}`,
-      ephemeral: true
-    });
   }
 };
