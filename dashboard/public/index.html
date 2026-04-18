@@ -1,97 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>UniChat Dashboard</title>
-  <style>
-    body {
-      font-family: Arial;
-      background: #111;
-      color: #eee;
-      padding: 20px;
-    }
-
-    input, button {
-      padding: 10px;
-      margin-top: 10px;
-    }
-
-    button {
-      cursor: pointer;
-    }
-
-    #msg {
-      margin-top: 10px;
-      color: lightgreen;
-    }
-
-    pre {
-      background: #222;
-      padding: 10px;
-      border-radius: 6px;
-    }
-  </style>
+  <title>License Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+  <h1>📊 SaaS License Dashboard</h1>
 
-<h1>🌐 UniChat Dashboard</h1>
+  <input id="search" placeholder="Search guild / user / key..." />
 
-<pre id="stats">Loading...</pre>
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Type</th>
+        <th>Guild</th>
+        <th>User</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
 
-<h3>Add Access</h3>
-<input id="user" placeholder="User ID">
-<button onclick="add()">Add Access</button>
+    <tbody id="table"></tbody>
+  </table>
 
-<div id="msg"></div>
-
-<script>
-
-async function loadStats() {
-  try {
-    const res = await fetch('/stats');
-    const data = await res.json();
-    document.getElementById('stats').innerText =
-      JSON.stringify(data, null, 2);
-  } catch (err) {
-    document.getElementById('stats').innerText = "Failed to load stats";
-  }
-}
-
-loadStats();
-
-// refresh every 10 seconds
-setInterval(loadStats, 10000);
-
-async function add() {
-  const user = document.getElementById('user').value.trim();
-  const msg = document.getElementById('msg');
-
-  if (!user) {
-    msg.innerText = "❌ Please enter a user ID";
-    return;
-  }
-
-  try {
-    const res = await fetch('/access', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user })
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    msg.innerText = res.ok
-      ? "✅ Access granted successfully"
-      : "❌ Failed to grant access";
-
-    loadStats();
-
-  } catch (err) {
-    msg.innerText = "❌ Server error";
-  }
-}
-
-</script>
-
+  <script src="app.js"></script>
 </body>
 </html>
