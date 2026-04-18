@@ -37,7 +37,7 @@ export function validateKey(key) {
 }
 
 // ==============================
-// USE KEY
+// USE KEY (NOW WITH EXPIRY SUPPORT)
 // ==============================
 export function useKey(key, guildId, userId) {
   const row = db.prepare(`
@@ -46,14 +46,46 @@ export function useKey(key, guildId, userId) {
 
   if (!row || row.used) return false;
 
+  const now = Date.now();
+
+  // =========================
+  // CALCULATE EXPIRY
+  // =========================
+  const expiresAt =
+    row.durationDays === null
+      ? null
+      : now + row.durationDays * 86400000;
+
   db.prepare(`
     UPDATE licenses
     SET used = 1,
         usedByGuild = ?,
         usedByUser = ?,
-        usedAt = ?
+        usedAt = ?,
+        expiresAt = ?
     WHERE key = ?
-  `).run(guildId, userId, Date.now(), key);
+  `).run(
+    guildId,
+    userId,
+    now,
+    expiresAt,
+    key
+  );
 
   return true;
+}
+
+// ==============================
+// OPTIONAL: CHECK IF STILL VALID
+// ==============================
+export function isLicenseActive(key) {
+  const row = db.prepare(`
+    SELECT * FROM licenses WHERE key = ?
+  `).get(key);
+
+  if (!row) return false;
+  if (!row.used) return true;
+  if (row.expiresAt === null) return true;
+
+  return Date.now() < row.expiresAt;
 }
