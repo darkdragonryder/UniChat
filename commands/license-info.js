@@ -10,14 +10,28 @@ export default {
     try {
       const guildId = interaction.guild.id;
 
+      // ==============================
+      // FETCH LATEST LICENSE (FIXED)
+      // ==============================
       const { data, error } = await supabase
         .from('licenses')
         .select('*')
         .eq('usedByGuild', guildId)
         .eq('used', true)
-        .single();
+        .order('usedAt', { ascending: false });
 
-      if (error || !data) {
+      if (error) {
+        console.log('license-info fetch error:', error);
+
+        return interaction.reply({
+          content: '❌ Database error while fetching license.',
+          ephemeral: true
+        });
+      }
+
+      const license = data?.[0];
+
+      if (!license) {
         return interaction.reply({
           content: '❌ No active license found for this server.',
           ephemeral: true
@@ -26,18 +40,18 @@ export default {
 
       const now = Date.now();
 
-      // =========================
-      // STATUS CHECK
-      // =========================
+      // ==============================
+      // STATUS CALCULATION
+      // ==============================
       let status = 'ACTIVE';
       let remaining = null;
 
-      if (data.expired) {
+      if (license.expired) {
         status = 'EXPIRED';
-      } else if (data.expiresAt === null) {
+      } else if (license.expiresAt === null) {
         status = 'LIFETIME';
       } else {
-        const diff = data.expiresAt - now;
+        const diff = license.expiresAt - now;
 
         if (diff <= 0) {
           status = 'EXPIRED';
@@ -46,9 +60,9 @@ export default {
         }
       }
 
-      // =========================
+      // ==============================
       // FORMAT TIME LEFT
-      // =========================
+      // ==============================
       let timeLeft = 'Lifetime';
 
       if (remaining !== null) {
@@ -58,17 +72,17 @@ export default {
         timeLeft = `${days}d ${hours}h`;
       }
 
-      // =========================
+      // ==============================
       // RESPONSE
-      // =========================
+      // ==============================
       return interaction.reply({
         content:
           `📄 **License Info**\n\n` +
-          `🔑 Key: \`${data.key}\`\n` +
-          `📦 Type: **${data.type}**\n` +
+          `🔑 Key: \`${license.key}\`\n` +
+          `📦 Type: **${license.type}**\n` +
           `📊 Status: **${status}**\n` +
           `⏳ Time Left: **${timeLeft}**\n` +
-          `👤 User: <@${data.usedByUser || 'unknown'}>`,
+          `👤 User: <@${license.usedByUser || 'unknown'}>`,
         ephemeral: true
       });
 
