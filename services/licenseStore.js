@@ -30,7 +30,13 @@ export async function generateLicenseKey(type, durationDays) {
     throw error;
   }
 
-  return key;
+  // ✅ FIX: return full object (NOT just key)
+  return {
+    key,
+    type,
+    durationDays,
+    expiresAt
+  };
 }
 
 // ==============================
@@ -98,10 +104,8 @@ export async function isLicenseActive(key) {
 
   if (error || !data) return false;
 
-  // not used yet → active
   if (!data.used) return true;
 
-  // lifetime or no expiry
   if (data.expiresAt === null) return true;
 
   return Date.now() < data.expiresAt;
