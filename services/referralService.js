@@ -3,17 +3,11 @@ import db from './db.js';
 // ==============================
 // CREATE REFERRAL CODE
 // ==============================
-export async function createReferralCode(guildId, ownerId) {
-  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-
-  await db.run(
-    `INSERT OR IGNORE INTO referral_codes
-     (code, guildId, ownerId, usedCount, createdAt)
-     VALUES (?, ?, ?, 0, ?)`,
-    [code, guildId, ownerId, Date.now()]
-  );
-
-  console.log('🔗 Referral created:', code);
+export function createReferralCode(guildId, ownerId, code) {
+  db.prepare(`
+    INSERT OR IGNORE INTO referral_codes (code, guildId, ownerId, usedCount, createdAt)
+    VALUES (?, ?, ?, 0, ?)
+  `).run(code, guildId, ownerId, Date.now());
 
   return code;
 }
@@ -21,93 +15,61 @@ export async function createReferralCode(guildId, ownerId) {
 // ==============================
 // GET REFERRAL
 // ==============================
-export async function getReferral(code) {
-  return await db.get(
-    `SELECT * FROM referral_codes WHERE code = ?`,
-    [code]
-  );
+export function getReferral(code) {
+  return db.prepare(`
+    SELECT * FROM referral_codes WHERE code = ?
+  `).get(code);
 }
 
 // ==============================
-// CHECK IF USER USED REFERRAL
+// GET BY OWNER
 // ==============================
-export async function hasUserUsedReferral(guildId, userId) {
-  const row = await db.get(
-    `SELECT * FROM referrals WHERE guildId = ? AND userId = ?`,
-    [guildId, userId]
-  );
-
-  return !!row;
+export function getReferralByOwner(ownerId) {
+  return db.prepare(`
+    SELECT * FROM referral_codes WHERE ownerId = ?
+  `).get(ownerId);
 }
 
 // ==============================
-// USE REFERRAL
+// CHECK USER USED
 // ==============================
-export async function useReferral(guildId, userId, code) {
-  const ref = await getReferral(code);
-
-  if (!ref) {
-    return { ok: false, reason: 'INVALID_CODE' };
-  }
-
-  if (ref.ownerId === userId) {
-    return { ok: false, reason: 'SELF_USE' };
-  }
-
-  const alreadyUsed = await hasUserUsedReferral(guildId, userId);
-
-  if (alreadyUsed) {
-    return { ok: false, reason: 'ALREADY_USED' };
-  }
-
-  // insert usage
-  await db.run(
-    `INSERT INTO referrals
-     (guildId, userId, code, ownerId, createdAt)
-     VALUES (?, ?, ?, ?, ?)`,
-    [guildId, userId, code, ref.ownerId, Date.now()]
-  );
-
-  // increment counter
-  await db.run(
-    `UPDATE referral_codes
-     SET usedCount = usedCount + 1
-     WHERE code = ?`,
-    [code]
-  );
-
-  console.log('✅ Referral used:', code, 'by', userId);
-
-  return {
-    ok: true,
-    ownerId: ref.ownerId
-  };
+export function hasUserUsedReferral(guildId, userId) {
+  return !!db.prepare(`
+    SELECT 1 FROM referrals
+    WHERE guildId = ? AND userId = ?
+  `).get(guildId, userId);
 }
 
 // ==============================
-// GET TOTAL REFERRALS FOR USER
+// APPLY REFERRAL
 // ==============================
-export async function getReferralCount(guildId, ownerId) {
-  const row = await db.get(
-    `SELECT COUNT(*) as total
-     FROM referrals
-     WHERE guildId = ? AND ownerId = ?`,
-    [guildId, ownerId]
-  );
+export function useReferral(guildId, userId, code) {
+  const ref = getReferral(code);
+  if (!ref) return false;
 
-  return row?.total || 0;
+  db.prepare(`
+    INSERT INTO referrals (guildId, userId, code, ownerId, createdAt)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(guildId, userId, code, ref.ownerId, Date.now());
+
+  db.prepare(`
+    UPDATE referral_codes
+    SET usedCount = usedCount + 1
+    WHERE code = ?
+  `).run(code);
+
+  return true;
 }
 
 // ==============================
-// LEADERBOARD
+// COUNT REFERRALS
 // ==============================
-export async function getLeaderboard(guildId) {
-  return await db.all(
-    `SELECT ownerId, COUNT(*) as total
-     FROM referrals
-     WHERE guildId = ?
-     GROUP BY ownerId
-     ORDER BY total DESC`,
-    [guildId]
-  );
+export function getReferralCount(ownerId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM referrals
+    WHERE ownerId = ?
+  `).get(ownerId);
+
+  return row?.count || 0;
 }
