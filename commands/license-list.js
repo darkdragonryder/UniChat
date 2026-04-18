@@ -8,6 +8,9 @@ export default {
 
   async execute(interaction) {
     try {
+      // =========================
+      // OWNER CHECK
+      // =========================
       if (interaction.user.id !== process.env.OWNER_ID) {
         return interaction.reply({
           content: '❌ No permission',
@@ -15,6 +18,9 @@ export default {
         });
       }
 
+      // =========================
+      // GET LICENSES
+      // =========================
       const rows = db.prepare(`
         SELECT * FROM licenses
         ORDER BY createdAt DESC
@@ -28,12 +34,23 @@ export default {
         });
       }
 
-      const text = rows.map(r =>
-        `🔑 ${r.key}\n` +
-        `Type: ${r.type} | Used: ${r.used ? 'YES' : 'NO'}\n` +
-        `User: ${r.usedByUser || 'none'}\n` +
-        `Guild: ${r.usedByGuild || 'none'}\n`
-      ).join('\n----------------\n');
+      // =========================
+      // FORMAT OUTPUT
+      // =========================
+      const text = rows.map(r => {
+        const expiry =
+          r.expiresAt === null
+            ? 'Lifetime'
+            : new Date(r.expiresAt).toLocaleString();
+
+        return (
+          `🔑 ${r.key}\n` +
+          `Type: ${r.type} | Used: ${r.used ? 'YES' : 'NO'}\n` +
+          `Expires: ${expiry}\n` +
+          `User: ${r.usedByUser || 'none'}\n` +
+          `Guild: ${r.usedByGuild || 'none'}`
+        );
+      }).join('\n----------------\n');
 
       return interaction.reply({
         content: `📜 **License List**\n\n${text}`,
