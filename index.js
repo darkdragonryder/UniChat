@@ -10,7 +10,7 @@ import {
 import fs from 'fs';
 
 // ==============================
-// DB INIT (MUST BE FIRST)
+// DB INIT (MUST LOAD FIRST)
 // ==============================
 import './services/db.js';
 
@@ -22,7 +22,7 @@ import { runExpiryWarnings } from './services/licenseWatcher.js';
 import { runLicenseCleanup } from './services/licenseCleanup.js';
 
 // ==============================
-// CORE UTILITIES
+// UTILITIES
 // ==============================
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
@@ -98,22 +98,19 @@ try {
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // 🔥 AUTO EXPIRY ENGINE
   startLicenseExpiryWorker();
 
-  // WARNING SYSTEM
   setInterval(() => {
     runExpiryWarnings(client);
   }, 60 * 60 * 1000);
 
-  // CLEANUP SYSTEM
   setInterval(() => {
     runLicenseCleanup();
   }, 6 * 60 * 60 * 1000);
 });
 
 // ==============================
-// MESSAGE CREATE (PREMIUM CHECK)
+// MESSAGE CREATE (PREMIUM GATE)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
@@ -122,7 +119,6 @@ client.on('messageCreate', async (message) => {
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
-    // IMPORTANT: premium gate
     if (!isPremium(message.guild.id)) return;
 
     const targetLang = config.autoTranslateLang || 'en';
@@ -140,7 +136,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS
+// INTERACTION HANDLER
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
@@ -157,7 +153,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ------------------------------
-    // BUTTONS
+    // BUTTONS (TRANSLATE SYSTEM)
     // ------------------------------
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
@@ -185,33 +181,34 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ------------------------------
-    // SELECT MENU (REVOKE SYSTEM)
+    // DASHBOARD REVOKE SELECT MENU
     // ------------------------------
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId !== 'revoke_select') return;
+      if (interaction.customId === 'dashboard_revoke_select') {
+        const key = interaction.values[0];
 
-      const key = interaction.values[0];
+        const { error } = await supabase
+          .from('licenses')
+          .update({
+            expired: true,
+            expiresAt: Date.now()
+          })
+          .eq('key', key);
 
-      const { error } = await supabase
-        .from('licenses')
-        .update({
-          expired: true
-        })
-        .eq('key', key);
+        if (error) {
+          console.log(error);
 
-      if (error) {
-        console.log(error);
+          return interaction.reply({
+            content: '❌ Failed to revoke license',
+            ephemeral: true
+          });
+        }
 
-        return interaction.reply({
-          content: '❌ Failed to revoke license',
-          ephemeral: true
+        return interaction.update({
+          content: `🚫 License revoked successfully\n🔑 Key: \`${key}\``,
+          components: []
         });
       }
-
-      return interaction.update({
-        content: '🚫 License revoked successfully',
-        components: []
-      });
     }
 
   } catch (err) {
