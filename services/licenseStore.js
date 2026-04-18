@@ -1,24 +1,7 @@
 import db from './db.js';
 
 // ==============================
-// ADD LICENSE KEY
-// ==============================
-export function addLicenseKey(key, data = {}) {
-  db.prepare(`
-    INSERT INTO licenses (key, used, type, durationDays, createdAt)
-    VALUES (?, 0, ?, ?, ?)
-  `).run(
-    key,
-    data.type || 'dev',
-    data.durationDays || 30,
-    Date.now()
-  );
-
-  return true;
-}
-
-// ==============================
-// GENERATE KEY
+// GENERATE LICENSE KEY
 // ==============================
 export function generateLicenseKey(type, durationDays) {
   const key = `${type.toUpperCase()}-${Math.random()
@@ -26,7 +9,15 @@ export function generateLicenseKey(type, durationDays) {
     .slice(2, 10)
     .toUpperCase()}`;
 
-  addLicenseKey(key, { type, durationDays });
+  db.prepare(`
+    INSERT INTO licenses (key, used, type, durationDays, createdAt)
+    VALUES (?, 0, ?, ?, ?)
+  `).run(
+    key,
+    type,
+    durationDays ?? 30,
+    Date.now()
+  );
 
   return key;
 }
