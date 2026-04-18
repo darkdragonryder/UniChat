@@ -16,8 +16,11 @@ import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 import { isPremium } from './services/unichatCore.js';
 
-// ✅ ADDED: expiry warning system
+// ==============================
+// LICENSE SYSTEM IMPORTS (NEW)
+// ==============================
 import { runExpiryWarnings } from './services/licenseWatcher.js';
+import { runLicenseCleanup } from './services/licenseCleanup.js';
 
 // ==============================
 // SAFETY CHECK
@@ -42,7 +45,7 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS (SAFE)
+// LOAD COMMANDS
 // ==============================
 const commandFiles = fs.existsSync('./commands')
   ? fs.readdirSync('./commands').filter(f => f.endsWith('.js'))
@@ -83,15 +86,24 @@ try {
 }
 
 // ==============================
-// READY EVENT
+// READY EVENT (FULL SYSTEM)
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // 🔥 ADDED: expiry warning system (runs every hour)
+  // =========================
+  // EXPIRY WARNING SYSTEM
+  // =========================
   setInterval(() => {
     runExpiryWarnings(client);
-  }, 60 * 60 * 1000);
+  }, 60 * 60 * 1000); // every 1 hour
+
+  // =========================
+  // LICENSE CLEANUP SYSTEM
+  // =========================
+  setInterval(() => {
+    runLicenseCleanup();
+  }, 6 * 60 * 60 * 1000); // every 6 hours
 });
 
 // ==============================
