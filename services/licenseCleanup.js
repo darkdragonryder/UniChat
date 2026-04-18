@@ -1,51 +1,39 @@
 import supabase from './db.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 
-// ==============================
-// LICENSE CLEANUP JOB
-// ==============================
+// =====================================================
+// AUTO EXPIRE LICENSES
+// =====================================================
 export async function runLicenseCleanup() {
-  try {
-    const now = Date.now();
+  const now = Date.now();
 
-    // 🔥 Get expired licenses
-    const { data: expired, error } = await supabase
-      .from('licenses')
-      .select('*')
-      .lt('expiresAt', now)
-      .not('expiresAt', 'is', null)
-      .eq('used', true);
+  // Get all active licenses
+  const { data, error } = await supabase
+    .from('licenses')
+    .select('*')
+    .eq('expired', false);
 
-    if (error) {
-      console.log('License cleanup fetch error:', error);
-      return;
-    }
+  if (error) {
+    console.log('❌ cleanup fetch error:', error);
+    return;
+  }
 
-    if (!expired || expired.length === 0) {
-      return;
-    }
+  for (const license of data) {
+    if (
+      license.expiresAt !== null &&
+      now >= license.expiresAt
+    ) {
+      const { error: updateError } = await supabase
+        .from('licenses')
+        .update({
+          expired: true
+        })
+        .eq('key', license.key);
 
-    for (const lic of expired) {
-      const guildId = lic.usedByGuild;
-
-      if (!guildId) continue;
-
-      const config = getGuildConfig(guildId);
-      if (!config) continue;
-
-      // 🧠 Only remove if still active premium
-      if (config.premium && config.mode === 'license') {
-        config.premium = false;
-        config.premiumExpiry = null;
-        config.mode = 'expired';
-
-        saveGuildConfig(guildId, config);
-
-        console.log(`❌ Premium expired for guild ${guildId}`);
+      if (updateError) {
+        console.log('❌ cleanup update error:', updateError);
+      } else {
+        console.log(`🧹 Expired license: ${license.key}`);
       }
     }
-
-  } catch (err) {
-    console.log('runLicenseCleanup crash:', err);
   }
 }
