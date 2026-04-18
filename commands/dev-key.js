@@ -51,22 +51,18 @@ export default {
       console.log('🔑 Generating license:', type, days);
 
       // ==============================
-      // GENERATE KEY
+      // FIX: MUST AWAIT
       // ==============================
-      const key = generateLicenseKey(type, days);
+      const result = await generateLicenseKey(type, days);
+      const key = result.key;
 
       console.log('✅ Generated key:', key);
 
       // ==============================
       // FORMAT DURATION TEXT
       // ==============================
-      let durationText;
-
-      if (days === null) {
-        durationText = 'lifetime';
-      } else {
-        durationText = `${days} days`;
-      }
+      const durationText =
+        days === null ? 'lifetime' : `${days} days`;
 
       // ==============================
       // RESPONSE
