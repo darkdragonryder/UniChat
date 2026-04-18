@@ -1,6 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
-import { validateKey, useKey } from '../services/licenseStore.js';
+import { getGuildConfig } from '../utils/guildConfig.js';
 import { applyLicenseKey } from '../services/unichatCore.js';
 
 export default {
@@ -39,38 +38,38 @@ export default {
     }
 
     // =========================
-    // VALIDATE KEY
+    // APPLY LICENSE (FIXED)
     // =========================
-    const result = validateKey(key);
-
-    if (!result?.valid) {
-      return interaction.reply({
-        content: '❌ Invalid or expired license key.',
-        ephemeral: true
-      });
-    }
-
-    // =========================
-    // APPLY PREMIUM (CORE LOGIC)
-    // =========================
-    const applied = applyLicenseKey(guildId, interaction.user.id, key);
+    const applied = await applyLicenseKey(
+      guildId,
+      interaction.user.id,
+      key
+    );
 
     if (!applied?.ok) {
       return interaction.reply({
-        content: '❌ Failed to activate license.',
+        content: '❌ Invalid, used, or expired license key.',
         ephemeral: true
       });
     }
 
     // =========================
-    // MARK KEY USED (PERSISTENT STORE)
+    // FORMAT DURATION (FIXED)
     // =========================
-    useKey(key, guildId);
+    let durationText;
+
+    if (applied.days === null || applied.type === 'lifetime') {
+      durationText = 'lifetime';
+    } else {
+      durationText = `${applied.days} days`;
+    }
 
     // =========================
-    // SAVE CONFIG
+    // OPTIONAL: REAL EXPIRY DISPLAY
     // =========================
-    saveGuildConfig(guildId, config);
+    const expiryText = applied.expiry
+      ? `<t:${Math.floor(applied.expiry / 1000)}:R>`
+      : 'lifetime';
 
     // =========================
     // RESPONSE
@@ -79,7 +78,8 @@ export default {
       content:
         `💎 **Premium Activated!**\n\n` +
         `✔ Type: **${applied.type}**\n` +
-        `⏳ Duration: **${applied.days ?? 'lifetime'} days**\n` +
+        `⏳ Duration: **${durationText}**\n` +
+        `📅 Expires: ${expiryText}\n` +
         `✔ License Verified`,
       ephemeral: true
     });
