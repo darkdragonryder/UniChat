@@ -64,7 +64,6 @@ for (const file of commandFiles) {
     if (cmd?.default?.data?.name && cmd?.default?.execute) {
       client.commands.set(cmd.default.data.name, cmd.default);
     }
-
   } catch (err) {
     console.log(`❌ Failed loading command ${file}:`, err);
   }
@@ -97,15 +96,15 @@ try {
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // 🔥 SAAS EXPIRY ENGINE
+  // 🔥 MAIN EXPIRY ENGINE
   startLicenseExpiryWorker();
 
-  // WARNING SYSTEM
+  // ⚠️ WARNING SYSTEM (hourly)
   setInterval(() => {
     runExpiryWarnings(client);
   }, 60 * 60 * 1000);
 
-  // CLEANUP SYSTEM
+  // 🧹 CLEANUP (6 hours backup safety sweep)
   setInterval(() => {
     runLicenseCleanup();
   }, 6 * 60 * 60 * 1000);
@@ -142,7 +141,6 @@ client.on('messageCreate', async (message) => {
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
-
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -175,7 +173,6 @@ client.on('interactionCreate', async (interaction) => {
         content: `🌍 ${result?.text || result}`
       });
     }
-
   } catch (err) {
     console.log("Interaction error:", err);
   }
