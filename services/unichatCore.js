@@ -1,9 +1,43 @@
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 import { validateKey, useKey } from './licenseStore.js';
 
-// ==============================
-// APPLY LICENSE KEY (FIXED)
-// ==============================
+// =====================================================
+// OWNER CHECK
+// =====================================================
+export function isOwner(userId) {
+  return userId === process.env.OWNER_ID;
+}
+
+// =====================================================
+// PREMIUM CHECK (USED IN INDEX)
+// =====================================================
+export function isPremium(guildId) {
+  const config = getGuildConfig(guildId);
+
+  if (!config) return false;
+  if (!config.premium) return false;
+
+  const now = Date.now();
+
+  // Lifetime
+  if (config.premiumExpiry === null) return true;
+
+  // Expired
+  if (now >= config.premiumExpiry) {
+    config.premium = false;
+    config.premiumExpiry = null;
+    config.mode = 'expired';
+
+    saveGuildConfig(guildId, config);
+    return false;
+  }
+
+  return true;
+}
+
+// =====================================================
+// APPLY LICENSE KEY
+// =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
 
@@ -51,4 +85,21 @@ export async function applyLicenseKey(guildId, userId, key) {
     days,
     expiry: config.premiumExpiry
   };
+}
+
+// =====================================================
+// MANUAL PREMIUM (OPTIONAL)
+// =====================================================
+export function enablePremium(guildId, durationMs = null) {
+  const config = getGuildConfig(guildId);
+  if (!config) return;
+
+  const now = Date.now();
+
+  config.premium = true;
+  config.mode = 'manual';
+  config.premiumStart = now;
+  config.premiumExpiry = durationMs ? now + durationMs : null;
+
+  saveGuildConfig(guildId, config);
 }
