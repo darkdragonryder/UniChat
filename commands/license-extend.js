@@ -6,55 +6,65 @@ export default {
     .setName('license-extend')
     .setDescription('Extend a license duration (OWNER ONLY)')
     .addStringOption(o =>
-      o.setName('key').setRequired(true).setDescription('License key')
+      o.setName('guildid')
+        .setDescription('Guild ID')
+        .setRequired(true)
     )
     .addIntegerOption(o =>
-      o.setName('days').setRequired(true).setDescription('Days to add')
+      o.setName('days')
+        .setDescription('Days to add (7, 14, 30 etc)')
+        .setRequired(true)
     ),
 
   async execute(interaction) {
-    try {
-      if (interaction.user.id !== process.env.OWNER_ID) {
-        return interaction.reply({ content: '❌ No permission', ephemeral: true });
-      }
-
-      const key = interaction.options.getString('key');
-      const days = interaction.options.getInteger('days');
-
-      const { data, error } = await supabase
-        .from('licenses')
-        .select('*')
-        .eq('key', key)
-        .single();
-
-      if (error || !data) {
-        return interaction.reply({ content: '❌ License not found', ephemeral: true });
-      }
-
-      const currentExpiry = data.expiresAt || Date.now();
-      const newExpiry = currentExpiry + days * 86400000;
-
-      const { error: updateError } = await supabase
-        .from('licenses')
-        .update({
-          expiresAt: newExpiry,
-          durationDays: (data.durationDays || 0) + days
-        })
-        .eq('key', key);
-
-      if (updateError) throw updateError;
-
-      return interaction.reply({
-        content:
-          `⏳ License extended:\n` +
-          `🔑 \`${key}\`\n` +
-          `➕ +${days} days`,
-        ephemeral: true
-      });
-
-    } catch (err) {
-      console.log(err);
-      return interaction.reply({ content: '❌ Failed to extend license', ephemeral: true });
+    if (interaction.user.id !== process.env.OWNER_ID) {
+      return interaction.reply({ content: '❌ No permission', ephemeral: true });
     }
+
+    const guildId = interaction.options.getString('guildid');
+    const days = interaction.options.getInteger('days');
+
+    const { data, error } = await supabase
+      .from('licenses')
+      .select('*')
+      .eq('usedByGuild', guildId)
+      .eq('used', true)
+      .order('usedAt', { ascending: false });
+
+    if (error || !data?.length) {
+      return interaction.reply({ content: '❌ No license found', ephemeral: true });
+    }
+
+    const license = data[0];
+
+    let newExpiry;
+
+    if (!license.expiresAt) {
+      // lifetime → convert to time-based
+      newExpiry = Date.now() + days * 86400000;
+    } else {
+      newExpiry = license.expiresAt + days * 86400000;
+    }
+
+    const { error: updateError } = await supabase
+      .from('licenses')
+      .update({
+        expiresAt: newExpiry,
+        expired: false
+      })
+      .eq('key', license.key);
+
+    if (updateError) {
+      return interaction.reply({ content: '❌ Failed to extend', ephemeral: true });
+    }
+
+    return interaction.reply({
+      content:
+        `⏱ **License Extended**\n\n` +
+        `🏠 Guild: ${guildId}\n` +
+        `➕ +${days} days added\n` +
+        `📅 New expiry: <t:${Math.floor(newExpiry / 1000)}:R>`,
+      ephemeral: true
+    });
   }
 };
