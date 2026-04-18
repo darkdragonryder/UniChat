@@ -8,17 +8,27 @@ export default {
 
   async execute(interaction) {
     if (interaction.user.id !== process.env.OWNER_ID) {
-      return interaction.reply({ content: '❌ No permission', ephemeral: true });
+      return interaction.reply({
+        content: '❌ No permission',
+        ephemeral: true
+      });
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('licenses')
       .select('*');
 
-    const total = data?.length || 0;
-    const used = data?.filter(l => l.used).length || 0;
-    const active = data?.filter(l => !l.used).length || 0;
-    const expired = data?.filter(l => l.expired).length || 0;
+    if (error) {
+      return interaction.reply({
+        content: '❌ Failed to fetch stats',
+        ephemeral: true
+      });
+    }
+
+    const total = data.length;
+    const used = data.filter(l => l.used).length;
+    const active = data.filter(l => !l.used && !l.expired).length;
+    const expired = data.filter(l => l.expired).length;
 
     return interaction.reply({
       content:
