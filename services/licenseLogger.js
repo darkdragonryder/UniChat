@@ -1,6 +1,9 @@
 import supabase from './db.js';
 
-export async function logLicense(action, key, userId, guildId) {
+// ==============================
+// LICENSE AUDIT LOGGING
+// ==============================
+export async function logLicense(action, key, userId = null, guildId = null) {
   try {
     await supabase.from('license_logs').insert({
       key,
