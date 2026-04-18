@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -7,7 +7,7 @@ export default {
 
   async execute(interaction) {
     try {
-      // OPTIONAL: restrict to admin/owner
+
       if (interaction.user.id !== process.env.OWNER_ID) {
         return interaction.reply({
           content: '❌ No permission',
@@ -15,19 +15,30 @@ export default {
         });
       }
 
-      // YOUR WEB DASHBOARD LINK
       const url = process.env.DASHBOARD_URL;
 
+      if (!url) {
+        return interaction.reply({
+          content: '❌ Dashboard URL not set in environment variables',
+          ephemeral: true
+        });
+      }
+
+      const button = new ButtonBuilder()
+        .setLabel('Go to your dashboard')
+        .setStyle(ButtonStyle.Link)
+        .setURL(url);
+
+      const row = new ActionRowBuilder().addComponents(button);
+
       return interaction.reply({
-        content:
-          `🌐 **Dashboard Access**\n\n` +
-          `Click below to open the web control panel:\n\n` +
-          `${url}`,
+        content: 'Here you go!',
+        components: [row],
         ephemeral: true
       });
 
     } catch (err) {
-      console.log('dashboard command error:', err);
+      console.log(err);
 
       return interaction.reply({
         content: '❌ Failed to open dashboard',
