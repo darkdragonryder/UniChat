@@ -1,0 +1,28 @@
+{
+  "name": "unichat",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darkdragonryder/UniChat.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/darkdragonryder/UniChat/issues"
+  },
+  "homepage": "https://github.com/darkdragonryder/UniChat#readme",
+  "dependencies": {
+    "discord.js": "^14.26.3",
+    "dotenv": "^17.4.2",
+    "node-fetch": "^3.3.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
+  }
+}
