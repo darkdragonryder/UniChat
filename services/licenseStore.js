@@ -4,7 +4,7 @@ import supabase from './db.js';
 // GENERATE LICENSE KEY
 // ==============================
 export async function generateLicenseKey(type, durationDays) {
-  const key = `${type.toUpperCase()}-${Math.random()
+  const key = `${type.toLowerCase()}-${Math.random()
     .toString(36)
     .slice(2, 10)
     .toUpperCase()}`;
@@ -19,7 +19,7 @@ export async function generateLicenseKey(type, durationDays) {
   const { error } = await supabase.from('licenses').insert({
     key,
     used: false,
-    type,
+    type: type.toLowerCase(),
     durationDays: durationDays ?? null,
     createdAt,
     expiresAt
@@ -30,10 +30,9 @@ export async function generateLicenseKey(type, durationDays) {
     throw error;
   }
 
-  // ✅ FIX: return full object (NOT just key)
   return {
     key,
-    type,
+    type: type.toLowerCase(),
     durationDays,
     expiresAt
   };
@@ -93,7 +92,7 @@ export async function useKey(key, guildId, userId) {
 }
 
 // ==============================
-// CHECK IF LICENSE ACTIVE
+// CHECK ACTIVE
 // ==============================
 export async function isLicenseActive(key) {
   const { data, error } = await supabase
