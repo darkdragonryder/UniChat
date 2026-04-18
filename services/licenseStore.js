@@ -19,6 +19,7 @@ export async function generateLicenseKey(type, durationDays) {
   const { error } = await supabase.from('licenses').insert({
     key,
     used: false,
+    expired: false,
     type: type.toLowerCase(),
     durationDays: durationDays ?? null,
     createdAt,
@@ -26,7 +27,7 @@ export async function generateLicenseKey(type, durationDays) {
   });
 
   if (error) {
-    console.log('generateLicenseKey error:', error);
+    console.log('❌ generateLicenseKey error:', error);
     throw error;
   }
 
@@ -56,6 +57,10 @@ export async function validateKey(key) {
     return { valid: false, reason: 'ALREADY_USED' };
   }
 
+  if (data.expired) {
+    return { valid: false, reason: 'EXPIRED' };
+  }
+
   return { valid: true, entry: data };
 }
 
@@ -77,6 +82,7 @@ export async function useKey(key, guildId, userId) {
     .from('licenses')
     .update({
       used: true,
+      expired: false,
       usedByGuild: guildId,
       usedByUser: userId,
       usedAt: now
@@ -84,7 +90,7 @@ export async function useKey(key, guildId, userId) {
     .eq('key', key);
 
   if (updateError) {
-    console.log('useKey error:', updateError);
+    console.log('❌ useKey error:', updateError);
     throw updateError;
   }
 
@@ -102,6 +108,8 @@ export async function isLicenseActive(key) {
     .single();
 
   if (error || !data) return false;
+
+  if (data.expired) return false;
 
   if (!data.used) return true;
 
