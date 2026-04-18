@@ -10,30 +10,25 @@ import {
 import fs from 'fs';
 
 // ==============================
-// DB INIT (MUST LOAD FIRST)
+// DB INIT
 // ==============================
 import './services/db.js';
 
 // ==============================
-// SAAS SYSTEMS
+// LICENSE SYSTEM
 // ==============================
-import { startLicenseExpiryWorker } from './services/licenseExpiryWorker.js';
-import { runExpiryWarnings } from './services/licenseWatcher.js';
-import { runLicenseCleanup } from './services/licenseCleanup.js';
+import { isLicenseActive } from './services/licenseStore.js';
 
 // ==============================
 // UTILITIES
 // ==============================
 import { translate } from './utils/translate.js';
-import { getGuildConfig } from './utils/guildConfig.js';
-import { isPremium } from './services/unichatCore.js';
-import supabase from './services/db.js';
 
 // ==============================
 // SAFETY CHECK
 // ==============================
 if (!process.env.TOKEN || !process.env.CLIENT_ID) {
-  console.error('❌ Missing TOKEN or CLIENT_ID in .env');
+  console.error('❌ Missing TOKEN or CLIENT_ID');
   process.exit(1);
 }
 
@@ -44,8 +39,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -54,9 +48,7 @@ client.commands = new Collection();
 // ==============================
 // LOAD COMMANDS
 // ==============================
-const commandFiles = fs.existsSync('./commands')
-  ? fs.readdirSync('./commands').filter(f => f.endsWith('.js'))
-  : [];
+const commandFiles = fs.readdirSync('./commands').filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
   try {
@@ -67,7 +59,7 @@ for (const file of commandFiles) {
     }
 
   } catch (err) {
-    console.log(`❌ Failed loading command ${file}:`, err);
+    console.log(`❌ Failed loading ${file}:`, err);
   }
 }
 
@@ -80,139 +72,59 @@ try {
   await rest.put(
     Routes.applicationCommands(process.env.CLIENT_ID),
     {
-      body: [
-        ...client.commands.map(c => c.data.toJSON()),
-        { name: 'Translate Message', type: 3 }
-      ]
+      body: client.commands.map(c => c.data.toJSON())
     }
   );
 
-  console.log("✅ Commands registered");
+  console.log('✅ Commands registered');
+
 } catch (err) {
-  console.log("❌ Command registration failed:", err);
+  console.log('❌ Command registration failed:', err);
 }
 
 // ==============================
-// READY EVENT
+// READY
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
-
-  startLicenseExpiryWorker();
-
-  setInterval(() => {
-    runExpiryWarnings(client);
-  }, 60 * 60 * 1000);
-
-  setInterval(() => {
-    runLicenseCleanup();
-  }, 6 * 60 * 60 * 1000);
 });
 
 // ==============================
-// MESSAGE CREATE (PREMIUM GATE)
+// MESSAGE TRANSLATE SYSTEM
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
 
-    const config = getGuildConfig(message.guild.id);
-    if (!config) return;
+    // 🔥 PREMIUM CHECK
+    const premium = await isLicenseActive(message.guild.id);
+    if (!premium) return;
 
-    if (!isPremium(message.guild.id)) return;
-
-    const targetLang = config.autoTranslateLang || 'en';
-
-    const result = await translate(message.content, targetLang);
+    // 🌍 TRANSLATE
+    const result = await translate(message.content, 'en');
     if (!result) return;
 
-    await message.channel.send({
-      content: `🌍 ${result?.text || result}`
-    });
+    await message.channel.send(`🌍 ${result.text || result}`);
 
   } catch (err) {
-    console.log("Message error:", err);
+    console.log('Message error:', err);
   }
 });
 
 // ==============================
-// INTERACTION HANDLER
+// INTERACTIONS
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
+    if (!interaction.isChatInputCommand()) return;
 
-    // ------------------------------
-    // SLASH COMMANDS
-    // ------------------------------
-    if (interaction.isChatInputCommand()) {
-      const cmd = client.commands.get(interaction.commandName);
-      if (!cmd) return;
+    const cmd = client.commands.get(interaction.commandName);
+    if (!cmd) return;
 
-      await cmd.execute(interaction);
-      return;
-    }
-
-    // ------------------------------
-    // BUTTONS (TRANSLATE SYSTEM)
-    // ------------------------------
-    if (interaction.isButton()) {
-      if (!interaction.customId?.startsWith('translate_')) return;
-
-      await interaction.deferReply({ ephemeral: true });
-
-      const msgId = interaction.customId.split('_')[1];
-
-      const msg = await interaction.channel?.messages
-        .fetch(msgId)
-        .catch(() => null);
-
-      if (!msg) {
-        return interaction.editReply('❌ Message not found');
-      }
-
-      const config = getGuildConfig(interaction.guild?.id);
-      const lang = config?.languages?.[interaction.user.id] || 'en';
-
-      const result = await translate(msg.content, lang);
-
-      return interaction.editReply({
-        content: `🌍 ${result?.text || result}`
-      });
-    }
-
-    // ------------------------------
-    // DASHBOARD REVOKE SELECT MENU
-    // ------------------------------
-    if (interaction.isStringSelectMenu()) {
-      if (interaction.customId === 'dashboard_revoke_select') {
-        const key = interaction.values[0];
-
-        const { error } = await supabase
-          .from('licenses')
-          .update({
-            expired: true,
-            expiresAt: Date.now()
-          })
-          .eq('key', key);
-
-        if (error) {
-          console.log(error);
-
-          return interaction.reply({
-            content: '❌ Failed to revoke license',
-            ephemeral: true
-          });
-        }
-
-        return interaction.update({
-          content: `🚫 License revoked successfully\n🔑 Key: \`${key}\``,
-          components: []
-        });
-      }
-    }
+    await cmd.execute(interaction);
 
   } catch (err) {
-    console.log("Interaction error:", err);
+    console.log('Interaction error:', err);
   }
 });
 
