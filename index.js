@@ -9,7 +9,7 @@ import {
 
 import fs from 'fs';
 
-// 🔥 IMPORTANT: initialize DB FIRST
+// 🔥 DB INIT FIRST
 import './services/db.js';
 
 import { translate } from './utils/translate.js';
@@ -17,7 +17,7 @@ import { getGuildConfig } from './utils/guildConfig.js';
 import { isPremium } from './services/unichatCore.js';
 
 // ==============================
-// LICENSE SYSTEM IMPORTS (NEW)
+// LICENSE SYSTEM IMPORTS
 // ==============================
 import { runExpiryWarnings } from './services/licenseWatcher.js';
 import { runLicenseCleanup } from './services/licenseCleanup.js';
@@ -86,7 +86,7 @@ try {
 }
 
 // ==============================
-// READY EVENT (FULL SYSTEM)
+// READY EVENT (HARDENED)
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
@@ -94,20 +94,28 @@ client.once('ready', () => {
   // =========================
   // EXPIRY WARNING SYSTEM
   // =========================
-  setInterval(() => {
-    runExpiryWarnings(client);
-  }, 60 * 60 * 1000); // every 1 hour
+  setInterval(async () => {
+    try {
+      await runExpiryWarnings(client);
+    } catch (err) {
+      console.log('❌ Expiry warning error:', err);
+    }
+  }, 60 * 60 * 1000);
 
   // =========================
   // LICENSE CLEANUP SYSTEM
   // =========================
-  setInterval(() => {
-    runLicenseCleanup();
-  }, 6 * 60 * 60 * 1000); // every 6 hours
+  setInterval(async () => {
+    try {
+      await runLicenseCleanup();
+    } catch (err) {
+      console.log('❌ License cleanup error:', err);
+    }
+  }, 6 * 60 * 60 * 1000);
 });
 
 // ==============================
-// MESSAGE CREATE (PREMIUM AUTO TRANSLATE)
+// MESSAGE CREATE (PREMIUM SAFE)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
@@ -116,7 +124,9 @@ client.on('messageCreate', async (message) => {
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
-    if (!isPremium(message.guild.id)) return;
+    // 🔥 SAFE PREMIUM CHECK (future-proof)
+    const premium = await Promise.resolve(isPremium(message.guild.id));
+    if (!premium) return;
 
     const targetLang = config.autoTranslateLang || 'en';
 
