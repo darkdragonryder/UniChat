@@ -14,9 +14,6 @@ export default {
 
   async execute(interaction) {
     try {
-      // ==============================
-      // OWNER CHECK
-      // ==============================
       if (interaction.user.id !== process.env.OWNER_ID) {
         return interaction.reply({
           content: '❌ No permission',
@@ -24,20 +21,17 @@ export default {
         });
       }
 
-      const type = interaction.options.getString('type')?.toLowerCase();
+      let type = interaction.options.getString('type');
 
-      const validTypes = ['dev', '7day', '14day', '30day', 'lifetime'];
-
-      if (!validTypes.includes(type)) {
+      if (!type) {
         return interaction.reply({
-          content: '❌ Invalid type. Use: dev, 7day, 14day, 30day, lifetime',
+          content: '❌ Missing type',
           ephemeral: true
         });
       }
 
-      // ==============================
-      // DURATION MAP
-      // ==============================
+      type = type.trim().toLowerCase();
+
       const durationMap = {
         dev: 7,
         '7day': 7,
@@ -46,27 +40,25 @@ export default {
         lifetime: null
       };
 
+      if (!(type in durationMap)) {
+        return interaction.reply({
+          content: '❌ Invalid type',
+          ephemeral: true
+        });
+      }
+
       const days = durationMap[type];
 
-      console.log('🔑 Generating license:', type, days);
+      console.log('🔑 TYPE:', type);
+      console.log('🔑 DAYS:', days);
 
-      // ==============================
-      // FIX: MUST AWAIT
-      // ==============================
       const result = await generateLicenseKey(type, days);
+
       const key = result.key;
 
-      console.log('✅ Generated key:', key);
-
-      // ==============================
-      // FORMAT DURATION TEXT
-      // ==============================
       const durationText =
         days === null ? 'lifetime' : `${days} days`;
 
-      // ==============================
-      // RESPONSE
-      // ==============================
       return interaction.reply({
         content:
           `✅ ${type.toUpperCase()} key generated:\n\n` +
