@@ -9,19 +9,35 @@ export function isOwner(userId) {
 }
 
 // =====================================================
-// PREMIUM CHECK (SAFE + FIXED)
+// PREMIUM CHECK (NOW WITH AUTO EXPIRY ENFORCEMENT)
 // =====================================================
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
 
   if (!config) return false;
-
   if (!config.premium) return false;
 
-  // lifetime support
+  const now = Date.now();
+
+  // =========================
+  // LIFETIME ACCESS
+  // =========================
   if (config.premiumExpiry === null) return true;
 
-  return Date.now() < config.premiumExpiry;
+  // =========================
+  // EXPIRED CHECK (AUTO DISABLE)
+  // =========================
+  if (now >= config.premiumExpiry) {
+    config.premium = false;
+    config.premiumExpiry = null;
+    config.mode = 'expired';
+
+    saveGuildConfig(guildId, config);
+
+    return false;
+  }
+
+  return true;
 }
 
 // =====================================================
@@ -43,7 +59,7 @@ export function enablePremium(guildId, durationMs = null) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY (STABLE VERSION)
+// APPLY LICENSE KEY (STABLE + SAFE)
 // =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -52,7 +68,6 @@ export async function applyLicenseKey(guildId, userId, key) {
     return { ok: false, reason: 'NO_CONFIG' };
   }
 
-  // validate
   const result = await validateKey(key);
 
   if (!result.valid) return result;
@@ -81,7 +96,6 @@ export async function applyLicenseKey(guildId, userId, key) {
     config.premiumExpiry = now + days * 86400000;
   }
 
-  // mark key used safely
   try {
     await useKey(key, guildId, userId);
   } catch (err) {
@@ -99,7 +113,7 @@ export async function applyLicenseKey(guildId, userId, key) {
 }
 
 // =====================================================
-// REFERRAL SYSTEM (UNCHANGED BUT SAFE)
+// REFERRAL SYSTEM
 // =====================================================
 export function rewardReferral(config, referrerId) {
   if (!config) return config;
