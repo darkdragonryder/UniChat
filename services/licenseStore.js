@@ -9,14 +9,24 @@ export function generateLicenseKey(type, durationDays) {
     .slice(2, 10)
     .toUpperCase()}`;
 
+  const createdAt = Date.now();
+
+  const expiresAt =
+    durationDays === null
+      ? null
+      : createdAt + durationDays * 86400000;
+
   db.prepare(`
-    INSERT INTO licenses (key, used, type, durationDays, createdAt)
-    VALUES (?, 0, ?, ?, ?)
+    INSERT INTO licenses (
+      key, used, type, durationDays, createdAt, expiresAt
+    )
+    VALUES (?, 0, ?, ?, ?, ?)
   `).run(
     key,
     type,
-    durationDays ?? 30,
-    Date.now()
+    durationDays ?? null,
+    createdAt,
+    expiresAt
   );
 
   return key;
@@ -37,7 +47,7 @@ export function validateKey(key) {
 }
 
 // ==============================
-// USE KEY (NOW WITH EXPIRY SUPPORT)
+// USE KEY
 // ==============================
 export function useKey(key, guildId, userId) {
   const row = db.prepare(`
@@ -48,27 +58,17 @@ export function useKey(key, guildId, userId) {
 
   const now = Date.now();
 
-  // =========================
-  // CALCULATE EXPIRY
-  // =========================
-  const expiresAt =
-    row.durationDays === null
-      ? null
-      : now + row.durationDays * 86400000;
-
   db.prepare(`
     UPDATE licenses
     SET used = 1,
         usedByGuild = ?,
         usedByUser = ?,
-        usedAt = ?,
-        expiresAt = ?
+        usedAt = ?
     WHERE key = ?
   `).run(
     guildId,
     userId,
     now,
-    expiresAt,
     key
   );
 
@@ -76,7 +76,7 @@ export function useKey(key, guildId, userId) {
 }
 
 // ==============================
-// OPTIONAL: CHECK IF STILL VALID
+// CHECK IF LICENSE ACTIVE
 // ==============================
 export function isLicenseActive(key) {
   const row = db.prepare(`
