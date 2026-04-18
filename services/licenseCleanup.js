@@ -1,28 +1,51 @@
-import db from './db.js';
+import supabase from './db.js';
+import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 
 // ==============================
-// AUTO CLEANUP EXPIRED LICENSES
+// LICENSE CLEANUP JOB
 // ==============================
-export function runLicenseCleanup() {
-  const now = Date.now();
+export async function runLicenseCleanup() {
+  try {
+    const now = Date.now();
 
-  // OPTION A: mark as cleaned (safer)
-  db.prepare(`
-    UPDATE licenses
-    SET used = 1
-    WHERE expiresAt IS NOT NULL
-      AND expiresAt < ?
-      AND used = 0
-  `).run(now);
+    // 🔥 Get expired licenses
+    const { data: expired, error } = await supabase
+      .from('licenses')
+      .select('*')
+      .lt('expiresAt', now)
+      .not('expiresAt', 'is', null)
+      .eq('used', true);
 
-  // OPTION B: optionally delete expired fully (UNCOMMENT IF YOU WANT HARD CLEAN)
-  /*
-  db.prepare(`
-    DELETE FROM licenses
-    WHERE expiresAt IS NOT NULL
-      AND expiresAt < ?
-  `).run(now);
-  */
+    if (error) {
+      console.log('License cleanup fetch error:', error);
+      return;
+    }
 
-  console.log('🧹 License cleanup completed');
+    if (!expired || expired.length === 0) {
+      return;
+    }
+
+    for (const lic of expired) {
+      const guildId = lic.usedByGuild;
+
+      if (!guildId) continue;
+
+      const config = getGuildConfig(guildId);
+      if (!config) continue;
+
+      // 🧠 Only remove if still active premium
+      if (config.premium && config.mode === 'license') {
+        config.premium = false;
+        config.premiumExpiry = null;
+        config.mode = 'expired';
+
+        saveGuildConfig(guildId, config);
+
+        console.log(`❌ Premium expired for guild ${guildId}`);
+      }
+    }
+
+  } catch (err) {
+    console.log('runLicenseCleanup crash:', err);
+  }
 }
