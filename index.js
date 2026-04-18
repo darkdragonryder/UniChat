@@ -9,32 +9,11 @@ import {
 
 import fs from 'fs';
 
-// ==============================
-// DB INIT
-// ==============================
 import './services/db.js';
-
-// ==============================
-// LICENSE SYSTEM
-// ==============================
 import { isLicenseActive } from './services/licenseStore.js';
-
-// ==============================
-// UTILITIES
-// ==============================
 import { translate } from './utils/translate.js';
+import { getUserLang } from './utils/userLang.js';
 
-// ==============================
-// SAFETY CHECK
-// ==============================
-if (!process.env.TOKEN || !process.env.CLIENT_ID) {
-  console.error('❌ Missing TOKEN or CLIENT_ID');
-  process.exit(1);
-}
-
-// ==============================
-// CLIENT
-// ==============================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -45,90 +24,86 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// ==============================
 // LOAD COMMANDS
-// ==============================
 const commandFiles = fs.readdirSync('./commands').filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
-  try {
-    const cmd = await import(`./commands/${file}`);
-
-    if (cmd?.default?.data?.name && cmd?.default?.execute) {
-      client.commands.set(cmd.default.data.name, cmd.default);
-    }
-
-  } catch (err) {
-    console.log(`❌ Failed loading ${file}:`, err);
+  const cmd = await import(`./commands/${file}`);
+  if (cmd?.default?.data?.name) {
+    client.commands.set(cmd.default.data.name, cmd.default);
   }
 }
 
-// ==============================
-// REGISTER COMMANDS
-// ==============================
+// REGISTER
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+await rest.put(
+  Routes.applicationCommands(process.env.CLIENT_ID),
+  {
+    body: client.commands.map(c => c.data.toJSON())
+  }
+);
 
-try {
-  await rest.put(
-    Routes.applicationCommands(process.env.CLIENT_ID),
-    {
-      body: client.commands.map(c => c.data.toJSON())
-    }
-  );
-
-  console.log('✅ Commands registered');
-
-} catch (err) {
-  console.log('❌ Command registration failed:', err);
-}
-
-// ==============================
 // READY
-// ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 });
 
 // ==============================
-// MESSAGE TRANSLATE SYSTEM
+// MESSAGE HANDLER (SMART SYSTEM)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
 
-    // 🔥 PREMIUM CHECK
     const premium = await isLicenseActive(message.guild.id);
-    if (!premium) return;
 
-    // 🌍 TRANSLATE
-    const result = await translate(message.content, 'en');
-    if (!result) return;
+    // FREE USERS → FLAG ONLY
+    if (!premium) {
+      if (!message.content.startsWith('!t ')) return;
 
-    await message.channel.send(`🌍 ${result.text || result}`);
+      const text = message.content.slice(3);
+      const result = await translate(text, 'EN');
+      if (!result) return;
+
+      return message.reply(`🌍 ${result.text}`);
+    }
+
+    // ==============================
+    // PREMIUM → PER USER TRANSLATION
+    // ==============================
+
+    const members = await message.guild.members.fetch();
+
+    const translations = [];
+
+    for (const [id, member] of members) {
+      if (member.user.bot) continue;
+
+      const lang = getUserLang(id);
+
+      const result = await translate(message.content, lang);
+      if (!result) continue;
+
+      translations.push(`**${member.user.username} (${lang})**: ${result.text}`);
+    }
+
+    if (translations.length === 0) return;
+
+    await message.channel.send(`🌍 Translations:\n\n${translations.join('\n')}`);
 
   } catch (err) {
-    console.log('Message error:', err);
+    console.log(err);
   }
 });
 
-// ==============================
 // INTERACTIONS
-// ==============================
 client.on('interactionCreate', async (interaction) => {
-  try {
-    if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isChatInputCommand()) return;
 
-    const cmd = client.commands.get(interaction.commandName);
-    if (!cmd) return;
+  const cmd = client.commands.get(interaction.commandName);
+  if (!cmd) return;
 
-    await cmd.execute(interaction);
-
-  } catch (err) {
-    console.log('Interaction error:', err);
-  }
+  await cmd.execute(interaction);
 });
 
-// ==============================
-// LOGIN
-// ==============================
 client.login(process.env.TOKEN);
