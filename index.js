@@ -22,11 +22,12 @@ import { runExpiryWarnings } from './services/licenseWatcher.js';
 import { runLicenseCleanup } from './services/licenseCleanup.js';
 
 // ==============================
-// UTILITIES
+// CORE UTILITIES
 // ==============================
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 import { isPremium } from './services/unichatCore.js';
+import supabase from './services/db.js';
 
 // ==============================
 // SAFETY CHECK
@@ -64,6 +65,7 @@ for (const file of commandFiles) {
     if (cmd?.default?.data?.name && cmd?.default?.execute) {
       client.commands.set(cmd.default.data.name, cmd.default);
     }
+
   } catch (err) {
     console.log(`❌ Failed loading command ${file}:`, err);
   }
@@ -96,22 +98,22 @@ try {
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // 🔥 MAIN EXPIRY ENGINE
+  // 🔥 AUTO EXPIRY ENGINE
   startLicenseExpiryWorker();
 
-  // ⚠️ WARNING SYSTEM (hourly)
+  // WARNING SYSTEM
   setInterval(() => {
     runExpiryWarnings(client);
   }, 60 * 60 * 1000);
 
-  // 🧹 CLEANUP (6 hours backup safety sweep)
+  // CLEANUP SYSTEM
   setInterval(() => {
     runLicenseCleanup();
   }, 6 * 60 * 60 * 1000);
 });
 
 // ==============================
-// MESSAGE CREATE
+// MESSAGE CREATE (PREMIUM CHECK)
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
@@ -120,6 +122,7 @@ client.on('messageCreate', async (message) => {
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
+    // IMPORTANT: premium gate
     if (!isPremium(message.guild.id)) return;
 
     const targetLang = config.autoTranslateLang || 'en';
@@ -141,6 +144,10 @@ client.on('messageCreate', async (message) => {
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
+
+    // ------------------------------
+    // SLASH COMMANDS
+    // ------------------------------
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -149,6 +156,9 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    // ------------------------------
+    // BUTTONS
+    // ------------------------------
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
 
@@ -173,6 +183,37 @@ client.on('interactionCreate', async (interaction) => {
         content: `🌍 ${result?.text || result}`
       });
     }
+
+    // ------------------------------
+    // SELECT MENU (REVOKE SYSTEM)
+    // ------------------------------
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId !== 'revoke_select') return;
+
+      const key = interaction.values[0];
+
+      const { error } = await supabase
+        .from('licenses')
+        .update({
+          expired: true
+        })
+        .eq('key', key);
+
+      if (error) {
+        console.log(error);
+
+        return interaction.reply({
+          content: '❌ Failed to revoke license',
+          ephemeral: true
+        });
+      }
+
+      return interaction.update({
+        content: '🚫 License revoked successfully',
+        components: []
+      });
+    }
+
   } catch (err) {
     console.log("Interaction error:", err);
   }
