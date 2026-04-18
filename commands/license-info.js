@@ -1,78 +1,68 @@
 import { SlashCommandBuilder } from 'discord.js';
-import db from '../services/db.js';
+import supabase from '../services/db.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('license-info')
-    .setDescription('Check a license key (OWNER ONLY)')
-    .addStringOption(option =>
-      option
+    .setDescription('Check a license key status')
+    .addStringOption(opt =>
+      opt
         .setName('key')
-        .setDescription('License key to inspect')
+        .setDescription('License key to check')
         .setRequired(true)
     ),
 
   async execute(interaction) {
     try {
-      // ==============================
-      // OWNER ONLY CHECK
-      // ==============================
-      if (interaction.user.id !== process.env.OWNER_ID) {
-        return interaction.reply({
-          content: '❌ No permission',
-          flags: 64
-        });
-      }
-
       const key = interaction.options.getString('key');
 
-      // ==============================
-      // FETCH LICENSE
-      // ==============================
-      const row = db.prepare(`
-        SELECT * FROM licenses WHERE key = ?
-      `).get(key);
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('key', key)
+        .single();
 
-      if (!row) {
+      if (error || !data) {
         return interaction.reply({
           content: '❌ License not found',
-          flags: 64
+          ephemeral: true
         });
       }
 
+      const now = Date.now();
+
       // ==============================
-      // FORMAT EXPIRY
+      // STATUS CALCULATION
       // ==============================
-      let expiryText = 'Lifetime';
+      let status = 'ACTIVE';
 
-      if (row.expiresAt) {
-        const remaining = row.expiresAt - Date.now();
-
-        if (remaining <= 0) {
-          expiryText = '❌ EXPIRED';
-        } else {
-          const hours = Math.floor(remaining / (1000 * 60 * 60));
-          const days = Math.floor(hours / 24);
-          const hrs = hours % 24;
-
-          expiryText = `${days}d ${hrs}h remaining`;
-        }
+      if (data.used && data.expiresAt && now > data.expiresAt) {
+        status = 'EXPIRED';
       }
 
-      // ==============================
-      // FORMAT RESPONSE
-      // ==============================
+      if (!data.used) {
+        status = 'UNUSED';
+      }
+
+      const expiryText =
+        data.expiresAt === null
+          ? 'lifetime'
+          : `<t:${Math.floor(data.expiresAt / 1000)}:R>`;
+
       return interaction.reply({
         content:
-          `📜 **License Info**\n\n` +
-          `🔑 Key: \`${row.key}\`\n` +
-          `📦 Type: ${row.type}\n` +
-          `📊 Used: ${row.used ? 'YES' : 'NO'}\n` +
-          `⏳ Expiry: ${expiryText}\n\n` +
-          `👤 User: ${row.usedByUser || 'none'}\n` +
-          `🏠 Guild: ${row.usedByGuild || 'none'}\n` +
-          `📅 Created: <t:${Math.floor(row.createdAt / 1000)}:R>`,
-        flags: 64
+`📜 **License Info**
+
+🔑 Key: \`${data.key}\`
+📦 Type: ${data.type}
+📊 Used: ${data.used ? 'YES' : 'NO'}
+📌 Status: **${status}**
+⏳ Expiry: ${expiryText}
+
+👤 User: ${data.usedByUser || 'none'}
+🏠 Guild: ${data.usedByGuild || 'none'}
+📅 Created: <t:${Math.floor(data.createdAt / 1000)}:R>`,
+        ephemeral: true
       });
 
     } catch (err) {
@@ -80,7 +70,7 @@ export default {
 
       return interaction.reply({
         content: '❌ Error fetching license info',
-        flags: 64
+        ephemeral: true
       });
     }
   }
