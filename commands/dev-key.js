@@ -21,16 +21,7 @@ export default {
         });
       }
 
-      let type = interaction.options.getString('type');
-
-      if (!type) {
-        return interaction.reply({
-          content: '❌ Missing type',
-          ephemeral: true
-        });
-      }
-
-      type = type.trim().toLowerCase();
+      const type = interaction.options.getString('type')?.toLowerCase();
 
       const durationMap = {
         dev: 7,
@@ -49,12 +40,7 @@ export default {
 
       const days = durationMap[type];
 
-      console.log('🔑 TYPE:', type);
-      console.log('🔑 DAYS:', days);
-
       const result = await generateLicenseKey(type, days);
-
-      const key = result.key;
 
       const durationText =
         days === null ? 'lifetime' : `${days} days`;
@@ -62,7 +48,7 @@ export default {
       return interaction.reply({
         content:
           `✅ ${type.toUpperCase()} key generated:\n\n` +
-          `🔑 \`${key}\`\n\n` +
+          `🔑 \`${result.key}\`\n\n` +
           `⏳ Duration: **${durationText}**`,
         ephemeral: true
       });
