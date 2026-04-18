@@ -4,74 +4,52 @@ import supabase from '../services/db.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('license-info')
-    .setDescription('Check a license key status')
-    .addStringOption(opt =>
-      opt
+    .setDescription('Check license details')
+    .addStringOption(option =>
+      option
         .setName('key')
-        .setDescription('License key to check')
+        .setDescription('License key')
         .setRequired(true)
     ),
 
   async execute(interaction) {
-    try {
-      const key = interaction.options.getString('key');
+    const key = interaction.options.getString('key');
 
-      const { data, error } = await supabase
-        .from('licenses')
-        .select('*')
-        .eq('key', key)
-        .single();
+    const { data, error } = await supabase
+      .from('licenses')
+      .select('*')
+      .eq('key', key)
+      .single();
 
-      if (error || !data) {
-        return interaction.reply({
-          content: '❌ License not found',
-          ephemeral: true
-        });
-      }
-
-      const now = Date.now();
-
-      // ==============================
-      // STATUS CALCULATION
-      // ==============================
-      let status = 'ACTIVE';
-
-      if (data.used && data.expiresAt && now > data.expiresAt) {
-        status = 'EXPIRED';
-      }
-
-      if (!data.used) {
-        status = 'UNUSED';
-      }
-
-      const expiryText =
-        data.expiresAt === null
-          ? 'lifetime'
-          : `<t:${Math.floor(data.expiresAt / 1000)}:R>`;
-
+    if (error || !data) {
       return interaction.reply({
-        content:
-`📜 **License Info**
-
-🔑 Key: \`${data.key}\`
-📦 Type: ${data.type}
-📊 Used: ${data.used ? 'YES' : 'NO'}
-📌 Status: **${status}**
-⏳ Expiry: ${expiryText}
-
-👤 User: ${data.usedByUser || 'none'}
-🏠 Guild: ${data.usedByGuild || 'none'}
-📅 Created: <t:${Math.floor(data.createdAt / 1000)}:R>`,
-        ephemeral: true
-      });
-
-    } catch (err) {
-      console.log('license-info error:', err);
-
-      return interaction.reply({
-        content: '❌ Error fetching license info',
+        content: '❌ License not found',
         ephemeral: true
       });
     }
+
+    const duration =
+      data.durationDays === null
+        ? 'lifetime'
+        : `${data.durationDays} days`;
+
+    const status = data.used ? 'USED' : 'ACTIVE';
+
+    const expiry =
+      data.expiresAt === null
+        ? 'lifetime'
+        : `<t:${Math.floor(data.expiresAt / 1000)}:R>`;
+
+    return interaction.reply({
+      content:
+        `📜 **License Info**\n\n` +
+        `🔑 Key: \`${data.key}\`\n` +
+        `📦 Type: ${data.type}\n` +
+        `⏳ Duration: ${duration}\n` +
+        `📊 Status: ${status}\n` +
+        `📅 Expiry: ${expiry}\n` +
+        `👤 Used By: ${data.usedByUser || 'N/A'}`,
+      ephemeral: true
+    });
   }
 };
