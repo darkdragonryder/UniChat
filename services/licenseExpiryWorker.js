@@ -1,7 +1,9 @@
 import supabase from './db.js';
 
-// Runs every X minutes
-export function startLicenseExpiryWorker(client) {
+// ==============================
+// AUTO EXPIRY WORKER
+// ==============================
+export function startLicenseExpiryWorker() {
   setInterval(async () => {
     try {
       const now = Date.now();
@@ -17,16 +19,17 @@ export function startLicenseExpiryWorker(client) {
       }
 
       for (const license of data || []) {
-        if (license.used && license.expiresAt && now >= license.expiresAt) {
+        if (!license.used) continue;
+
+        if (license.expiresAt && now >= license.expiresAt) {
           await supabase
             .from('licenses')
             .update({
-              used: true,
               expired: true
             })
             .eq('key', license.key);
 
-          console.log(`⛔ Expired license: ${license.key}`);
+          console.log(`⛔ Expired: ${license.key}`);
         }
       }
 
