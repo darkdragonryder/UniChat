@@ -13,9 +13,7 @@ export default {
 
   async execute(interaction) {
     try {
-      // =========================
       // OWNER CHECK
-      // =========================
       if (interaction.user.id !== process.env.OWNER_ID) {
         return interaction.reply({
           content: '❌ No permission',
@@ -46,9 +44,7 @@ export default {
 
       console.log('🔑 Generating license:', type, days);
 
-      // =========================
-      // GENERATE KEY (NOW SAFE FOR DB LAYER)
-      // =========================
+      // IMPORTANT: now async
       const key = await generateLicenseKey(type, days);
 
       console.log('✅ Generated key:', key);
