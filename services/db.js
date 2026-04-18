@@ -10,20 +10,6 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-/*
-========================================
-⚠️ TEMP DB RESET (REMOVE AFTER FIRST RUN)
-========================================
-*/
-if (process.env.RESET_DB === 'true') {
-  console.log('⚠️ RESET_DB enabled - deleting database file');
-
-  if (fs.existsSync(DB_PATH)) {
-    fs.unlinkSync(DB_PATH);
-    console.log('🗑️ Database deleted');
-  }
-}
-
 // open DB
 const db = new Database(DB_PATH);
 
