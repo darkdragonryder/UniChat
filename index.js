@@ -9,18 +9,24 @@ import {
 
 import fs from 'fs';
 
-// 🔥 DB INIT FIRST
+// ==============================
+// DB INIT (MUST BE FIRST)
+// ==============================
 import './services/db.js';
 
+// ==============================
+// SAAS SYSTEMS
+// ==============================
+import { startLicenseExpiryWorker } from './services/licenseExpiryWorker.js';
+import { runExpiryWarnings } from './services/licenseWatcher.js';
+import { runLicenseCleanup } from './services/licenseCleanup.js';
+
+// ==============================
+// UTILITIES
+// ==============================
 import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 import { isPremium } from './services/unichatCore.js';
-
-// ==============================
-// LICENSE SYSTEM IMPORTS
-// ==============================
-import { runExpiryWarnings } from './services/licenseWatcher.js';
-import { runLicenseCleanup } from './services/licenseCleanup.js';
 
 // ==============================
 // SAFETY CHECK
@@ -86,36 +92,27 @@ try {
 }
 
 // ==============================
-// READY EVENT (HARDENED)
+// READY EVENT
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // =========================
-  // EXPIRY WARNING SYSTEM
-  // =========================
-  setInterval(async () => {
-    try {
-      await runExpiryWarnings(client);
-    } catch (err) {
-      console.log('❌ Expiry warning error:', err);
-    }
+  // 🔥 SAAS EXPIRY ENGINE
+  startLicenseExpiryWorker();
+
+  // WARNING SYSTEM
+  setInterval(() => {
+    runExpiryWarnings(client);
   }, 60 * 60 * 1000);
 
-  // =========================
-  // LICENSE CLEANUP SYSTEM
-  // =========================
-  setInterval(async () => {
-    try {
-      await runLicenseCleanup();
-    } catch (err) {
-      console.log('❌ License cleanup error:', err);
-    }
+  // CLEANUP SYSTEM
+  setInterval(() => {
+    runLicenseCleanup();
   }, 6 * 60 * 60 * 1000);
 });
 
 // ==============================
-// MESSAGE CREATE (PREMIUM SAFE)
+// MESSAGE CREATE
 // ==============================
 client.on('messageCreate', async (message) => {
   try {
@@ -124,9 +121,7 @@ client.on('messageCreate', async (message) => {
     const config = getGuildConfig(message.guild.id);
     if (!config) return;
 
-    // 🔥 SAFE PREMIUM CHECK (future-proof)
-    const premium = await Promise.resolve(isPremium(message.guild.id));
-    if (!premium) return;
+    if (!isPremium(message.guild.id)) return;
 
     const targetLang = config.autoTranslateLang || 'en';
 
@@ -186,4 +181,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// ==============================
+// LOGIN
+// ==============================
 client.login(process.env.TOKEN);
