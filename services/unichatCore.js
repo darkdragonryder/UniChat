@@ -9,7 +9,7 @@ export function isOwner(userId) {
 }
 
 // =====================================================
-// PREMIUM CHECK (NOW WITH AUTO EXPIRY ENFORCEMENT)
+// PREMIUM CHECK (REAL-TIME ENFORCEMENT)
 // =====================================================
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
@@ -19,20 +19,18 @@ export function isPremium(guildId) {
 
   const now = Date.now();
 
-  // =========================
-  // LIFETIME ACCESS
-  // =========================
+  // lifetime
   if (config.premiumExpiry === null) return true;
 
-  // =========================
-  // EXPIRED CHECK (AUTO DISABLE)
-  // =========================
+  // 🔥 live expiry enforcement
   if (now >= config.premiumExpiry) {
     config.premium = false;
     config.premiumExpiry = null;
     config.mode = 'expired';
 
     saveGuildConfig(guildId, config);
+
+    console.log(`❌ Premium expired (live) for guild ${guildId}`);
 
     return false;
   }
@@ -59,7 +57,7 @@ export function enablePremium(guildId, durationMs = null) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY (STABLE + SAFE)
+// APPLY LICENSE KEY (FIXED + SAFE)
 // =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -82,22 +80,29 @@ export async function applyLicenseKey(guildId, userId, key) {
     lifetime: null
   };
 
-  const days = entry.durationDays ?? durationMap[entry.type];
-
   const now = Date.now();
+
+  // 🔥 USE DB EXPIRY AS SOURCE OF TRUTH
+  let expiry = entry.expiresAt ?? null;
+
+  if (!expiry) {
+    const days = entry.durationDays ?? durationMap[entry.type];
+    expiry = days ? now + days * 86400000 : null;
+  }
 
   config.premium = true;
   config.mode = 'license';
   config.premiumStart = now;
+  config.premiumExpiry = expiry;
 
-  if (!days || entry.type === 'lifetime') {
-    config.premiumExpiry = null;
-  } else {
-    config.premiumExpiry = now + days * 86400000;
-  }
-
+  // 🔥 prevent duplicate usage
   try {
-    await useKey(key, guildId, userId);
+    const used = await useKey(key, guildId, userId);
+
+    if (!used) {
+      return { ok: false, reason: 'KEY_ALREADY_USED' };
+    }
+
   } catch (err) {
     console.log('useKey error:', err);
     return { ok: false, reason: 'KEY_USE_FAILED' };
@@ -108,7 +113,7 @@ export async function applyLicenseKey(guildId, userId, key) {
   return {
     ok: true,
     type: entry.type,
-    days
+    expiry
   };
 }
 
