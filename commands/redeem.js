@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getGuildConfig } from '../utils/guildConfig.js';
+import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 import { applyLicenseKey } from '../services/unichatCore.js';
 
 export default {
@@ -19,17 +19,11 @@ export default {
 
     const config = getGuildConfig(guildId);
 
-    // =========================
-    // SAFETY INIT
-    // =========================
     config.referrals ||= {
       leaderboard: {},
       usedServers: {}
     };
 
-    // =========================
-    // ALREADY PREMIUM CHECK
-    // =========================
     if (config.premium) {
       return interaction.reply({
         content: '⚠️ This server already has premium active.',
@@ -37,14 +31,8 @@ export default {
       });
     }
 
-    // =========================
-    // APPLY LICENSE (FIXED)
-    // =========================
-    const applied = await applyLicenseKey(
-      guildId,
-      interaction.user.id,
-      key
-    );
+    // ✅ FIX: must await
+    const applied = await applyLicenseKey(guildId, interaction.user.id, key);
 
     if (!applied?.ok) {
       return interaction.reply({
@@ -53,34 +41,23 @@ export default {
       });
     }
 
-    // =========================
-    // FORMAT DURATION (FIXED)
-    // =========================
-    let durationText;
+    saveGuildConfig(guildId, config);
 
-    if (applied.days === null || applied.type === 'lifetime') {
-      durationText = 'lifetime';
-    } else {
-      durationText = `${applied.days} days`;
-    }
+    const durationText =
+      applied.days === null || applied.type === 'lifetime'
+        ? 'lifetime'
+        : `${applied.days} days`;
 
-    // =========================
-    // OPTIONAL: REAL EXPIRY DISPLAY
-    // =========================
     const expiryText = applied.expiry
       ? `<t:${Math.floor(applied.expiry / 1000)}:R>`
       : 'lifetime';
 
-    // =========================
-    // RESPONSE
-    // =========================
     return interaction.reply({
       content:
         `💎 **Premium Activated!**\n\n` +
         `✔ Type: **${applied.type}**\n` +
         `⏳ Duration: **${durationText}**\n` +
-        `📅 Expires: ${expiryText}\n` +
-        `✔ License Verified`,
+        `📅 Expires: ${expiryText}`,
       ephemeral: true
     });
   }
