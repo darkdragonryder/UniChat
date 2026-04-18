@@ -9,7 +9,7 @@ export function isOwner(userId) {
 }
 
 // =====================================================
-// PREMIUM CHECK (USED IN INDEX)
+// PREMIUM CHECK
 // =====================================================
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
@@ -19,10 +19,8 @@ export function isPremium(guildId) {
 
   const now = Date.now();
 
-  // Lifetime
   if (config.premiumExpiry === null) return true;
 
-  // Expired
   if (now >= config.premiumExpiry) {
     config.premium = false;
     config.premiumExpiry = null;
@@ -36,7 +34,7 @@ export function isPremium(guildId) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY
+// APPLY LICENSE KEY (FIXED LOGIC)
 // =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
@@ -48,7 +46,7 @@ export async function applyLicenseKey(guildId, userId, key) {
 
   const entry = result.entry;
 
-  const cleanType = (entry.type || '').toLowerCase().trim();
+  const type = (entry.type || '').toLowerCase().trim();
 
   const durationMap = {
     dev: 7,
@@ -58,10 +56,11 @@ export async function applyLicenseKey(guildId, userId, key) {
     lifetime: null
   };
 
+  // 🔥 STRICT RULE: DB first, fallback second, NO silent null fallback
   const days =
-    entry.durationDays ??
-    durationMap[cleanType] ??
-    null;
+    entry.durationDays !== null && entry.durationDays !== undefined
+      ? entry.durationDays
+      : durationMap[type];
 
   const now = Date.now();
 
@@ -69,7 +68,7 @@ export async function applyLicenseKey(guildId, userId, key) {
   config.mode = 'license';
   config.premiumStart = now;
 
-  if (!days || cleanType === 'lifetime') {
+  if (days === null || type === 'lifetime') {
     config.premiumExpiry = null;
   } else {
     config.premiumExpiry = now + days * 86400000;
@@ -81,14 +80,14 @@ export async function applyLicenseKey(guildId, userId, key) {
 
   return {
     ok: true,
-    type: cleanType,
+    type,
     days,
     expiry: config.premiumExpiry
   };
 }
 
 // =====================================================
-// MANUAL PREMIUM (OPTIONAL)
+// MANUAL PREMIUM
 // =====================================================
 export function enablePremium(guildId, durationMs = null) {
   const config = getGuildConfig(guildId);
