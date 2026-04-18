@@ -1,26 +1,47 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { addLicenseKey } from '../services/licenseStore.js';
+import { generateLicenseKey } from '../services/licenseStore.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('genkey')
-    .setDescription('Generate license key (OWNER ONLY)'),
+    .setDescription('Generate a license key')
+    .addStringOption(opt =>
+      opt.setName('type')
+        .setDescription('7day, 30day, lifetime')
+        .setRequired(true)
+    ),
 
   async execute(interaction) {
-    if (interaction.user.id !== process.env.OWNER_ID) {
+    try {
+      if (interaction.user.id !== process.env.OWNER_ID) {
+        return interaction.reply({ content: '❌ No permission', ephemeral: true });
+      }
+
+      const type = interaction.options.getString('type');
+
+      const map = {
+        '7day': 7,
+        '30day': 30,
+        'lifetime': null
+      };
+
+      if (!(type in map)) {
+        return interaction.reply({ content: '❌ Invalid type', ephemeral: true });
+      }
+
+      const key = await generateLicenseKey(type, map[type]);
+
       return interaction.reply({
-        content: '❌ No permission',
+        content:
+          `🔑 Key generated:\n\n` +
+          `\`${key}\`\n\n` +
+          `Type: **${type}**`,
         ephemeral: true
       });
+
+    } catch (err) {
+      console.log(err);
+      return interaction.reply({ content: '❌ Failed to generate key', ephemeral: true });
     }
-
-    const key = 'PREM-' + Math.random().toString(36).substring(2, 18).toUpperCase();
-
-    addLicenseKey(key, 'dev', 30);
-
-    return interaction.reply({
-      content: `🔑 Key generated:\n\`${key}\``,
-      ephemeral: true
-    });
   }
 };
