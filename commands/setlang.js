@@ -1,46 +1,23 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
+import { setUserLang } from '../utils/userLang.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('setlang')
-    .setDescription('Set your translation language')
-    .addStringOption(option =>
-      option
-        .setName('lang')
-        .setDescription('Language code')
+    .setDescription('Set your language')
+    .addStringOption(opt =>
+      opt.setName('lang')
+        .setDescription('EN, FR, ES, DE...')
         .setRequired(true)
     ),
 
   async execute(interaction) {
     const lang = interaction.options.getString('lang');
-    const userId = interaction.user.id;
 
-    const supported = [
-      'en', 'en-US', 'en-GB',
-      'fr', 'es', 'de', 'it', 'pt', 'pt-PT', 'pt-BR',
-      'ru',
-      'ja', 'ko', 'zh',
-      'ar'
-    ];
-
-    // Validate language
-    if (!supported.includes(lang)) {
-      return interaction.reply({
-        content: `❌ Unsupported language.\n\nSupported:\n${supported.join(', ')}`,
-        ephemeral: true
-      });
-    }
-
-    const config = getGuildConfig(interaction.guild.id);
-
-    config.languages ||= {};
-    config.languages[userId] = lang;
-
-    saveGuildConfig(interaction.guild.id, config);
+    setUserLang(interaction.user.id, lang);
 
     return interaction.reply({
-      content: `✅ Your language has been set to **${lang}**`,
+      content: `✅ Language set to ${lang.toUpperCase()}`,
       ephemeral: true
     });
   }
