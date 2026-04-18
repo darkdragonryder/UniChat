@@ -16,6 +16,9 @@ import { translate } from './utils/translate.js';
 import { getGuildConfig } from './utils/guildConfig.js';
 import { isPremium } from './services/unichatCore.js';
 
+// ✅ ADDED: expiry warning system
+import { runExpiryWarnings } from './services/licenseWatcher.js';
+
 // ==============================
 // SAFETY CHECK
 // ==============================
@@ -84,6 +87,11 @@ try {
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
+
+  // 🔥 ADDED: expiry warning system (runs every hour)
+  setInterval(() => {
+    runExpiryWarnings(client);
+  }, 60 * 60 * 1000);
 });
 
 // ==============================
@@ -118,7 +126,6 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
   try {
 
-    // SLASH COMMANDS
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
@@ -127,7 +134,6 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // BUTTON TRANSLATION
     if (interaction.isButton()) {
       if (!interaction.customId?.startsWith('translate_')) return;
 
