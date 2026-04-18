@@ -11,13 +11,19 @@ function save(data) {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
 }
 
-export function setUserLang(userId, lang) {
+// key = guildId-userId (IMPORTANT)
+export function setUserLang(guildId, userId, lang) {
   const data = load();
-  data[userId] = lang.toUpperCase();
+  data[`${guildId}-${userId}`] = lang;
   save(data);
 }
 
-export function getUserLang(userId) {
+export function getUserLang(guildId, userId) {
   const data = load();
-  return data[userId] || 'EN';
+  return data[`${guildId}-${userId}`] || null;
+}
+
+export function hasUserLang(guildId, userId) {
+  const data = load();
+  return Boolean(data[`${guildId}-${userId}`]);
 }
