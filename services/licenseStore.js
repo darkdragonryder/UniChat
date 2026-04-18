@@ -1,9 +1,9 @@
-import db from './db.js';
+import supabase from './db.js';
 
 // ==============================
 // GENERATE LICENSE KEY
 // ==============================
-export function generateLicenseKey(type, durationDays) {
+export async function generateLicenseKey(type, durationDays) {
   const key = `${type.toUpperCase()}-${Math.random()
     .toString(36)
     .slice(2, 10)
@@ -16,18 +16,19 @@ export function generateLicenseKey(type, durationDays) {
       ? null
       : createdAt + durationDays * 86400000;
 
-  db.prepare(`
-    INSERT INTO licenses (
-      key, used, type, durationDays, createdAt, expiresAt
-    )
-    VALUES (?, 0, ?, ?, ?, ?)
-  `).run(
+  const { error } = await supabase.from('licenses').insert({
     key,
+    used: false,
     type,
-    durationDays ?? null,
+    durationDays: durationDays ?? null,
     createdAt,
     expiresAt
-  );
+  });
+
+  if (error) {
+    console.log('generateLicenseKey error:', error);
+    throw error;
+  }
 
   return key;
 }
@@ -35,42 +36,52 @@ export function generateLicenseKey(type, durationDays) {
 // ==============================
 // VALIDATE KEY
 // ==============================
-export function validateKey(key) {
-  const row = db.prepare(`
-    SELECT * FROM licenses WHERE key = ?
-  `).get(key);
+export async function validateKey(key) {
+  const { data, error } = await supabase
+    .from('licenses')
+    .select('*')
+    .eq('key', key)
+    .single();
 
-  if (!row) return { valid: false, reason: 'INVALID_KEY' };
-  if (row.used) return { valid: false, reason: 'ALREADY_USED' };
+  if (error || !data) {
+    return { valid: false, reason: 'INVALID_KEY' };
+  }
 
-  return { valid: true, entry: row };
+  if (data.used) {
+    return { valid: false, reason: 'ALREADY_USED' };
+  }
+
+  return { valid: true, entry: data };
 }
 
 // ==============================
 // USE KEY
 // ==============================
-export function useKey(key, guildId, userId) {
-  const row = db.prepare(`
-    SELECT * FROM licenses WHERE key = ?
-  `).get(key);
+export async function useKey(key, guildId, userId) {
+  const { data, error } = await supabase
+    .from('licenses')
+    .select('*')
+    .eq('key', key)
+    .single();
 
-  if (!row || row.used) return false;
+  if (error || !data || data.used) return false;
 
   const now = Date.now();
 
-  db.prepare(`
-    UPDATE licenses
-    SET used = 1,
-        usedByGuild = ?,
-        usedByUser = ?,
-        usedAt = ?
-    WHERE key = ?
-  `).run(
-    guildId,
-    userId,
-    now,
-    key
-  );
+  const { error: updateError } = await supabase
+    .from('licenses')
+    .update({
+      used: true,
+      usedByGuild: guildId,
+      usedByUser: userId,
+      usedAt: now
+    })
+    .eq('key', key);
+
+  if (updateError) {
+    console.log('useKey error:', updateError);
+    throw updateError;
+  }
 
   return true;
 }
@@ -78,14 +89,20 @@ export function useKey(key, guildId, userId) {
 // ==============================
 // CHECK IF LICENSE ACTIVE
 // ==============================
-export function isLicenseActive(key) {
-  const row = db.prepare(`
-    SELECT * FROM licenses WHERE key = ?
-  `).get(key);
+export async function isLicenseActive(key) {
+  const { data, error } = await supabase
+    .from('licenses')
+    .select('*')
+    .eq('key', key)
+    .single();
 
-  if (!row) return false;
-  if (!row.used) return true;
-  if (row.expiresAt === null) return true;
+  if (error || !data) return false;
 
-  return Date.now() < row.expiresAt;
+  // not used yet → active
+  if (!data.used) return true;
+
+  // lifetime or no expiry
+  if (data.expiresAt === null) return true;
+
+  return Date.now() < data.expiresAt;
 }
