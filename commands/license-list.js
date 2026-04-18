@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import db from '../services/db.js';
+import supabase from '../services/db.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -8,61 +8,53 @@ export default {
 
   async execute(interaction) {
     try {
-      // =========================
-      // OWNER CHECK
-      // =========================
       if (interaction.user.id !== process.env.OWNER_ID) {
         return interaction.reply({
           content: '❌ No permission',
-          flags: 64
+          ephemeral: true
         });
       }
 
-      // =========================
-      // GET LICENSES
-      // =========================
-      const rows = db.prepare(`
-        SELECT * FROM licenses
-        ORDER BY createdAt DESC
-        LIMIT 20
-      `).all();
+      const { data, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .order('createdAt', { ascending: false })
+        .limit(20);
 
-      if (!rows.length) {
+      if (error) {
+        console.log('license-list error:', error);
+        return interaction.reply({
+          content: '❌ Error loading licenses',
+          ephemeral: true
+        });
+      }
+
+      if (!data || data.length === 0) {
         return interaction.reply({
           content: 'No licenses found.',
-          flags: 64
+          ephemeral: true
         });
       }
 
-      // =========================
-      // FORMAT OUTPUT
-      // =========================
-      const text = rows.map(r => {
-        const expiry =
-          r.expiresAt === null
-            ? 'Lifetime'
-            : new Date(r.expiresAt).toLocaleString();
-
-        return (
-          `🔑 ${r.key}\n` +
-          `Type: ${r.type} | Used: ${r.used ? 'YES' : 'NO'}\n` +
-          `Expires: ${expiry}\n` +
-          `User: ${r.usedByUser || 'none'}\n` +
-          `Guild: ${r.usedByGuild || 'none'}`
-        );
-      }).join('\n----------------\n');
+      const text = data.map(r =>
+        `🔑 ${r.key}\n` +
+        `Type: ${r.type} | Used: ${r.used ? 'YES' : 'NO'}\n` +
+        `User: ${r.usedByUser || 'none'}\n` +
+        `Guild: ${r.usedByGuild || 'none'}\n` +
+        `Expiry: ${r.expiresAt ? `<t:${Math.floor(r.expiresAt / 1000)}:R>` : 'lifetime'}`
+      ).join('\n----------------\n');
 
       return interaction.reply({
         content: `📜 **License List**\n\n${text}`,
-        flags: 64
+        ephemeral: true
       });
 
     } catch (err) {
-      console.log('license-list error:', err);
+      console.log('license-list crash:', err);
 
       return interaction.reply({
-        content: '❌ Error loading licenses',
-        flags: 64
+        content: '❌ Unexpected error',
+        ephemeral: true
       });
     }
   }
