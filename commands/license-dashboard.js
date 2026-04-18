@@ -4,7 +4,7 @@ import supabase from '../services/db.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('license-dashboard')
-    .setDescription('View all active licenses (ADMIN DASHBOARD)'),
+    .setDescription('Admin license dashboard with revoke system'),
 
   async execute(interaction) {
     try {
@@ -19,17 +19,17 @@ export default {
       }
 
       // ==============================
-      // FETCH LICENSES
+      // FETCH ACTIVE LICENSES
       // ==============================
       const { data, error } = await supabase
         .from('licenses')
         .select('*')
         .eq('used', true)
+        .eq('expired', false)
         .order('usedAt', { ascending: false });
 
       if (error) {
-        console.log('dashboard error:', error);
-
+        console.log(error);
         return interaction.reply({
           content: '❌ Failed to load dashboard',
           ephemeral: true
@@ -44,33 +44,34 @@ export default {
       }
 
       // ==============================
-      // FORMAT OUTPUT (LIMIT 10 FOR CLEAN UI)
+      // BUILD SELECT MENU (UP TO 25)
       // ==============================
-      const page = data.slice(0, 10);
+      const options = data.slice(0, 25).map(l => ({
+        label: `${l.type.toUpperCase()} | ${l.usedByGuild}`,
+        description: `User: ${l.usedByUser || 'unknown'}`,
+        value: l.key
+      }));
 
-      const list = page.map((l, i) => {
-        const expiry =
-          l.expiresAt === null
-            ? 'LIFETIME'
-            : new Date(l.expiresAt).toLocaleDateString();
-
-        return (
-          `**${i + 1}. ${l.type.toUpperCase()}**\n` +
-          `🏠 Guild: \`${l.usedByGuild}\`\n` +
-          `👤 User: <@${l.usedByUser}>\n` +
-          `🔑 Key: \`${l.key}\`\n` +
-          `⏳ Expiry: ${expiry}\n`
-        );
-      }).join('\n');
+      const row = {
+        type: 1,
+        components: [
+          {
+            type: 3,
+            custom_id: 'dashboard_revoke_select',
+            placeholder: 'Select a license to revoke',
+            options
+          }
+        ]
+      };
 
       // ==============================
-      // RESPONSE
+      // DASHBOARD DISPLAY
       // ==============================
       return interaction.reply({
         content:
           `📊 **LICENSE DASHBOARD**\n\n` +
-          `${list}\n\n` +
-          `📦 Showing ${page.length} of ${data.length} licenses`,
+          `Select a license below to revoke it instantly.`,
+        components: [row],
         ephemeral: true
       });
 
@@ -78,7 +79,7 @@ export default {
       console.log('dashboard error:', err);
 
       return interaction.reply({
-        content: '❌ Unexpected dashboard error',
+        content: '❌ Dashboard error',
         ephemeral: true
       });
     }
