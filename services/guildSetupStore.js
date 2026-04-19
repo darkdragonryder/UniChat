@@ -1,100 +1,39 @@
-import supabase from './db.js';
+import supabase from '../db/supabase.js';
 
-// ==============================
-// GET GUILD SETUP
-// ==============================
+// GET
 export async function getGuildSetup(guildId) {
-  try {
-    const { data, error } = await supabase
-      .from('guild_setup')
-      .select('*')
-      .eq('guildId', guildId)
-      .single();
+  const { data, error } = await supabase
+    .from('guild_setup')
+    .select('*')
+    .eq('guildid', guildId)
+    .single();
 
-    if (error && error.code !== 'PGRST116') {
-      console.log('getGuildSetup error:', error);
-      return null;
-    }
-
-    return data;
-
-  } catch (err) {
-    console.log('getGuildSetup catch error:', err);
+  if (error && error.code !== 'PGRST116') {
+    console.log('GET ERROR:', error);
     return null;
   }
+
+  return data;
 }
 
-// ==============================
-// CREATE GUILD SETUP (NEW)
-// ==============================
-export async function createGuildSetup(guild) {
-  try {
-    const existing = await getGuildSetup(guild.id);
-
-    if (existing) return existing;
-
-    const newSetup = {
-      guildId: guild.id,
-      enabled: true,
-      roles: [],
-      channels: [],
-      defaultLanguage: 'en',
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    const { data, error } = await supabase
-      .from('guild_setup')
-      .insert(newSetup)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    console.log(`✅ Guild setup created for ${guild.name}`);
-
-    return data;
-
-  } catch (err) {
-    console.log('createGuildSetup error:', err);
-    return null;
-  }
-}
-
-// ==============================
-// SAVE / UPDATE GUILD SETUP
-// ==============================
+// SAVE
 export async function saveGuildSetup(guildId, setup) {
-  try {
-    const { error } = await supabase
-      .from('guild_setup')
-      .upsert({
-        guildId,
-        enabled: true,
-        roles: setup.roles || [],
-        channels: setup.channels || [],
-        defaultLanguage: setup.defaultLanguage || 'en',
-        updatedAt: Date.now()
-      });
+  const { data, error } = await supabase
+    .from('guild_setup')
+    .upsert({
+      guildid: guildId,
+      enabled: true,
+      sourcechannelid: setup.sourceChannelId,
+      roles: setup.roles,
+      channels: setup.channels,
+      updatedat: new Date().toISOString()
+    })
+    .select();
 
-    if (error) throw error;
-
-    return true;
-
-  } catch (err) {
-    console.log('saveGuildSetup error:', err);
-    return false;
+  if (error) {
+    console.log('SAVE ERROR:', error);
+    throw error;
   }
-}
 
-// ==============================
-// CHECK IF SETUP EXISTS
-// ==============================
-export async function isGuildSetup(guildId) {
-  try {
-    const setup = await getGuildSetup(guildId);
-    return setup?.enabled === true;
-  } catch {
-    return false;
-  }
+  return data;
 }
