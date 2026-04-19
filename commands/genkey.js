@@ -13,9 +13,8 @@ export default {
 
   async execute(interaction) {
     try {
-      if (interaction.user.id !== process.env.OWNER_ID) {
+      if (interaction.user.id !== process.env.OWNER_ID)
         return interaction.reply({ content: '❌ No permission', ephemeral: true });
-      }
 
       const type = interaction.options.getString('type').toLowerCase();
 
@@ -25,19 +24,18 @@ export default {
         'lifetime': null
       };
 
-      if (!(type in map)) {
+      if (!(type in map))
         return interaction.reply({ content: '❌ Invalid type', ephemeral: true });
-      }
 
       const result = await generateLicenseKey(type, map[type]);
+      if (!result.ok)
+        return interaction.reply({ content: `❌ Error: ${result.error}`, ephemeral: true });
 
-      // ✅ FIX: extract string properly
-      const key = result;
+      const key = result.data;
 
       return interaction.reply({
         content:
-          `🔑 Key generated:\n\n` +
-          `\`${key}\`\n\n` +
+          `🔑 Key generated:\n\n\`${key}\`\n\n` +
           `Type: **${type}**\n` +
           `Duration: **${map[type] ?? 'lifetime'} days**`,
         ephemeral: true
