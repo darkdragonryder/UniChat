@@ -1,8 +1,7 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 
-import { createGuildSetup } from './services/guildSetupStore.js';
-import { getUserLanguage } from './services/userLanguageStore.js';
+import { getGuildSetup } from './services/guildSetupStore.js';
 import { translate } from './utils/translate.js';
 
 const client = new Client({
@@ -21,76 +20,83 @@ client.once('ready', () => {
 
   client.user.setPresence({
     status: 'online',
-    activities: [{ name: 'UniChat Channels 🌍', type: 3 }]
+    activities: [{ name: 'UniChat 🌍', type: 3 }]
   });
 });
 
 // ==============================
-// GUILD SETUP
-// ==============================
-client.on('guildCreate', async (guild) => {
-  await createGuildSetup(guild);
-});
-
-// ==============================
-// CHANNEL TRANSLATION CORE
+// MESSAGE HANDLER
 // ==============================
 client.on('messageCreate', async (message) => {
 
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  // ignore bot messages (prevents loops)
-  if (message.webhookId) return;
-
-  const baseChannelName = message.channel.name;
-
-  // ignore DMs / system channels
-  if (!baseChannelName) return;
+  const guildId = message.guild.id;
 
   // ==============================
-  // GET ALL MEMBERS LANGUAGE MAP
+  // LOAD SETUP
   // ==============================
-  const members = message.guild.members.cache;
+  const setup = await getGuildSetup(guildId);
 
-  for (const member of members.values()) {
+  if (!setup?.enabled) return;
 
-    if (member.user.bot) continue;
+  // ==============================
+  // FIND CHANNEL LANGUAGE
+  // ==============================
+  const channelData = setup.channels.find(
+    c => c.channelId === message.channel.id
+  );
 
-    const lang = await getUserLanguage(member.id, message.guild.id);
+  // Ignore messages not in language channels
+  if (!channelData) return;
 
-    if (!lang) continue;
+  const sourceLang = channelData.lang;
 
-    const result = await translate(message.content, lang);
+  // ==============================
+  // TRANSLATE TO ALL LANGUAGES
+  // ==============================
+  for (const target of setup.channels) {
 
-    if (!result?.text) continue;
+    // Skip same channel
+    if (target.channelId === message.channel.id) continue;
 
     try {
+      const result = await translate(message.content, target.lang);
 
-      const channelName = `${baseChannelName}-${lang.toLowerCase()}`;
+      const targetChannel =
+        message.guild.channels.cache.get(target.channelId);
 
-      // find or create channel
-      let channel = message.guild.channels.cache.find(c => c.name === channelName);
+      if (!targetChannel) continue;
 
-      if (!channel) {
-        channel = await message.guild.channels.create({
-          name: channelName,
-          type: 0 // text channel
-        });
-      }
-
-      channel.send({
-        content: `🌍 ${member.user.username}: ${result.text}`
+      await targetChannel.send({
+        content: `🌍 **${message.author.username}:** ${result.text}`
       });
 
     } catch (err) {
-      console.log('channel translate error:', err);
+      console.log('Translation error:', err);
     }
+  }
+
+  // ==============================
+  // SEND TO SOURCE CHANNEL (ENGLISH)
+  // ==============================
+  try {
+    const sourceChannel = message.guild.channels.cache.get(
+      setup.sourceChannelId
+    );
+
+    if (sourceChannel) {
+      const english = await translate(message.content, 'en');
+
+      await sourceChannel.send({
+        content: `🌍 **${message.author.username}:** ${english.text}`
+      });
+    }
+  } catch (err) {
+    console.log('Source channel error:', err);
   }
 
 });
 
-// ==============================
-// LOGIN
-// ==============================
 client.login(process.env.TOKEN);
