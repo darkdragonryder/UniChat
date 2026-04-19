@@ -1,7 +1,7 @@
 import { supabase } from '../db/supabase.js';
 
 // ==============================
-// GENERATE LICENSE
+// GENERATE LICENSE KEY
 // ==============================
 export async function generateLicenseKey(type, durationDays) {
   const key = `${type.toLowerCase()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
@@ -24,11 +24,13 @@ export async function generateLicenseKey(type, durationDays) {
 
   if (error) throw error;
 
-  return { key, type, durationDays, expiresAt };
+  // 🔥 IMPORTANT FIX:
+  // return ONLY the key as a string (NOT an object)
+  return key;
 }
 
 // ==============================
-// VALIDATE
+// VALIDATE KEY
 // ==============================
 export async function validateKey(key) {
   const { data, error } = await supabase
@@ -64,7 +66,7 @@ export async function useKey(key, guildId, userId) {
 }
 
 // ==============================
-// ❌ REVOKE LICENSE (NEW)
+// REVOKE
 // ==============================
 export async function revokeLicense(guildId) {
   const { error } = await supabase
@@ -83,7 +85,7 @@ export async function revokeLicense(guildId) {
 }
 
 // ==============================
-// ⏱ EXTEND LICENSE (NEW)
+// EXTEND
 // ==============================
 export async function extendLicense(guildId, extraDays) {
   const { data, error } = await supabase
@@ -106,9 +108,7 @@ export async function extendLicense(guildId, extraDays) {
 
   const { error: updateError } = await supabase
     .from('licenses')
-    .update({
-      expiresAt: newExpiry
-    })
+    .update({ expiresAt: newExpiry })
     .eq('usedByGuild', guildId);
 
   if (updateError) throw updateError;
