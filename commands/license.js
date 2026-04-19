@@ -1,5 +1,4 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { validateKey } from '../services/licenseStore.js';
 import { applyLicenseKey } from '../services/unichatCore.js';
 
 export default {
@@ -13,58 +12,30 @@ export default {
     ),
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
     try {
       const key = interaction.options.getString('key');
 
-      await interaction.deferReply({ ephemeral: true });
-
-      // =========================
-      // VALIDATE KEY (FIXED)
-      // =========================
-      const result = await validateKey(key);
+      const result = await applyLicenseKey(
+        interaction.guild.id,
+        interaction.user.id,
+        key
+      );
 
       if (!result.ok) {
-        return interaction.editReply(`❌ Invalid or unknown license key`);
+        return interaction.editReply(`❌ ${result.reason}`);
       }
 
-      // =========================
-      // APPLY LICENSE
-      // =========================
-      let apply;
-
-      try {
-        apply = await applyLicenseKey(
-          interaction.guild.id,
-          interaction.user.id,
-          key
-        );
-      } catch (err) {
-        console.log('applyLicenseKey error:', err);
-        return interaction.editReply('❌ Internal license error');
-      }
-
-      if (!apply?.ok) {
-        return interaction.editReply('❌ Failed to apply license');
-      }
-
-      // =========================
-      // RESPONSE
-      // =========================
       return interaction.editReply(
         `✅ License activated!\n\n` +
-        `⭐ Type: **${apply.type}**\n` +
-        `⏳ Duration: **${apply.days ?? 'lifetime'}**`
+        `⭐ Type: **${result.type}**\n` +
+        `⏳ Duration: **${result.days ?? 'lifetime'}**`
       );
 
     } catch (err) {
-      console.log('License command crash:', err);
-
-      if (!interaction.replied && !interaction.deferred) {
-        return interaction.reply({
-          content: '❌ Command error occurred',
-          ephemeral: true
-        });
-      }
+      console.log(err);
+      return interaction.editReply('❌ Activation failed');
     }
   }
 };
