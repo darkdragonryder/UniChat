@@ -17,7 +17,7 @@ export default {
         return interaction.reply({ content: '❌ No permission', ephemeral: true });
       }
 
-      const type = interaction.options.getString('type');
+      const type = interaction.options.getString('type').toLowerCase();
 
       const map = {
         '7day': 7,
@@ -31,25 +31,15 @@ export default {
 
       const result = await generateLicenseKey(type, map[type]);
 
-      // 🔥 FIX: extract actual key safely
-      const key =
-        typeof result === 'string'
-          ? result
-          : result?.key || result?.code || result?.license_key;
-
-      if (!key) {
-        console.log('Unexpected result from generateLicenseKey:', result);
-        return interaction.reply({
-          content: '❌ Key generation failed (invalid response format)',
-          ephemeral: true
-        });
-      }
+      // ✅ FIX: extract string properly
+      const key = result.key;
 
       return interaction.reply({
         content:
           `🔑 Key generated:\n\n` +
           `\`${key}\`\n\n` +
-          `Type: **${type}**`,
+          `Type: **${type}**\n` +
+          `Duration: **${map[type] ?? 'lifetime'} days**`,
         ephemeral: true
       });
 
