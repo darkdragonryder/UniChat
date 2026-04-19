@@ -14,8 +14,7 @@ export function isOwner(userId) {
 export function isPremium(guildId) {
   const config = getGuildConfig(guildId);
 
-  if (!config) return false;
-  if (!config.premium) return false;
+  if (!config?.premium) return false;
 
   const now = Date.now();
 
@@ -34,56 +33,92 @@ export function isPremium(guildId) {
 }
 
 // =====================================================
-// APPLY LICENSE KEY (FIXED LOGIC)
+// APPLY LICENSE KEY (HARDENED + FIXED)
 // =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
-  const config = getGuildConfig(guildId);
+  try {
+    const config = getGuildConfig(guildId);
+    if (!config) return { ok: false, error: 'NO_CONFIG' };
 
-  if (!config) return { ok: false, reason: 'NO_CONFIG' };
+    // =========================
+    // VALIDATE KEY (NEW FORMAT)
+    // =========================
+    const result = await validateKey(key);
 
-  const result = await validateKey(key);
-  if (!result.valid) return result;
+    if (!result.ok) {
+      return { ok: false, error: 'INVALID_KEY' };
+    }
 
-  const entry = result.entry;
+    const entry = result.data;
 
-  const type = (entry.type || '').toLowerCase().trim();
+    // =========================
+    // SAFETY CHECKS
+    // =========================
+    if (entry.used) {
+      return { ok: false, error: 'ALREADY_USED' };
+    }
 
-  const durationMap = {
-    dev: 7,
-    '7day': 7,
-    '14day': 14,
-    '30day': 30,
-    lifetime: null
-  };
+    if (
+      entry.expiresAt !== null &&
+      Date.now() > entry.expiresAt
+    ) {
+      return { ok: false, error: 'EXPIRED' };
+    }
 
-  // 🔥 STRICT RULE: DB first, fallback second, NO silent null fallback
-  const days =
-    entry.durationDays !== null && entry.durationDays !== undefined
-      ? entry.durationDays
-      : durationMap[type];
+    // =========================
+    // DURATION LOGIC
+    // =========================
+    const type = (entry.type || '').toLowerCase().trim();
 
-  const now = Date.now();
+    const durationMap = {
+      dev: 7,
+      '7day': 7,
+      '14day': 14,
+      '30day': 30,
+      lifetime: null
+    };
 
-  config.premium = true;
-  config.mode = 'license';
-  config.premiumStart = now;
+    const days =
+      entry.durationDays !== null && entry.durationDays !== undefined
+        ? entry.durationDays
+        : durationMap[type];
 
-  if (days === null || type === 'lifetime') {
-    config.premiumExpiry = null;
-  } else {
-    config.premiumExpiry = now + days * 86400000;
+    const now = Date.now();
+
+    // =========================
+    // APPLY TO GUILD CONFIG
+    // =========================
+    config.premium = true;
+    config.mode = 'license';
+    config.premiumStart = now;
+
+    if (days === null || type === 'lifetime') {
+      config.premiumExpiry = null;
+    } else {
+      config.premiumExpiry = now + days * 86400000;
+    }
+
+    // =========================
+    // MARK KEY AS USED (DB SAFE)
+    // =========================
+    const use = await useKey(key, guildId, userId);
+    if (!use) {
+      return { ok: false, error: 'FAILED_TO_MARK_USED' };
+    }
+
+    saveGuildConfig(guildId, config);
+
+    return {
+      ok: true,
+      type,
+      days,
+      expiry: config.premiumExpiry
+    };
+
+  } catch (err) {
+    console.log('applyLicenseKey crash:', err);
+    return { ok: false, error: 'INTERNAL_ERROR' };
   }
-
-  await useKey(key, guildId, userId);
-
-  saveGuildConfig(guildId, config);
-
-  return {
-    ok: true,
-    type,
-    days,
-    expiry: config.premiumExpiry
-  };
 }
 
 // =====================================================
