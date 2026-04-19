@@ -29,7 +29,21 @@ export default {
         return interaction.reply({ content: '❌ Invalid type', ephemeral: true });
       }
 
-      const key = await generateLicenseKey(type, map[type]);
+      const result = await generateLicenseKey(type, map[type]);
+
+      // 🔥 FIX: extract actual key safely
+      const key =
+        typeof result === 'string'
+          ? result
+          : result?.key || result?.code || result?.license_key;
+
+      if (!key) {
+        console.log('Unexpected result from generateLicenseKey:', result);
+        return interaction.reply({
+          content: '❌ Key generation failed (invalid response format)',
+          ephemeral: true
+        });
+      }
 
       return interaction.reply({
         content:
