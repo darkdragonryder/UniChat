@@ -9,16 +9,15 @@ export async function repairGuild(guild) {
     const setup = getCachedGuildSetup(guild.id);
     if (!setup) return;
 
-    const languages = setup.roles.map(r => r.lang);
+    const roles = setup.roles || [];
 
-    for (const lang of languages) {
+    for (const r of roles) {
+      const lang = r.lang;
 
-      // ==============================
-      // CHECK ROLE
-      // ==============================
-      let role = guild.roles.cache.get(
-        setup.roles.find(r => r.lang === lang)?.roleId
-      );
+      // ======================
+      // ROLE CHECK
+      // ======================
+      let role = guild.roles.cache.get(r.roleId);
 
       if (!role) {
         role = await guild.roles.create({
@@ -27,14 +26,12 @@ export async function repairGuild(guild) {
         });
       }
 
-      // ==============================
-      // CHECK CHANNEL
-      // ==============================
+      // ======================
+      // CHANNEL CHECK
+      // ======================
       const channelName = `chat-${lang}`;
 
-      let channel = guild.channels.cache.find(
-        c => c.name === channelName
-      );
+      let channel = guild.channels.cache.find(c => c.name === channelName);
 
       if (!channel) {
         channel = await guild.channels.create({
@@ -54,7 +51,6 @@ export async function repairGuild(guild) {
       }
     }
 
-    // refresh cache after repair
     await refreshGuildSetup(guild.id);
 
     console.log(`🔧 Repaired guild: ${guild.name}`);
