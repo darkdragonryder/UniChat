@@ -4,10 +4,15 @@ import {
   ChannelType
 } from 'discord.js';
 
+import {
+  getGuildSetup,
+  saveGuildSetup
+} from '../services/guildSetupStore.js';
+
 export default {
   data: new SlashCommandBuilder()
     .setName('setup-translator')
-    .setDescription('Setup full multilingual translation system (Premium)')
+    .setDescription('Setup multilingual system (Premium)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
@@ -16,8 +21,16 @@ export default {
     await interaction.deferReply({ ephemeral: true });
 
     // ==============================
-    // LANGUAGE CONFIG
+    // CHECK IF ALREADY SETUP
     // ==============================
+    const existing = await getGuildSetup(guild.id);
+
+    if (existing?.enabled) {
+      return interaction.editReply(
+        "⚠️ Translator system already set up for this server."
+      );
+    }
+
     const languages = [
       { name: 'English', code: 'en' },
       { name: 'French', code: 'fr' },
@@ -28,17 +41,16 @@ export default {
       { name: 'Chinese', code: 'zh' }
     ];
 
-    try {
+    const roleIds = [];
+    const channelIds = [];
 
-      // ==============================
-      // CREATE ROLE FOR EACH LANGUAGE
-      // ==============================
-      const roles = {};
+    try {
 
       for (const lang of languages) {
 
-        let role = guild.roles.cache.find(
-          r => r.name === `🌍 ${lang.name}`
+        // ROLE
+        let role = guild.roles.cache.find(r =>
+          r.name === `🌍 ${lang.name}`
         );
 
         if (!role) {
@@ -48,14 +60,12 @@ export default {
           });
         }
 
-        roles[lang.code] = role;
-      }
+        roleIds.push({
+          lang: lang.code,
+          roleId: role.id
+        });
 
-      // ==============================
-      // CREATE CHANNELS + PERMISSIONS
-      // ==============================
-      for (const lang of languages) {
-
+        // CHANNEL
         const channelName = `chat-${lang.code}`;
 
         let channel = guild.channels.cache.find(
@@ -63,61 +73,43 @@ export default {
         );
 
         if (!channel) {
-
           channel = await guild.channels.create({
             name: channelName,
             type: ChannelType.GuildText,
-            topic: `🌍 ${lang.name} translation channel`,
             permissionOverwrites: [
               {
                 id: guild.id,
                 deny: ['ViewChannel']
               },
               {
-                id: roles[lang.code].id,
-                allow: [
-                  'ViewChannel',
-                  'SendMessages',
-                  'ReadMessageHistory'
-                ]
+                id: role.id,
+                allow: ['ViewChannel', 'SendMessages']
               }
             ]
           });
-        } else {
-          // update permissions if channel already exists
-          await channel.permissionOverwrites.edit(guild.id, {
-            ViewChannel: false
-          });
-
-          await channel.permissionOverwrites.edit(
-            roles[lang.code].id,
-            {
-              ViewChannel: true,
-              SendMessages: true,
-              ReadMessageHistory: true
-            }
-          );
         }
+
+        channelIds.push({
+          lang: lang.code,
+          channelId: channel.id
+        });
       }
 
       // ==============================
-      // SUCCESS MESSAGE
+      // SAVE TO DATABASE
       // ==============================
-      return interaction.editReply({
-        content:
-          `✅ Translator system setup complete!\n\n` +
-          `✔ Roles created\n` +
-          `✔ Channels created\n` +
-          `✔ Permissions configured\n\n` +
-          `You can now use language onboarding + premium translation system.`
+      await saveGuildSetup(guild.id, {
+        roles: roleIds,
+        channels: channelIds
       });
+
+      return interaction.editReply(
+        "✅ Translator system setup complete & saved."
+      );
 
     } catch (err) {
-      console.log('Setup Translator Error:', err);
-
-      return interaction.editReply({
-        content: '❌ Failed to setup translator system'
-      });
+      console.log(err);
+      return interaction.editReply("❌ Setup failed");
     }
   }
 };
