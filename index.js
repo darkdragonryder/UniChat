@@ -29,8 +29,9 @@ import {
   buildLanguageMenu
 } from './services/languagePrompt.js';
 
-// GUILD SETUP CACHE (AUTO LOAD SYSTEM)
+// GUILD SYSTEM
 import { loadGuildCache, getCachedGuildSetup } from './services/guildCache.js';
+import { repairGuild } from './services/guildRepair.js';
 
 // ==============================
 // CLIENT
@@ -77,15 +78,20 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // ==============================
-// READY EVENT (AUTO LOAD HERE)
+// READY EVENT (CACHE + AUTO REPAIR)
 // ==============================
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // AUTO LOAD ALL GUILD SETUPS
+  // LOAD STORED GUILD CONFIGS
   await loadGuildCache(client);
 
-  console.log("✅ Guild setup cache loaded");
+  // AUTO REPAIR ALL GUILDS
+  for (const guild of client.guilds.cache.values()) {
+    await repairGuild(guild);
+  }
+
+  console.log("🛠️ Auto repair completed");
 });
 
 // ==============================
@@ -109,7 +115,7 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ==============================
-// MESSAGE SYSTEM (NO guild.fetch - CACHE BASED)
+// MESSAGE SYSTEM (NO FETCH, CACHE BASED)
 // ==============================
 const cooldown = new Map();
 
@@ -143,7 +149,7 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==============================
-    // 💎 PREMIUM MODE (CACHE BASED ROUTING)
+    // 💎 PREMIUM MODE (ROLE → CHANNEL ROUTING)
     // ==============================
     if (message.channel.name.startsWith('chat-')) return;
 
@@ -204,7 +210,7 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // STEP 2 LANGUAGE SELECT (ROLE CONNECTED)
+      // STEP 2 LANGUAGE SELECT
       if (interaction.customId.startsWith('setlang_')) {
         const guild = interaction.guild;
         const userId = interaction.customId.split('_')[1];
@@ -251,9 +257,7 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // ==============================
     // SLASH COMMANDS
-    // ==============================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
