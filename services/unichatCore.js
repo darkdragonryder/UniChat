@@ -2,9 +2,43 @@ import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 import { validateKey, useKey } from './licenseStore.js';
 import { checkFraud } from './fraudCheck.js';
 
-// ==============================
+// =====================================================
+// OWNER CHECK
+// =====================================================
+export function isOwner(userId) {
+  return userId === process.env.OWNER_ID;
+}
+
+// =====================================================
+// PREMIUM CHECK
+// =====================================================
+export function isPremium(guildId) {
+  const config = getGuildConfig(guildId);
+
+  if (!config) return false;
+  if (!config.premium) return false;
+
+  const now = Date.now();
+
+  // lifetime
+  if (config.premiumExpiry === null) return true;
+
+  // expired
+  if (now >= config.premiumExpiry) {
+    config.premium = false;
+    config.premiumExpiry = null;
+    config.mode = 'expired';
+
+    saveGuildConfig(guildId, config);
+    return false;
+  }
+
+  return true;
+}
+
+// =====================================================
 // APPLY LICENSE (FINAL)
-// ==============================
+// =====================================================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
   if (!config) return { ok: false, reason: 'NO_CONFIG' };
@@ -20,7 +54,23 @@ export async function applyLicenseKey(guildId, userId, key) {
   });
 
   if (!fraud.ok) {
-    return { ok: false, reason: fraud.reason };
+    if (fraud.reason === 'LOCKED') {
+      const seconds = fraud.until
+        ? Math.ceil((fraud.until - Date.now()) / 1000)
+        : null;
+
+      return {
+        ok: false,
+        reason: seconds
+          ? `⛔ You are temporarily locked. Try again in ${seconds}s`
+          : `⛔ You are temporarily locked. Try again later`
+      };
+    }
+
+    return {
+      ok: false,
+      reason: `❌ Blocked: ${fraud.reason}`
+    };
   }
 
   // ==============================
@@ -28,11 +78,11 @@ export async function applyLicenseKey(guildId, userId, key) {
   // ==============================
   const result = await validateKey(key);
 
-  if (!result.valid) {
-    return { ok: false, reason: result.reason };
+  if (!result.ok) {
+    return result;
   }
 
-  const entry = result.entry;
+  const entry = result.data;
 
   const type = (entry.type || '').toLowerCase().trim();
 
@@ -44,6 +94,9 @@ export async function applyLicenseKey(guildId, userId, key) {
     lifetime: null
   };
 
+  // ==============================
+  // DETERMINE DURATION
+  // ==============================
   const days =
     entry.durationDays !== null && entry.durationDays !== undefined
       ? entry.durationDays
@@ -51,6 +104,9 @@ export async function applyLicenseKey(guildId, userId, key) {
 
   const now = Date.now();
 
+  // ==============================
+  // APPLY TO CONFIG
+  // ==============================
   config.premium = true;
   config.mode = 'license';
   config.premiumStart = now;
@@ -61,14 +117,40 @@ export async function applyLicenseKey(guildId, userId, key) {
     config.premiumExpiry = now + days * 86400000;
   }
 
+  // ==============================
+  // MARK KEY USED
+  // ==============================
   await useKey(key, guildId, userId);
 
+  // ==============================
+  // SAVE CONFIG
+  // ==============================
   saveGuildConfig(guildId, config);
 
+  // ==============================
+  // SUCCESS
+  // ==============================
   return {
     ok: true,
     type,
     days,
     expiry: config.premiumExpiry
   };
+}
+
+// =====================================================
+// MANUAL PREMIUM
+// =====================================================
+export function enablePremium(guildId, durationMs = null) {
+  const config = getGuildConfig(guildId);
+  if (!config) return;
+
+  const now = Date.now();
+
+  config.premium = true;
+  config.mode = 'manual';
+  config.premiumStart = now;
+  config.premiumExpiry = durationMs ? now + durationMs : null;
+
+  saveGuildConfig(guildId, config);
 }
