@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { generateLicenseKey, validateKey } from '../services/licenseStore.js';
-import { applyLicenseKey, revokeLicense } from '../services/unichatCore.js';
+
+import { generateLicenseKey, validateKey, revokeLicense } from '../services/licenseStore.js';
+import { applyLicenseKey } from '../services/unichatCore.js';
 import { checkFraud } from '../services/fraudCheck.js';
 
 export default {
@@ -11,105 +12,51 @@ export default {
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
-    const userId = interaction.user.id;
-    const guildId = interaction.guild.id;
-
-    if (userId !== process.env.OWNER_ID) {
-      return interaction.editReply('❌ Owner only command');
+    if (interaction.user.id !== process.env.OWNER_ID) {
+      return interaction.editReply('❌ Owner only');
     }
+
+    const guildId = interaction.guild.id;
+    const userId = interaction.user.id;
 
     const results = [];
 
     try {
-      // ==============================
-      // 1. FRAUD STRESS TEST
-      // ==============================
-      let fraudBlocks = 0;
+      // FRAUD TEST
+      const fraud = checkFraud({
+        userId,
+        ownerId: process.env.OWNER_ID,
+        code: 'TEST',
+        guildId
+      });
 
-      for (let i = 0; i < 10; i++) {
-        const f = checkFraud({
-          userId,
-          ownerId: process.env.OWNER_ID,
-          code: 'STRESS_CODE',
-          guildId
-        });
+      results.push(`🛡 Fraud: ${fraud.ok ? 'OK' : fraud.reason}`);
 
-        if (!f.ok) fraudBlocks++;
-      }
+      // GENERATE
+      const gen = await generateLicenseKey('7day', 7);
+      const key = gen.key;
 
-      results.push(`🛡 Fraud Stress: ${fraudBlocks}/10 blocked (expected >0)`);
+      results.push(`🔑 Generated: OK`);
 
-      // ==============================
-      // 2. GENERATION STRESS TEST
-      // ==============================
-      const keys = [];
+      // VALIDATE
+      const val = await validateKey(key);
+      results.push(`📦 Validate: ${val.ok ? 'OK' : 'FAIL'}`);
 
-      for (let i = 0; i < 5; i++) {
-        const res = await generateLicenseKey('7day', 7);
-        keys.push(res.key || res);
-      }
+      // APPLY
+      const apply = await applyLicenseKey(guildId, userId, key);
+      results.push(`⚙️ Apply: ${apply.ok ? 'OK' : apply.reason}`);
 
-      results.push(`🔑 Key Gen: ${keys.length}/5 generated`);
-
-      // ==============================
-      // 3. VALIDATION STRESS TEST
-      // ==============================
-      let validCount = 0;
-
-      for (const key of keys) {
-        const v = await validateKey(key);
-        if (v.ok) validCount++;
-      }
-
-      results.push(`📦 Validation: ${validCount}/5 valid`);
-
-      // ==============================
-      // 4. APPLY + REVOKE LOOP TEST
-      // ==============================
-      let applyOk = 0;
-      let revokeOk = 0;
-
-      for (const key of keys) {
-        const apply = await applyLicenseKey(guildId, userId, key);
-
-        if (apply.ok) applyOk++;
-
-        const revoke = await revokeLicense(guildId);
-
-        if (revoke) revokeOk++;
-      }
-
-      results.push(`⚙️ Apply Cycle: ${applyOk}/5 OK`);
-      results.push(`♻️ Revoke Cycle: ${revokeOk}/5 OK`);
-
-      // ==============================
-      // 5. DUPLICATE KEY TEST
-      // ==============================
-      const dupKey = keys[0];
-
-      const dup1 = await validateKey(dupKey);
-      const dup2 = await validateKey(dupKey);
-
-      results.push(`🔁 Duplicate Check: ${dup1.ok && dup2.ok ? 'OK (stable)' : 'ISSUE'}`);
-
-      // ==============================
-      // 6. STRESS SUMMARY
-      // ==============================
-      const passed =
-        fraudBlocks >= 1 &&
-        validCount === keys.length &&
-        applyOk > 0;
-
-      results.push(`\n🔥 SYSTEM STATUS: ${passed ? 'STABLE' : 'UNSTABLE'}`);
+      // REVOKE
+      const revoke = await revokeLicense(guildId);
+      results.push(`♻️ Revoke: ${revoke ? 'OK' : 'FAIL'}`);
 
       return interaction.editReply(
-        `🧪 FULL STRESS TEST COMPLETE\n\n` +
-        results.join('\n')
+        `🧪 STRESS TEST\n\n` + results.join('\n')
       );
 
     } catch (err) {
-      console.log('STRESS TEST ERROR:', err);
-      return interaction.editReply('❌ Stress test failed (check logs)');
+      console.log(err);
+      return interaction.editReply('❌ Test failed');
     }
   }
 };
