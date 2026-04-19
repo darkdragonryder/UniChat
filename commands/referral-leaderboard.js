@@ -1,5 +1,14 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getLeaderboard } from '../services/referralService.js';
+
+// SAFE IMPORT (prevents bot crash if service is broken)
+let getLeaderboard;
+
+try {
+  ({ getLeaderboard } = await import('../services/referralService.js'));
+} catch (err) {
+  console.log('⚠️ referralService failed to load:', err.message);
+  getLeaderboard = async () => [];
+}
 
 export default {
   data: new SlashCommandBuilder()
@@ -7,14 +16,13 @@ export default {
     .setDescription('View top referral users'),
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
     try {
       const rows = await getLeaderboard(interaction.guild.id);
 
-      if (!rows.length) {
-        return interaction.reply({
-          content: '📉 No referrals yet.',
-          ephemeral: true
-        });
+      if (!rows || rows.length === 0) {
+        return interaction.editReply('📉 No referrals yet.');
       }
 
       const top = rows.slice(0, 10);
@@ -25,20 +33,14 @@ export default {
         )
         .join('\n');
 
-      return interaction.reply({
-        content:
-          `🏆 **Referral Leaderboard**\n\n` +
-          formatted,
-        ephemeral: true
-      });
+      return interaction.editReply(
+        `🏆 **Referral Leaderboard**\n\n${formatted}`
+      );
 
     } catch (err) {
       console.log('Leaderboard error:', err);
 
-      return interaction.reply({
-        content: '❌ Failed to load leaderboard',
-        ephemeral: true
-      });
+      return interaction.editReply('❌ Failed to load leaderboard');
     }
   }
 };
