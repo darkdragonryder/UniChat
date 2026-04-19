@@ -37,32 +37,20 @@ for (const file of commandFiles) {
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
- 
-  // =========================
 
+  // =========================
   // LICENSE SYNC STARTUP HOOK
-
   // =========================
-
   client.guilds.cache.forEach(guild => {
-
     syncGuildLicenseExpiry(guild.id);
-
   });
 
   // optional periodic cleanup
-
   setInterval(() => {
-
     client.guilds.cache.forEach(guild => {
-
       syncGuildLicenseExpiry(guild.id);
-
     });
-
   }, 60 * 60 * 1000); // hourly
-
-});
 });
 
 // ==============================
@@ -72,7 +60,6 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
-
   if (!command) return;
 
   try {
@@ -83,7 +70,10 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.replied || interaction.deferred) {
       await interaction.editReply('❌ Error executing command');
     } else {
-      await interaction.reply({ content: '❌ Error executing command', ephemeral: true });
+      await interaction.reply({
+        content: '❌ Error executing command',
+        ephemeral: true
+      });
     }
   }
 });
