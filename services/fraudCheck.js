@@ -1,3 +1,4 @@
+import { checkFraud } from './fraudCheck.js';
 const userActionMap = new Map();
 const cooldownMap = new Map();
 const punishMap = new Map();
