@@ -1,5 +1,4 @@
 import { supabase } from '../db/supabase.js';
-import { sendLicenseWebhook } from './licenseWebhook.js';
 
 // ==============================
 // GENERATE KEY
@@ -24,15 +23,13 @@ export async function generateLicenseKey(type, durationDays) {
     expired: false
   });
 
-  if (error) {
-    return { ok: false, error: error.message };
-  }
+  if (error) return { ok: false, error: error.message };
 
   return { ok: true, data: key };
 }
 
 // ==============================
-// VALIDATE (ANTI DUPLICATE SAFE)
+// VALIDATE
 // ==============================
 export async function validateKey(key) {
   const { data, error } = await supabase
@@ -41,19 +38,17 @@ export async function validateKey(key) {
     .eq('key', key)
     .single();
 
-  if (error || !data) {
-    return { valid: false, reason: 'INVALID_KEY' };
-  }
+  if (error || !data) return { valid: false, reason: 'INVALID_KEY' };
 
-  if (data.used) {
-    return { valid: false, reason: 'ALREADY_USED' };
-  }
+  if (data.used) return { valid: false, reason: 'ALREADY_USED' };
+
+  if (data.expired) return { valid: false, reason: 'EXPIRED' };
 
   return { valid: true, entry: data };
 }
 
 // ==============================
-// USE KEY (ATOMIC SAFE)
+// USE KEY (ANTI DUPLICATE SAFE)
 // ==============================
 export async function useKey(key, guildId, userId) {
   const { data, error } = await supabase
@@ -70,76 +65,8 @@ export async function useKey(key, guildId, userId) {
     .single();
 
   if (error || !data) {
-    throw new Error('LICENSE_ALREADY_USED_OR_INVALID');
+    throw new Error('LICENSE_ALREADY_USED');
   }
 
-  await sendLicenseWebhook('USED', key, guildId, userId);
-
   return true;
-}
-
-// ==============================
-// REVOKE
-// ==============================
-export async function revokeLicense(guildId) {
-  const { error } = await supabase
-    .from('licenses')
-    .update({
-      used: false,
-      usedByGuild: null,
-      usedByUser: null,
-      usedAt: null
-    })
-    .eq('usedByGuild', guildId);
-
-  if (error) throw error;
-
-  return true;
-}
-
-// ==============================
-// EXTEND
-// ==============================
-export async function extendLicense(guildId, extraDays) {
-  const { data } = await supabase
-    .from('licenses')
-    .select('*')
-    .eq('usedByGuild', guildId)
-    .single();
-
-  if (!data) return false;
-
-  const now = Date.now();
-
-  let newExpiry = data.expiresAt;
-
-  if (!newExpiry) {
-    newExpiry = now + extraDays * 86400000;
-  } else {
-    newExpiry += extraDays * 86400000;
-  }
-
-  await supabase
-    .from('licenses')
-    .update({ expiresAt: newExpiry })
-    .eq('usedByGuild', guildId);
-
-  return true;
-}
-
-// ==============================
-// CHECK ACTIVE
-// ==============================
-export async function isLicenseActive(guildId) {
-  const { data } = await supabase
-    .from('licenses')
-    .select('*')
-    .eq('usedByGuild', guildId)
-    .single();
-
-  if (!data) return false;
-
-  if (data.expiresAt === null) return true;
-
-  return Date.now() < data.expiresAt;
 }
