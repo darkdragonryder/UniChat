@@ -1,4 +1,4 @@
-import db from './db.js';
+import supabase from '../db/supabase.js';
 
 // ==============================
 // CREATE REFERRAL CODE
