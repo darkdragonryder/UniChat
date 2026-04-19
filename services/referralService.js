@@ -1,190 +1,78 @@
-import supabase from '../db/supabase.js';
-import { randomUUID } from 'crypto';
+import { supabase } from '../db/supabase.js';
 
 /**
- * =========================
- * LEADERBOARD
- * =========================
+ * Create a referral code for a user
  */
-export async function getLeaderboard(guildId) {
-  try {
+export async function createReferralCode(userId) {
+    const code = `REF-${userId}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
     const { data, error } = await supabase
-      .from('referrals')
-      .select('ownerId, total')
-      .eq('guildId', guildId)
-      .order('total', { ascending: false });
-
-    if (error) {
-      console.log('getLeaderboard error:', error);
-      return [];
-    }
-
-    return data || [];
-  } catch (err) {
-    console.log('getLeaderboard exception:', err);
-    return [];
-  }
-}
-
-/**
- * =========================
- * ADD REFERRAL
- * =========================
- */
-export async function addReferral(guildId, ownerId) {
-  try {
-    const { data: existing } = await supabase
-      .from('referrals')
-      .select('*')
-      .eq('guildId', guildId)
-      .eq('ownerId', ownerId)
-      .maybeSingle();
-
-    if (existing) {
-      const { error } = await supabase
         .from('referrals')
-        .update({ total: existing.total + 1 })
-        .eq('guildId', guildId)
-        .eq('ownerId', ownerId);
+        .insert([
+            {
+                user_id: userId,
+                referral_code: code,
+                uses: 0,
+                created_at: new Date()
+            }
+        ])
+        .select()
+        .single();
 
-      if (error) console.log('addReferral update error:', error);
-      return;
-    }
+    if (error) throw error;
 
-    const { error } = await supabase
-      .from('referrals')
-      .insert([
-        {
-          guildId,
-          ownerId,
-          total: 1
-        }
-      ]);
-
-    if (error) console.log('addReferral insert error:', error);
-
-  } catch (err) {
-    console.log('addReferral exception:', err);
-  }
+    return data;
 }
 
 /**
- * =========================
- * GET USER TOTAL REFERRALS
- * =========================
+ * Get referral by code
  */
-export async function getUserReferrals(guildId, ownerId) {
-  try {
+export async function getReferral(code) {
     const { data, error } = await supabase
-      .from('referrals')
-      .select('total')
-      .eq('guildId', guildId)
-      .eq('ownerId', ownerId)
-      .maybeSingle();
+        .from('referrals')
+        .select('*')
+        .eq('referral_code', code)
+        .single();
 
-    if (error) return 0;
+    if (error) throw error;
 
-    return data?.total || 0;
-  } catch (err) {
-    return 0;
-  }
+    return data;
 }
 
 /**
- * =========================
- * GET SINGLE REFERRAL RECORD (FIXED MISSING EXPORT)
- * =========================
+ * Get total referral count for a user
  */
-export async function getReferral(guildId, ownerId) {
-  try {
+export async function getReferralCount(userId) {
     const { data, error } = await supabase
-      .from('referrals')
-      .select('*')
-      .eq('guildId', guildId)
-      .eq('ownerId', ownerId)
-      .maybeSingle();
+        .from('referrals')
+        .select('uses')
+        .eq('user_id', userId);
 
-    if (error) {
-      console.log('getReferral error:', error);
-      return null;
-    }
+    if (error) throw error;
 
-    return data || null;
+    const total = data.reduce((sum, row) => sum + (row.uses || 0), 0);
 
-  } catch (err) {
-    console.log('getReferral exception:', err);
-    return null;
-  }
+    return total;
 }
 
 /**
- * =========================
- * CREATE REFERRAL CODE
- * =========================
+ * Increment referral usage
  */
-export async function createReferralCode(guildId, ownerId) {
-  try {
-    const code = randomUUID().slice(0, 8);
+export async function useReferral(code) {
+    const { data: referral, error: fetchError } = await supabase
+        .from('referrals')
+        .select('*')
+        .eq('referral_code', code)
+        .single();
 
-    const { error } = await supabase
-      .from('referral_codes')
-      .insert([
-        {
-          guildId,
-          ownerId,
-          code
-        }
-      ]);
+    if (fetchError) throw fetchError;
 
-    if (error) {
-      console.log('createReferralCode error:', error);
-      return null;
-    }
+    const { error: updateError } = await supabase
+        .from('referrals')
+        .update({ uses: (referral.uses || 0) + 1 })
+        .eq('referral_code', code);
 
-    return code;
+    if (updateError) throw updateError;
 
-  } catch (err) {
-    console.log('createReferralCode exception:', err);
-    return null;
-  }
-}
-
-/**
- * =========================
- * REDEEM REFERRAL REWARD
- * =========================
- */
-export async function redeemReferral(guildId, ownerId) {
-  try {
-    const count = await getUserReferrals(guildId, ownerId);
-
-    if (count < 5) {
-      return {
-        success: false,
-        message: 'Not enough referrals yet.'
-      };
-    }
-
-    const { error } = await supabase
-      .from('referrals')
-      .update({ total: 0 })
-      .eq('guildId', guildId)
-      .eq('ownerId', ownerId);
-
-    if (error) {
-      console.log('redeemReferral reset error:', error);
-    }
-
-    return {
-      success: true,
-      message: 'Referral reward redeemed!'
-    };
-
-  } catch (err) {
-    console.log('redeemReferral exception:', err);
-    return {
-      success: false,
-      message: 'Error redeeming referral'
-    };
-  }
+    return true;
 }
