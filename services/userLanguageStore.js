@@ -1,4 +1,4 @@
-import supabase from './db.js';
+import supabase from '../db/supabase.js';
 
 // ==============================
 // GET USER LANGUAGE

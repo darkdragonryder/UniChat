@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { createReferralCode } from '../services/referralService.js';
-import db from '../services/db.js';
+import db from '../db/supabase.js';
 
 export default {
   data: new SlashCommandBuilder()

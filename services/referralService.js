@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import supabase from '../db/supabase.js';
+=======
+import db from '../db/supabase.js';
+>>>>>>> cff53a4 (fixed supabase imports)
 
 // ==============================
 // CREATE REFERRAL CODE

@@ -1,4 +1,4 @@
-import db from './db.js';
+import db from '../db/supabase.js';
 import { getGuildConfig, saveGuildConfig } from '../utils/guildConfig.js';
 
 // ==============================
