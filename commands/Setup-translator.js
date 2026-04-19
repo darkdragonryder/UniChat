@@ -1,7 +1,8 @@
 import {
   SlashCommandBuilder,
   PermissionFlagsBits,
-  ChannelType
+  ChannelType,
+  PermissionsBitField
 } from 'discord.js';
 
 import {
@@ -12,7 +13,7 @@ import {
 export default {
   data: new SlashCommandBuilder()
     .setName('setup-translator')
-    .setDescription('Setup multilingual system (Premium)')
+    .setDescription('Setup multilingual translation system')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
@@ -31,6 +32,9 @@ export default {
       );
     }
 
+    // ==============================
+    // SUPPORTED LANGUAGES
+    // ==============================
     const languages = [
       { name: 'English', code: 'en' },
       { name: 'French', code: 'fr' },
@@ -41,32 +45,56 @@ export default {
       { name: 'Chinese', code: 'zh' }
     ];
 
-    const roleIds = [];
-    const channelIds = [];
+    const roleMap = [];
+    const channelMap = [];
 
     try {
 
+      // ==============================
+      // SOURCE CHANNEL (ENGLISH BASE)
+      // ==============================
+      let sourceChannel = guild.channels.cache.find(
+        c => c.name === 'general-chat'
+      );
+
+      if (!sourceChannel) {
+        sourceChannel = await guild.channels.create({
+          name: 'general-chat',
+          type: ChannelType.GuildText
+        });
+      }
+
+      // ==============================
+      // CREATE LANGUAGES
+      // ==============================
       for (const lang of languages) {
 
-        // ROLE
-        let role = guild.roles.cache.find(r =>
-          r.name === `🌍 ${lang.name}`
+        // ------------------------------
+        // CREATE ROLE
+        // ------------------------------
+        let role = guild.roles.cache.find(
+          r => r.name === `Lang-${lang.name}`
         );
 
         if (!role) {
           role = await guild.roles.create({
-            name: `🌍 ${lang.name}`,
+            name: `Lang-${lang.name}`,
             reason: 'Translator system role'
           });
         }
 
-        roleIds.push({
+        roleMap.push({
           lang: lang.code,
           roleId: role.id
         });
 
-        // CHANNEL
-        const channelName = `chat-${lang.code}`;
+        // ------------------------------
+        // CREATE CHANNEL
+        // ------------------------------
+        const channelName =
+          lang.code === 'en'
+            ? 'general-chat-en'
+            : `general-chat-${lang.code}`;
 
         let channel = guild.channels.cache.find(
           c => c.name === channelName
@@ -79,37 +107,58 @@ export default {
             permissionOverwrites: [
               {
                 id: guild.id,
-                deny: ['ViewChannel']
+                deny: [PermissionsBitField.Flags.ViewChannel]
               },
               {
                 id: role.id,
-                allow: ['ViewChannel', 'SendMessages']
+                allow: [
+                  PermissionsBitField.Flags.ViewChannel,
+                  PermissionsBitField.Flags.SendMessages,
+                  PermissionsBitField.Flags.ReadMessageHistory
+                ]
               }
             ]
           });
         }
 
-        channelIds.push({
+        channelMap.push({
           lang: lang.code,
           channelId: channel.id
         });
       }
 
       // ==============================
-      // SAVE TO DATABASE
+      // SAVE SYSTEM CONFIG
       // ==============================
       await saveGuildSetup(guild.id, {
-        roles: roleIds,
-        channels: channelIds
+        enabled: true,
+        sourceChannelId: sourceChannel.id,
+        roles: roleMap,
+        channels: channelMap
       });
 
-      return interaction.editReply(
-        "✅ Translator system setup complete & saved."
-      );
+      // ==============================
+      // SUCCESS MESSAGE
+      // ==============================
+      return interaction.editReply(`
+✅ **Translator Setup Complete**
+
+✔ Source channel: #general-chat  
+✔ Language channels created  
+✔ Roles assigned  
+✔ Permissions configured  
+
+⚠️ IMPORTANT:
+- Move bot role ABOVE language roles
+- Users will only see their language channel
+- English is default system language
+
+🌍 System is now active.
+      `);
 
     } catch (err) {
       console.log(err);
-      return interaction.editReply("❌ Setup failed");
+      return interaction.editReply("❌ Setup failed. Check console logs.");
     }
   }
 };
