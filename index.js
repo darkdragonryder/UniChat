@@ -4,9 +4,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Client, GatewayIntentBits, Collection } from 'discord.js';
 
-import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
 import { loadGuildCache } from './services/guildCache.js';
 import { repairGuild } from './services/guildRepair.js';
+import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
+import { runLicenseCron } from './services/licenseCron.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,16 +42,19 @@ for (const file of commandFiles) {
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // load cache first
   await loadGuildCache(client);
 
-  // license sync + repair boot
   client.guilds.cache.forEach(guild => {
     syncGuildLicenseExpiry(guild.id);
     repairGuild(guild);
   });
 
-  // hourly sync
+  // license cron
+  setInterval(() => {
+    runLicenseCron();
+  }, 60 * 60 * 1000);
+
+  // repair + sync
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
       syncGuildLicenseExpiry(guild.id);
@@ -60,7 +64,7 @@ client.once('ready', async () => {
 });
 
 // ==============================
-// INTERACTIONS
+// COMMAND HANDLER
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -73,13 +77,12 @@ client.on('interactionCreate', async (interaction) => {
   } catch (err) {
     console.error(err);
 
+    const msg = '❌ Error executing command';
+
     if (interaction.replied || interaction.deferred) {
-      await interaction.editReply('❌ Error executing command');
+      await interaction.editReply(msg);
     } else {
-      await interaction.reply({
-        content: '❌ Error executing command',
-        ephemeral: true
-      });
+      await interaction.reply({ content: msg, ephemeral: true });
     }
   }
 });
