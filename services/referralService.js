@@ -64,11 +64,12 @@ export async function hasUserUsedReferral(userId) {
 ========================= */
 export async function useReferral(code, userId) {
   const referral = await getReferral(code);
-  if (!referral) return { success: false, message: "Invalid code" };
+  if (!referral) return { success: false, message: "Invalid referral code" };
 
-  // prevent double use
-  const used = await hasUserUsedReferral(userId);
-  if (used) return { success: false, message: "Already used referral" };
+  const alreadyUsed = await hasUserUsedReferral(userId);
+  if (alreadyUsed) {
+    return { success: false, message: "You already used a referral" };
+  }
 
   await supabase.from('referral_uses').insert([
     {
