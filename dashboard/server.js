@@ -2,131 +2,91 @@ import express from 'express';
 import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 
+import {
+  isLicenseActive,
+  revokeLicense,
+  extendLicense
+} from '../services/licenseStore.js';
+
 import { getGuildSetup } from '../services/guildSetupStore.js';
-import { isLicenseActive } from '../services/licenseStore.js';
 
 const app = express();
 const PORT = process.env.DASHBOARD_PORT || 3000;
 
 // ==============================
-// DISCORD BOT CLIENT (READ-ONLY)
+// DISCORD BOT CLIENT
 // ==============================
 const bot = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// login bot (read-only usage)
 bot.login(process.env.TOKEN);
 
-// ==============================
-// BASIC MIDDLEWARE
 // ==============================
 app.use(express.json());
 app.use(express.static('public'));
 
 // ==============================
-// GET ALL GUILDS
+// ALL GUILDS
 // ==============================
 app.get('/api/guilds', async (req, res) => {
-  try {
-    const guilds = [];
+  const guilds = [];
 
-    for (const guild of bot.guilds.cache.values()) {
+  for (const guild of bot.guilds.cache.values()) {
 
-      const premium = await isLicenseActive(guild.id);
-      const setup = await getGuildSetup(guild.id);
-
-      guilds.push({
-        id: guild.id,
-        name: guild.name,
-        icon: guild.iconURL(),
-        memberCount: guild.memberCount,
-        premium,
-        setup: !!setup
-      });
-    }
-
-    res.json({
-      success: true,
-      guilds
-    });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: 'failed to load guilds' });
-  }
-});
-
-// ==============================
-// GET SINGLE GUILD DETAILS
-// ==============================
-app.get('/api/guild/:id', async (req, res) => {
-  try {
-    const guild = bot.guilds.cache.get(req.params.id);
-
-    if (!guild) {
-      return res.status(404).json({ error: 'Guild not found' });
-    }
-
-    const premium = await isLicenseActive(guild.id);
-    const setup = await getGuildSetup(guild.id);
-
-    res.json({
+    guilds.push({
       id: guild.id,
       name: guild.name,
-      icon: guild.iconURL(),
       members: guild.memberCount,
-      premium,
-      setup
+      premium: await isLicenseActive(guild.id),
+      setup: !!(await getGuildSetup(guild.id))
     });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: 'failed' });
   }
+
+  res.json({ guilds });
 });
 
 // ==============================
-// EXTEND PREMIUM (HOOK READY)
+// EXTEND LICENSE (NOW CONNECTED)
 // ==============================
 app.post('/api/guild/:id/extend', async (req, res) => {
   try {
-    // placeholder for your license extension system
     const guildId = req.params.id;
+    const { days } = req.body;
 
-    console.log(`Extend request for ${guildId}`);
+    await extendLicense(guildId, days);
 
     res.json({
       success: true,
-      message: 'Extension hook ready (connect license system here)'
+      message: `Extended by ${days} days`
     });
 
   } catch (err) {
-    res.status(500).json({ error: 'failed' });
+    console.log(err);
+    res.status(500).json({ error: 'extend failed' });
   }
 });
 
 // ==============================
-// REVOKE PREMIUM (HOOK READY)
+// REVOKE LICENSE (NOW CONNECTED)
 // ==============================
 app.post('/api/guild/:id/revoke', async (req, res) => {
   try {
     const guildId = req.params.id;
 
-    console.log(`Revoke request for ${guildId}`);
+    await revokeLicense(guildId);
 
     res.json({
       success: true,
-      message: 'Revoke hook ready (connect license system here)'
+      message: 'License revoked'
     });
 
   } catch (err) {
-    res.status(500).json({ error: 'failed' });
+    console.log(err);
+    res.status(500).json({ error: 'revoke failed' });
   }
 });
 
-// ==============================
-// START SERVER
 // ==============================
 app.listen(PORT, () => {
   console.log(`🌐 Dashboard running on http://localhost:${PORT}`);
