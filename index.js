@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 
-import { createGuildSetup } from './services/guildSetup.js';
+import { createGuildSetup } from './services/guildSetupStore.js';
 
 const client = new Client({
   intents: [
@@ -12,7 +12,7 @@ const client = new Client({
 });
 
 // ==============================
-// READY EVENT (BOT ONLINE)
+// READY EVENT
 // ==============================
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -33,13 +33,12 @@ client.once('ready', () => {
 // ==============================
 client.on('guildCreate', async (guild) => {
   try {
-
     console.log(`📥 Joined guild: ${guild.name}`);
 
-    // 1. Ensure DB setup exists
+    // Ensure DB setup exists
     await createGuildSetup(guild);
 
-    // 2. Create language roles
+    // Create language roles
     const languages = [
       'English',
       'French',
@@ -72,6 +71,6 @@ client.on('guildCreate', async (guild) => {
 });
 
 // ==============================
-// BOT LOGIN
+// LOGIN
 // ==============================
 client.login(process.env.TOKEN);
