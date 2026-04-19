@@ -37,6 +37,32 @@ for (const file of commandFiles) {
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
+ 
+  // =========================
+
+  // LICENSE SYNC STARTUP HOOK
+
+  // =========================
+
+  client.guilds.cache.forEach(guild => {
+
+    syncGuildLicenseExpiry(guild.id);
+
+  });
+
+  // optional periodic cleanup
+
+  setInterval(() => {
+
+    client.guilds.cache.forEach(guild => {
+
+      syncGuildLicenseExpiry(guild.id);
+
+    });
+
+  }, 60 * 60 * 1000); // hourly
+
+});
 });
 
 // ==============================
