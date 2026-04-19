@@ -5,13 +5,13 @@
   <style>
     body {
       font-family: Arial;
-      background: #111;
+      background: #0f0f0f;
       color: white;
       padding: 20px;
     }
 
     .card {
-      background: #222;
+      background: #1e1e1e;
       padding: 15px;
       margin: 10px 0;
       border-radius: 10px;
@@ -19,8 +19,31 @@
 
     button {
       padding: 8px 12px;
-      margin-top: 5px;
+      margin-right: 5px;
+      margin-top: 8px;
       cursor: pointer;
+      border: none;
+      border-radius: 5px;
+    }
+
+    .extend {
+      background: #2ecc71;
+      color: black;
+    }
+
+    .revoke {
+      background: #e74c3c;
+      color: white;
+    }
+
+    input {
+      padding: 6px;
+      width: 60px;
+      margin-left: 5px;
+    }
+
+    .row {
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -30,6 +53,7 @@
 <div id="guilds"></div>
 
 <script>
+
 async function loadGuilds() {
   const res = await fetch('/api/guilds');
   const data = await res.json();
@@ -38,23 +62,70 @@ async function loadGuilds() {
   container.innerHTML = '';
 
   data.guilds.forEach(g => {
+
     const div = document.createElement('div');
     div.className = 'card';
 
     div.innerHTML = `
       <h3>${g.name}</h3>
-      <p>Members: ${g.memberCount}</p>
-      <p>Premium: ${g.premium ? '✅' : '❌'}</p>
-      <p>Setup: ${g.setup ? '✅' : '❌'}</p>
-      <button onclick="alert('Extend coming next')">Extend</button>
-      <button onclick="alert('Revoke coming next')">Revoke</button>
+      <p>Members: ${g.members}</p>
+      <p>Premium: ${g.premium ? '✅ Active' : '❌ Inactive'}</p>
+      <p>Setup: ${g.setup ? '✅ Done' : '❌ Not Set'}</p>
+
+      <div class="row">
+        <input type="number" id="days-${g.id}" placeholder="Days" min="1" />
+        <button class="extend" onclick="extend('${g.id}')">Extend</button>
+        <button class="revoke" onclick="revoke('${g.id}')">Revoke</button>
+      </div>
     `;
 
     container.appendChild(div);
   });
 }
 
+// ==============================
+// EXTEND LICENSE
+// ==============================
+async function extend(guildId) {
+  const days = document.getElementById(`days-${guildId}`).value;
+
+  if (!days) return alert("Enter days");
+
+  const res = await fetch(`/api/guild/${guildId}/extend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days: Number(days) })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    loadGuilds();
+  } else {
+    alert("Extend failed");
+  }
+}
+
+// ==============================
+// REVOKE LICENSE
+// ==============================
+async function revoke(guildId) {
+  const res = await fetch(`/api/guild/${guildId}/revoke`, {
+    method: 'POST'
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    loadGuilds();
+  } else {
+    alert("Revoke failed");
+  }
+}
+
+// INIT
 loadGuilds();
+
 </script>
 
 </body>
