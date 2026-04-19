@@ -3,7 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Client, GatewayIntentBits, Collection } from 'discord.js';
+
 import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
+import { loadGuildCache } from './services/guildCache.js';
+import { repairGuild } from './services/guildRepair.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,22 +38,25 @@ for (const file of commandFiles) {
 // ==============================
 // READY
 // ==============================
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // =========================
-  // LICENSE SYNC STARTUP HOOK
-  // =========================
+  // load cache first
+  await loadGuildCache(client);
+
+  // license sync + repair boot
   client.guilds.cache.forEach(guild => {
     syncGuildLicenseExpiry(guild.id);
+    repairGuild(guild);
   });
 
-  // optional periodic cleanup
+  // hourly sync
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
       syncGuildLicenseExpiry(guild.id);
+      repairGuild(guild);
     });
-  }, 60 * 60 * 1000); // hourly
+  }, 60 * 60 * 1000);
 });
 
 // ==============================
