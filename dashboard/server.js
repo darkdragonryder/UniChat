@@ -1,70 +1,133 @@
 import express from 'express';
-import supabase from '../services/db.js';
 import 'dotenv/config';
+import { Client, GatewayIntentBits } from 'discord.js';
+
+import { getGuildSetup } from '../services/guildSetupStore.js';
+import { isLicenseActive } from '../services/licenseStore.js';
 
 const app = express();
+const PORT = process.env.DASHBOARD_PORT || 3000;
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+// ==============================
+// DISCORD BOT CLIENT (READ-ONLY)
+// ==============================
+const bot = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
 
+// login bot (read-only usage)
+bot.login(process.env.TOKEN);
+
+// ==============================
+// BASIC MIDDLEWARE
+// ==============================
 app.use(express.json());
 app.use(express.static('public'));
 
 // ==============================
-// SIMPLE AUTH MIDDLEWARE
+// GET ALL GUILDS
 // ==============================
-app.use((req, res, next) => {
-  const pass = req.headers['x-admin-pass'];
+app.get('/api/guilds', async (req, res) => {
+  try {
+    const guilds = [];
 
-  if (!ADMIN_PASSWORD) {
-    return res.status(500).send('Missing ADMIN_PASSWORD');
+    for (const guild of bot.guilds.cache.values()) {
+
+      const premium = await isLicenseActive(guild.id);
+      const setup = await getGuildSetup(guild.id);
+
+      guilds.push({
+        id: guild.id,
+        name: guild.name,
+        icon: guild.iconURL(),
+        memberCount: guild.memberCount,
+        premium,
+        setup: !!setup
+      });
+    }
+
+    res.json({
+      success: true,
+      guilds
+    });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: 'failed to load guilds' });
   }
-
-  // Allow static files (frontend)
-  if (!req.path.startsWith('/api')) return next();
-
-  if (pass !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  next();
 });
 
 // ==============================
-// GET ALL LICENSES
+// GET SINGLE GUILD DETAILS
 // ==============================
-app.get('/api/licenses', async (req, res) => {
-  const { data, error } = await supabase
-    .from('licenses')
-    .select('*')
-    .order('usedAt', { ascending: false });
+app.get('/api/guild/:id', async (req, res) => {
+  try {
+    const guild = bot.guilds.cache.get(req.params.id);
 
-  if (error) return res.status(500).json(error);
+    if (!guild) {
+      return res.status(404).json({ error: 'Guild not found' });
+    }
 
-  res.json(data);
+    const premium = await isLicenseActive(guild.id);
+    const setup = await getGuildSetup(guild.id);
+
+    res.json({
+      id: guild.id,
+      name: guild.name,
+      icon: guild.iconURL(),
+      members: guild.memberCount,
+      premium,
+      setup
+    });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: 'failed' });
+  }
 });
 
 // ==============================
-// REVOKE LICENSE
+// EXTEND PREMIUM (HOOK READY)
 // ==============================
-app.post('/api/revoke', async (req, res) => {
-  const { key } = req.body;
+app.post('/api/guild/:id/extend', async (req, res) => {
+  try {
+    // placeholder for your license extension system
+    const guildId = req.params.id;
 
-  const { error } = await supabase
-    .from('licenses')
-    .update({
-      expired: true,
-      expiresAt: Date.now()
-    })
-    .eq('key', key);
+    console.log(`Extend request for ${guildId}`);
 
-  if (error) return res.status(500).json(error);
+    res.json({
+      success: true,
+      message: 'Extension hook ready (connect license system here)'
+    });
 
-  res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+// ==============================
+// REVOKE PREMIUM (HOOK READY)
+// ==============================
+app.post('/api/guild/:id/revoke', async (req, res) => {
+  try {
+    const guildId = req.params.id;
+
+    console.log(`Revoke request for ${guildId}`);
+
+    res.json({
+      success: true,
+      message: 'Revoke hook ready (connect license system here)'
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: 'failed' });
+  }
 });
 
 // ==============================
 // START SERVER
 // ==============================
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`🌐 Dashboard running on port ${process.env.PORT || 3000}`);
+app.listen(PORT, () => {
+  console.log(`🌐 Dashboard running on http://localhost:${PORT}`);
 });
