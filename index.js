@@ -4,15 +4,13 @@ import {
   GatewayIntentBits,
   Collection,
   REST,
-  Routes,
-  ChannelType,
-  PermissionFlagsBits
+  Routes
 } from 'discord.js';
 
 import fs from 'fs';
 
 // ==============================
-// CORE SERVICES
+// CORE SYSTEMS
 // ==============================
 import './services/db.js';
 import { isLicenseActive } from './services/licenseStore.js';
@@ -76,14 +74,14 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // ==============================
-// READY EVENT
+// READY
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 });
 
 // ==============================
-// GUILD JOIN → LANGUAGE PROMPT
+// GUILD JOIN PROMPT
 // ==============================
 client.on('guildMemberAdd', async (member) => {
   try {
@@ -93,7 +91,7 @@ client.on('guildMemberAdd', async (member) => {
     if (!channel) return;
 
     await channel.send({
-      content: `👋 Welcome ${member.user.username}!\nPlease select your language region:`,
+      content: `👋 Welcome ${member.user.username}!\nPlease select your language:`,
       components: [buildLanguageGroupMenu(member.id)]
     });
 
@@ -103,7 +101,7 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ==============================
-// MESSAGE CREATE (FREE + PREMIUM SYSTEM)
+// MESSAGE SYSTEM (FREE + PREMIUM)
 // ==============================
 const cooldown = new Map();
 
@@ -117,7 +115,6 @@ client.on('messageCreate', async (message) => {
     // 🆓 FREE MODE
     // ==============================
     if (!premium) {
-
       if (!message.content.startsWith('!t ')) return;
 
       const key = `${message.guild.id}-${message.channel.id}`;
@@ -138,12 +135,9 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==============================
-    // 💎 PREMIUM MODE (CHANNEL SYSTEM)
+    // 💎 PREMIUM MODE
     // ==============================
-    const channelName = message.channel.name;
-
-    // prevent loops in language channels
-    if (channelName.includes('chat-')) return;
+    if (message.channel.name.startsWith('chat-')) return;
 
     const members = await message.guild.members.fetch();
 
@@ -156,13 +150,13 @@ client.on('messageCreate', async (message) => {
       const result = await translate(message.content, lang);
       if (!result) continue;
 
-      const targetChannel = message.guild.channels.cache.find(
-        c => c.name === `chat-${lang.toLowerCase()}`
+      const channel = message.guild.channels.cache.find(
+        c => c.name === `chat-${lang}`
       );
 
-      if (!targetChannel) continue;
-
-      await targetChannel.send(`💬 ${result.text}`);
+      if (channel) {
+        await channel.send(`💬 ${result.text}`);
+      }
     }
 
   } catch (err) {
@@ -171,17 +165,17 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS (COMMANDS + DROPDOWNS)
+// INTERACTIONS (FULL FIXED)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
 
     // ==============================
-    // LANGUAGE GROUP SELECT
+    // LANGUAGE SELECTOR (FULL CONNECTED FIX)
     // ==============================
     if (interaction.isStringSelectMenu()) {
 
-      // STEP 1
+      // STEP 1 GROUP
       if (interaction.customId.startsWith('langgroup_')) {
         const userId = interaction.customId.split('_')[1];
 
@@ -197,20 +191,56 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // STEP 2
+      // STEP 2 LANGUAGE SELECT (FULL ROLE SYSTEM CONNECTED)
       if (interaction.customId.startsWith('setlang_')) {
+        const guild = interaction.guild;
         const userId = interaction.customId.split('_')[1];
 
         if (interaction.user.id !== userId) {
           return interaction.reply({ content: "❌ Not your menu", ephemeral: true });
         }
 
-        const lang = interaction.values[0];
+        const lang = interaction.values[0].toLowerCase();
+        const member = await guild.members.fetch(interaction.user.id);
 
-        setUserLang(interaction.guild.id, interaction.user.id, lang);
+        // REMOVE OLD LANGUAGE ROLES
+        const oldRoles = guild.roles.cache.filter(r =>
+          r.name.startsWith('🌍')
+        );
+
+        for (const role of oldRoles.values()) {
+          if (member.roles.cache.has(role.id)) {
+            await member.roles.remove(role).catch(() => {});
+          }
+        }
+
+        // FIND NEW ROLE
+        const newRole = guild.roles.cache.find(r =>
+          r.name.toLowerCase().includes(lang)
+        );
+
+        if (!newRole) {
+          return interaction.update({
+            content: "❌ Language role missing. Run /setup-translator",
+            components: []
+          });
+        }
+
+        // ASSIGN ROLE
+        await member.roles.add(newRole).catch(() => {});
+
+        // SAVE USER LANGUAGE
+        setUserLang(guild.id, member.id, lang);
+
+        // FIND CHANNEL
+        const channel = guild.channels.cache.find(
+          c => c.name === `chat-${lang}`
+        );
 
         return interaction.update({
-          content: `✅ Language set to **${lang}**`,
+          content:
+            `✅ Language set to **${lang.toUpperCase()}**\n` +
+            `📢 Channel: ${channel ? `#${channel.name}` : 'not found'}`,
           components: []
         });
       }
@@ -220,7 +250,6 @@ client.on('interactionCreate', async (interaction) => {
     // SLASH COMMANDS
     // ==============================
     if (interaction.isChatInputCommand()) {
-
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
 
