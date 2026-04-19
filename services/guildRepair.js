@@ -2,16 +2,14 @@ import { ChannelType } from 'discord.js';
 import { getCachedGuildSetup, refreshGuildSetup } from './guildCache.js';
 
 // ==============================
-// AUTO REPAIR GUILD
+// REPAIR GUILD
 // ==============================
 export async function repairGuild(guild) {
   try {
     const setup = getCachedGuildSetup(guild.id);
-    if (!setup) return;
+    if (!setup?.roles?.length) return;
 
-    const roles = setup.roles || [];
-
-    for (const r of roles) {
+    for (const r of setup.roles) {
       const lang = r.lang;
 
       // ======================
@@ -31,7 +29,9 @@ export async function repairGuild(guild) {
       // ======================
       const channelName = `chat-${lang}`;
 
-      let channel = guild.channels.cache.find(c => c.name === channelName);
+      let channel = guild.channels.cache.find(
+        c => c.name === channelName
+      );
 
       if (!channel) {
         channel = await guild.channels.create({
@@ -52,10 +52,9 @@ export async function repairGuild(guild) {
     }
 
     await refreshGuildSetup(guild.id);
-
     console.log(`🔧 Repaired guild: ${guild.name}`);
 
   } catch (err) {
-    console.log('Repair error:', err);
+    console.log('❌ Repair error:', err);
   }
 }
