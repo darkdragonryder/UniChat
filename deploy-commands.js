@@ -10,35 +10,41 @@ const __dirname = path.dirname(__filename);
 const commands = [];
 
 // ==============================
-// LOAD COMMAND FILES
+// LOAD ONLY COMMAND DATA (NO EXECUTION)
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
-  const command = await import(`file://${path.join(commandsPath, file)}`);
-  commands.push(command.default.data.toJSON());
+  const filePath = path.join(commandsPath, file);
+
+  const { default: command } = await import(`file://${filePath}`);
+
+  // ⚠️ ONLY use .data (no runtime code)
+  if (!command?.data) {
+    console.log(`❌ Skipping ${file} (no data export)`);
+    continue;
+  }
+
+  commands.push(command.data.toJSON());
 }
 
 // ==============================
-// DISCORD REST CLIENT
+// REGISTER COMMANDS
 // ==============================
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-// ==============================
-// DEPLOY COMMANDS
-// ==============================
 (async () => {
   try {
-    console.log(`🚀 Deploying ${commands.length} slash commands...`);
+    console.log(`🚀 Deploying ${commands.length} commands...`);
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
 
-    console.log('✅ Slash commands deployed successfully!');
+    console.log('✅ Commands deployed successfully');
   } catch (err) {
-    console.error('❌ Failed to deploy commands:', err);
+    console.error('❌ Deploy failed:', err);
   }
 })();
