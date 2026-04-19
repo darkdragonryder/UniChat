@@ -1,78 +1,86 @@
 import { supabase } from '../db/supabase.js';
 
-/**
- * Create a referral code for a user
- */
+/* =========================
+   CREATE REFERRAL CODE
+========================= */
 export async function createReferralCode(userId) {
-    const code = `REF-${userId}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  const code = Math.random().toString(36).substring(2, 10);
 
-    const { data, error } = await supabase
-        .from('referrals')
-        .insert([
-            {
-                user_id: userId,
-                referral_code: code,
-                uses: 0,
-                created_at: new Date()
-            }
-        ])
-        .select()
-        .single();
+  const { data, error } = await supabase
+    .from('referrals')
+    .insert([{ user_id: userId, code, uses: 0 }])
+    .select()
+    .single();
 
-    if (error) throw error;
-
-    return data;
+  if (error) throw error;
+  return data;
 }
 
-/**
- * Get referral by code
- */
+/* =========================
+   GET REFERRAL
+========================= */
 export async function getReferral(code) {
-    const { data, error } = await supabase
-        .from('referrals')
-        .select('*')
-        .eq('referral_code', code)
-        .single();
+  const { data, error } = await supabase
+    .from('referrals')
+    .select('*')
+    .eq('code', code)
+    .single();
 
-    if (error) throw error;
-
-    return data;
+  if (error) return null;
+  return data;
 }
 
-/**
- * Get total referral count for a user
- */
+/* =========================
+   GET REFERRAL COUNT
+========================= */
 export async function getReferralCount(userId) {
-    const { data, error } = await supabase
-        .from('referrals')
-        .select('uses')
-        .eq('user_id', userId);
+  const { data, error } = await supabase
+    .from('referrals')
+    .select('uses')
+    .eq('user_id', userId);
 
-    if (error) throw error;
+  if (error) return 0;
 
-    const total = data.reduce((sum, row) => sum + (row.uses || 0), 0);
-
-    return total;
+  return data.reduce((sum, r) => sum + (r.uses || 0), 0);
 }
 
-/**
- * Increment referral usage
- */
-export async function useReferral(code) {
-    const { data: referral, error: fetchError } = await supabase
-        .from('referrals')
-        .select('*')
-        .eq('referral_code', code)
-        .single();
+/* =========================
+   CHECK IF USER USED REFERRAL
+========================= */
+export async function hasUserUsedReferral(userId) {
+  const { data, error } = await supabase
+    .from('referral_uses')
+    .select('*')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle();
 
-    if (fetchError) throw fetchError;
+  if (error) return false;
+  return !!data;
+}
 
-    const { error: updateError } = await supabase
-        .from('referrals')
-        .update({ uses: (referral.uses || 0) + 1 })
-        .eq('referral_code', code);
+/* =========================
+   USE REFERRAL
+========================= */
+export async function useReferral(code, userId) {
+  const referral = await getReferral(code);
+  if (!referral) return { success: false, message: "Invalid code" };
 
-    if (updateError) throw updateError;
+  // prevent double use
+  const used = await hasUserUsedReferral(userId);
+  if (used) return { success: false, message: "Already used referral" };
 
-    return true;
+  await supabase.from('referral_uses').insert([
+    {
+      user_id: userId,
+      referral_code: code
+    }
+  ]);
+
+  await supabase
+    .from('referrals')
+    .update({ uses: referral.uses + 1 })
+    .eq('code', code);
+
+  return { success: true };
 }
