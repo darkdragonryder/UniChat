@@ -1,10 +1,12 @@
 import { getGuildSetup } from './guildSetupStore.js';
 
-// in-memory cache (fast access)
+// ==============================
+// MEMORY CACHE
+// ==============================
 export const guildCache = new Map();
 
 // ==============================
-// LOAD ALL GUILDS FROM DB
+// LOAD CACHE
 // ==============================
 export async function loadGuildCache(client) {
   console.log("🔄 Loading guild setup cache...");
@@ -14,22 +16,22 @@ export async function loadGuildCache(client) {
 
     if (setup?.enabled) {
       guildCache.set(guild.id, setup);
-      console.log(`✅ Loaded setup for ${guild.name}`);
+      console.log(`✅ Cached: ${guild.name}`);
     }
   }
 
-  console.log(`🚀 Guild cache loaded: ${guildCache.size} guilds`);
+  console.log(`🚀 Cache ready: ${guildCache.size} guilds`);
 }
 
 // ==============================
-// GET FROM CACHE
+// GET CACHE
 // ==============================
 export function getCachedGuildSetup(guildId) {
-  return guildCache.get(guildId);
+  return guildCache.get(guildId) || null;
 }
 
 // ==============================
-// REFRESH SINGLE GUILD
+// REFRESH CACHE
 // ==============================
 export async function refreshGuildSetup(guildId) {
   const setup = await getGuildSetup(guildId);
