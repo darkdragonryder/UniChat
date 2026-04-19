@@ -32,7 +32,7 @@ export default {
       const result = await generateLicenseKey(type, map[type]);
 
       // ✅ FIX: extract string properly
-      const key = result.key;
+      const key = result;
 
       return interaction.reply({
         content:
