@@ -1,13 +1,15 @@
+import fetch from 'node-fetch';
+
 const cache = new Map();
 
 // ==============================
-// DEEPL
+// DEEPL TRANSLATION
 // ==============================
 async function translateDeepL(text, targetLang) {
   const res = await fetch('https://api-free.deepl.com/v2/translate', {
     method: 'POST',
     headers: {
-      'Authorization': `DeepL-Auth-Key ${process.env.DEEPL_KEY}`,
+      'Authorization': `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -22,21 +24,18 @@ async function translateDeepL(text, targetLang) {
     throw new Error('DeepL empty response');
   }
 
-  const translated = data.translations[0].text;
-  const detected = data.translations[0].detected_source_language;
-
   return {
-    text: translated,
-    detected
+    text: data.translations[0].text,
+    detected: data.translations[0].detected_source_language
   };
 }
 
 // ==============================
-// MYMEMORY FALLBACK (FIXED)
+// MYMEMORY FALLBACK
 // ==============================
 async function translateMyMemory(text, targetLang) {
   const res = await fetch(
-    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=auto|${targetLang}`
   );
 
   const data = await res.json();
@@ -48,7 +47,7 @@ async function translateMyMemory(text, targetLang) {
 }
 
 // ==============================
-// MAIN TRANSLATE
+// MAIN TRANSLATE FUNCTION
 // ==============================
 export async function translate(text, targetLang) {
   if (!text || !targetLang) {
@@ -57,6 +56,7 @@ export async function translate(text, targetLang) {
 
   const key = `${text}::${targetLang}`;
 
+  // CACHE CHECK
   if (cache.has(key)) {
     return cache.get(key);
   }
@@ -70,7 +70,7 @@ export async function translate(text, targetLang) {
     console.log('DeepL failed, using fallback:', err.message);
 
     try {
-      // FALLBACK
+      // FALLBACK: MYMEMORY
       result = await translateMyMemory(text, targetLang);
     } catch (fallbackErr) {
       console.error('All translation failed:', fallbackErr);
@@ -82,10 +82,8 @@ export async function translate(text, targetLang) {
     }
   }
 
-  // only cache valid results
-  if (result?.text) {
-    cache.set(key, result);
-  }
+  // CACHE RESULT
+  cache.set(key, result);
 
   return result;
 }
