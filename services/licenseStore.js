@@ -1,10 +1,10 @@
 import { supabase } from '../db/supabase.js';
 
 // ==============================
-// GENERATE KEY
+// GENERATE LICENSE
 // ==============================
 export async function generateLicenseKey(type, durationDays) {
-  const key = `${type}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+  const key = `${type.toLowerCase()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
 
   const createdAt = Date.now();
 
@@ -16,16 +16,15 @@ export async function generateLicenseKey(type, durationDays) {
   const { error } = await supabase.from('licenses').insert({
     key,
     used: false,
-    type,
-    durationDays,
+    type: type.toLowerCase(),
+    durationDays: durationDays ?? null,
     createdAt,
-    expiresAt,
-    expired: false
+    expiresAt
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) throw error;
 
-  return { ok: true, data: key };
+  return { key };
 }
 
 // ==============================
@@ -38,20 +37,18 @@ export async function validateKey(key) {
     .eq('key', key)
     .single();
 
-  if (error || !data) return { valid: false, reason: 'INVALID_KEY' };
+  if (error || !data) {
+    return { ok: false, reason: 'INVALID_KEY' };
+  }
 
-  if (data.used) return { valid: false, reason: 'ALREADY_USED' };
-
-  if (data.expired) return { valid: false, reason: 'EXPIRED' };
-
-  return { valid: true, entry: data };
+  return { ok: true, entry: data };
 }
 
 // ==============================
-// USE KEY (ANTI DUPLICATE SAFE)
+// MARK USED
 // ==============================
 export async function useKey(key, guildId, userId) {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('licenses')
     .update({
       used: true,
@@ -59,14 +56,28 @@ export async function useKey(key, guildId, userId) {
       usedByUser: userId,
       usedAt: Date.now()
     })
-    .eq('key', key)
-    .eq('used', false)
-    .select()
-    .single();
+    .eq('key', key);
 
-  if (error || !data) {
-    throw new Error('LICENSE_ALREADY_USED');
-  }
+  if (error) throw error;
+
+  return true;
+}
+
+// ==============================
+// REVOKE LICENSE
+// ==============================
+export async function revokeLicense(guildId) {
+  const { error } = await supabase
+    .from('licenses')
+    .update({
+      used: false,
+      usedByGuild: null,
+      usedByUser: null,
+      usedAt: null
+    })
+    .eq('usedByGuild', guildId);
+
+  if (error) throw error;
 
   return true;
 }
