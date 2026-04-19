@@ -29,6 +29,9 @@ import {
   buildLanguageMenu
 } from './services/languagePrompt.js';
 
+// GUILD SETUP CACHE (AUTO LOAD SYSTEM)
+import { loadGuildCache, getCachedGuildSetup } from './services/guildCache.js';
+
 // ==============================
 // CLIENT
 // ==============================
@@ -74,10 +77,15 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // ==============================
-// READY
+// READY EVENT (AUTO LOAD HERE)
 // ==============================
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
+
+  // AUTO LOAD ALL GUILD SETUPS
+  await loadGuildCache(client);
+
+  console.log("✅ Guild setup cache loaded");
 });
 
 // ==============================
@@ -101,7 +109,7 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ==============================
-// MESSAGE SYSTEM (OPTIMIZED — NO guild.fetch)
+// MESSAGE SYSTEM (NO guild.fetch - CACHE BASED)
 // ==============================
 const cooldown = new Map();
 
@@ -135,13 +143,15 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==============================
-    // 💎 PREMIUM MODE (ROLE → CHANNEL ROUTING)
+    // 💎 PREMIUM MODE (CACHE BASED ROUTING)
     // ==============================
     if (message.channel.name.startsWith('chat-')) return;
 
+    const setup = getCachedGuildSetup(message.guild.id);
+    if (!setup) return;
+
     const guild = message.guild;
 
-    // get all language roles in server
     const langRoles = guild.roles.cache.filter(r =>
       r.name.startsWith('🌍')
     );
@@ -171,7 +181,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS (UNCHANGED BUT CLEAN)
+// INTERACTIONS (FULL CONNECTED SYSTEM)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
@@ -194,7 +204,7 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // STEP 2 LANGUAGE SELECT
+      // STEP 2 LANGUAGE SELECT (ROLE CONNECTED)
       if (interaction.customId.startsWith('setlang_')) {
         const guild = interaction.guild;
         const userId = interaction.customId.split('_')[1];
@@ -241,7 +251,9 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
+    // ==============================
     // SLASH COMMANDS
+    // ==============================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
