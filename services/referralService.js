@@ -1,7 +1,10 @@
 import supabase from '../db/supabase.js';
+import { randomUUID } from 'crypto';
 
 /**
- * Get leaderboard of referrals for a guild
+ * =========================
+ * LEADERBOARD
+ * =========================
  */
 export async function getLeaderboard(guildId) {
   try {
@@ -24,17 +27,18 @@ export async function getLeaderboard(guildId) {
 }
 
 /**
- * Add referral to a user
+ * =========================
+ * ADD REFERRAL
+ * =========================
  */
 export async function addReferral(guildId, ownerId) {
   try {
-    // check existing
     const { data: existing } = await supabase
       .from('referrals')
       .select('*')
       .eq('guildId', guildId)
       .eq('ownerId', ownerId)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       const { error } = await supabase
@@ -47,7 +51,6 @@ export async function addReferral(guildId, ownerId) {
       return;
     }
 
-    // insert new
     const { error } = await supabase
       .from('referrals')
       .insert([
@@ -66,7 +69,9 @@ export async function addReferral(guildId, ownerId) {
 }
 
 /**
- * Get user referral stats
+ * =========================
+ * GET USER REFERRALS
+ * =========================
  */
 export async function getUserReferrals(guildId, ownerId) {
   try {
@@ -75,7 +80,7 @@ export async function getUserReferrals(guildId, ownerId) {
       .select('total')
       .eq('guildId', guildId)
       .eq('ownerId', ownerId)
-      .single();
+      .maybeSingle();
 
     if (error) return 0;
 
@@ -86,7 +91,41 @@ export async function getUserReferrals(guildId, ownerId) {
 }
 
 /**
- * Redeem referral reward (placeholder for premium system later)
+ * =========================
+ * CREATE REFERRAL CODE
+ * =========================
+ */
+export async function createReferralCode(guildId, ownerId) {
+  try {
+    const code = randomUUID().slice(0, 8);
+
+    const { error } = await supabase
+      .from('referral_codes')
+      .insert([
+        {
+          guildId,
+          ownerId,
+          code
+        }
+      ]);
+
+    if (error) {
+      console.log('createReferralCode error:', error);
+      return null;
+    }
+
+    return code;
+
+  } catch (err) {
+    console.log('createReferralCode exception:', err);
+    return null;
+  }
+}
+
+/**
+ * =========================
+ * REDEEM REWARD
+ * =========================
  */
 export async function redeemReferral(guildId, ownerId) {
   try {
@@ -99,12 +138,15 @@ export async function redeemReferral(guildId, ownerId) {
       };
     }
 
-    // reset after redeem (optional logic)
-    await supabase
+    const { error } = await supabase
       .from('referrals')
       .update({ total: 0 })
       .eq('guildId', guildId)
       .eq('ownerId', ownerId);
+
+    if (error) {
+      console.log('redeemReferral reset error:', error);
+    }
 
     return {
       success: true,
@@ -112,7 +154,7 @@ export async function redeemReferral(guildId, ownerId) {
     };
 
   } catch (err) {
-    console.log('redeemReferral error:', err);
+    console.log('redeemReferral exception:', err);
     return {
       success: false,
       message: 'Error redeeming referral'
