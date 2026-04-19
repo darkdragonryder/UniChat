@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import supabase from '../services/db.js';
+import supabase from '../db/supabase.js';
 
 export default {
   data: new SlashCommandBuilder()
