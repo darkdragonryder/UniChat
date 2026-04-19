@@ -16,20 +16,19 @@ export default {
     try {
       const key = interaction.options.getString('key');
 
-      // 🔥 prevents "application did not respond"
       await interaction.deferReply({ ephemeral: true });
 
       // =========================
-      // VALIDATE KEY (NOW ASYNC)
+      // VALIDATE KEY (FIXED)
       // =========================
       const result = await validateKey(key);
 
-      if (!result.valid) {
-        return interaction.editReply(`❌ ${result.reason}`);
+      if (!result.ok) {
+        return interaction.editReply(`❌ Invalid or unknown license key`);
       }
 
       // =========================
-      // APPLY LICENSE (ASYNC SAFE)
+      // APPLY LICENSE
       // =========================
       let apply;
 
@@ -44,7 +43,7 @@ export default {
         return interaction.editReply('❌ Internal license error');
       }
 
-      if (!apply || apply.ok === false) {
+      if (!apply?.ok) {
         return interaction.editReply('❌ Failed to apply license');
       }
 
