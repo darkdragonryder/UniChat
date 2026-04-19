@@ -4,20 +4,18 @@ import {
   GatewayIntentBits,
   Collection,
   REST,
-  Routes
+  Routes,
+  ChannelType,
+  PermissionFlagsBits
 } from 'discord.js';
 
 import fs from 'fs';
 
 // ==============================
-// CORE INIT
+// CORE SERVICES
 // ==============================
 import './services/db.js';
-
-// LICENSE SYSTEM
 import { isLicenseActive } from './services/licenseStore.js';
-
-// TRANSLATE
 import { translate } from './utils/translate.js';
 
 // USER LANGUAGE SYSTEM
@@ -78,14 +76,14 @@ await rest.put(
 console.log("✅ Commands registered");
 
 // ==============================
-// READY
+// READY EVENT
 // ==============================
 client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 });
 
 // ==============================
-// MEMBER JOIN → LANGUAGE PROMPT
+// GUILD JOIN → LANGUAGE PROMPT
 // ==============================
 client.on('guildMemberAdd', async (member) => {
   try {
@@ -95,7 +93,7 @@ client.on('guildMemberAdd', async (member) => {
     if (!channel) return;
 
     await channel.send({
-      content: `👋 Welcome ${member.user.username}!\nPlease choose your language region:`,
+      content: `👋 Welcome ${member.user.username}!\nPlease select your language region:`,
       components: [buildLanguageGroupMenu(member.id)]
     });
 
@@ -105,8 +103,10 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ==============================
-// MESSAGE HANDLER
+// MESSAGE CREATE (FREE + PREMIUM SYSTEM)
 // ==============================
+const cooldown = new Map();
+
 client.on('messageCreate', async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
@@ -114,10 +114,19 @@ client.on('messageCreate', async (message) => {
     const premium = await isLicenseActive(message.guild.id);
 
     // ==============================
-    // FREE USERS
+    // 🆓 FREE MODE
     // ==============================
     if (!premium) {
+
       if (!message.content.startsWith('!t ')) return;
+
+      const key = `${message.guild.id}-${message.channel.id}`;
+      const now = Date.now();
+
+      const last = cooldown.get(key);
+      if (last && now - last < 5000) return;
+
+      cooldown.set(key, now);
 
       const text = message.content.slice(3).trim();
       if (!text) return;
@@ -129,11 +138,14 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==============================
-    // PREMIUM USERS (AUTO TRANSLATE PER USER)
+    // 💎 PREMIUM MODE (CHANNEL SYSTEM)
     // ==============================
-    const members = await message.guild.members.fetch();
+    const channelName = message.channel.name;
 
-    const outputs = [];
+    // prevent loops in language channels
+    if (channelName.includes('chat-')) return;
+
+    const members = await message.guild.members.fetch();
 
     for (const [id, member] of members) {
       if (member.user.bot) continue;
@@ -144,14 +156,14 @@ client.on('messageCreate', async (message) => {
       const result = await translate(message.content, lang);
       if (!result) continue;
 
-      outputs.push(`**${member.user.username} (${lang})**: ${result.text}`);
+      const targetChannel = message.guild.channels.cache.find(
+        c => c.name === `chat-${lang.toLowerCase()}`
+      );
+
+      if (!targetChannel) continue;
+
+      await targetChannel.send(`💬 ${result.text}`);
     }
-
-    if (!outputs.length) return;
-
-    await message.channel.send({
-      content: `🌍 Translations:\n\n${outputs.join('\n')}`
-    });
 
   } catch (err) {
     console.log('Message error:', err);
@@ -159,7 +171,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS (COMMANDS + MENU SYSTEM)
+// INTERACTIONS (COMMANDS + DROPDOWNS)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
@@ -169,34 +181,28 @@ client.on('interactionCreate', async (interaction) => {
     // ==============================
     if (interaction.isStringSelectMenu()) {
 
-      // STEP 1 - GROUP SELECT
+      // STEP 1
       if (interaction.customId.startsWith('langgroup_')) {
         const userId = interaction.customId.split('_')[1];
 
         if (interaction.user.id !== userId) {
-          return interaction.reply({
-            content: "❌ Not your menu",
-            ephemeral: true
-          });
+          return interaction.reply({ content: "❌ Not your menu", ephemeral: true });
         }
 
         const group = interaction.values[0];
 
         return interaction.update({
-          content: `🌍 Now choose your language:`,
+          content: `🌍 Select your language:`,
           components: [buildLanguageMenu(userId, group)]
         });
       }
 
-      // STEP 2 - LANGUAGE SELECT
+      // STEP 2
       if (interaction.customId.startsWith('setlang_')) {
         const userId = interaction.customId.split('_')[1];
 
         if (interaction.user.id !== userId) {
-          return interaction.reply({
-            content: "❌ Not your menu",
-            ephemeral: true
-          });
+          return interaction.reply({ content: "❌ Not your menu", ephemeral: true });
         }
 
         const lang = interaction.values[0];
@@ -214,6 +220,7 @@ client.on('interactionCreate', async (interaction) => {
     // SLASH COMMANDS
     // ==============================
     if (interaction.isChatInputCommand()) {
+
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
 
