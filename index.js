@@ -101,7 +101,7 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 // ==============================
-// MESSAGE SYSTEM (FREE + PREMIUM)
+// MESSAGE SYSTEM (OPTIMIZED — NO guild.fetch)
 // ==============================
 const cooldown = new Map();
 
@@ -135,28 +135,34 @@ client.on('messageCreate', async (message) => {
     }
 
     // ==============================
-    // 💎 PREMIUM MODE
+    // 💎 PREMIUM MODE (ROLE → CHANNEL ROUTING)
     // ==============================
     if (message.channel.name.startsWith('chat-')) return;
 
-    const members = await message.guild.members.fetch();
+    const guild = message.guild;
 
-    for (const [id, member] of members) {
-      if (member.user.bot) continue;
+    // get all language roles in server
+    const langRoles = guild.roles.cache.filter(r =>
+      r.name.startsWith('🌍')
+    );
 
-      const lang = getUserLang(message.guild.id, id);
-      if (!lang) continue;
+    for (const role of langRoles.values()) {
+
+      const lang = role.name
+        .replace('🌍', '')
+        .trim()
+        .toLowerCase();
+
+      const channel = guild.channels.cache.find(
+        c => c.name === `chat-${lang}`
+      );
+
+      if (!channel) continue;
 
       const result = await translate(message.content, lang);
       if (!result) continue;
 
-      const channel = message.guild.channels.cache.find(
-        c => c.name === `chat-${lang}`
-      );
-
-      if (channel) {
-        await channel.send(`💬 ${result.text}`);
-      }
+      await channel.send(`💬 ${result.text}`);
     }
 
   } catch (err) {
@@ -165,14 +171,11 @@ client.on('messageCreate', async (message) => {
 });
 
 // ==============================
-// INTERACTIONS (FULL FIXED)
+// INTERACTIONS (UNCHANGED BUT CLEAN)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
 
-    // ==============================
-    // LANGUAGE SELECTOR (FULL CONNECTED FIX)
-    // ==============================
     if (interaction.isStringSelectMenu()) {
 
       // STEP 1 GROUP
@@ -191,7 +194,7 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // STEP 2 LANGUAGE SELECT (FULL ROLE SYSTEM CONNECTED)
+      // STEP 2 LANGUAGE SELECT
       if (interaction.customId.startsWith('setlang_')) {
         const guild = interaction.guild;
         const userId = interaction.customId.split('_')[1];
@@ -214,25 +217,17 @@ client.on('interactionCreate', async (interaction) => {
           }
         }
 
-        // FIND NEW ROLE
+        // ADD NEW ROLE
         const newRole = guild.roles.cache.find(r =>
           r.name.toLowerCase().includes(lang)
         );
 
-        if (!newRole) {
-          return interaction.update({
-            content: "❌ Language role missing. Run /setup-translator",
-            components: []
-          });
+        if (newRole) {
+          await member.roles.add(newRole).catch(() => {});
         }
 
-        // ASSIGN ROLE
-        await member.roles.add(newRole).catch(() => {});
-
-        // SAVE USER LANGUAGE
         setUserLang(guild.id, member.id, lang);
 
-        // FIND CHANNEL
         const channel = guild.channels.cache.find(
           c => c.name === `chat-${lang}`
         );
@@ -246,9 +241,7 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // ==============================
     // SLASH COMMANDS
-    // ==============================
     if (interaction.isChatInputCommand()) {
       const cmd = client.commands.get(interaction.commandName);
       if (!cmd) return;
