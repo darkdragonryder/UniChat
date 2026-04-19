@@ -1,79 +1,121 @@
-<<<<<<< HEAD
 import supabase from '../db/supabase.js';
-=======
-import db from '../db/supabase.js';
->>>>>>> cff53a4 (fixed supabase imports)
 
-// ==============================
-// CREATE REFERRAL CODE
-// ==============================
-export function createReferralCode(guildId, ownerId, code) {
-  db.prepare(`
-    INSERT OR IGNORE INTO referral_codes (code, guildId, ownerId, usedCount, createdAt)
-    VALUES (?, ?, ?, 0, ?)
-  `).run(code, guildId, ownerId, Date.now());
+/**
+ * Get leaderboard of referrals for a guild
+ */
+export async function getLeaderboard(guildId) {
+  try {
+    const { data, error } = await supabase
+      .from('referrals')
+      .select('ownerId, total')
+      .eq('guildId', guildId)
+      .order('total', { ascending: false });
 
-  return code;
+    if (error) {
+      console.log('getLeaderboard error:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.log('getLeaderboard exception:', err);
+    return [];
+  }
 }
 
-// ==============================
-// GET REFERRAL
-// ==============================
-export function getReferral(code) {
-  return db.prepare(`
-    SELECT * FROM referral_codes WHERE code = ?
-  `).get(code);
+/**
+ * Add referral to a user
+ */
+export async function addReferral(guildId, ownerId) {
+  try {
+    // check existing
+    const { data: existing } = await supabase
+      .from('referrals')
+      .select('*')
+      .eq('guildId', guildId)
+      .eq('ownerId', ownerId)
+      .single();
+
+    if (existing) {
+      const { error } = await supabase
+        .from('referrals')
+        .update({ total: existing.total + 1 })
+        .eq('guildId', guildId)
+        .eq('ownerId', ownerId);
+
+      if (error) console.log('addReferral update error:', error);
+      return;
+    }
+
+    // insert new
+    const { error } = await supabase
+      .from('referrals')
+      .insert([
+        {
+          guildId,
+          ownerId,
+          total: 1
+        }
+      ]);
+
+    if (error) console.log('addReferral insert error:', error);
+
+  } catch (err) {
+    console.log('addReferral exception:', err);
+  }
 }
 
-// ==============================
-// GET BY OWNER
-// ==============================
-export function getReferralByOwner(ownerId) {
-  return db.prepare(`
-    SELECT * FROM referral_codes WHERE ownerId = ?
-  `).get(ownerId);
+/**
+ * Get user referral stats
+ */
+export async function getUserReferrals(guildId, ownerId) {
+  try {
+    const { data, error } = await supabase
+      .from('referrals')
+      .select('total')
+      .eq('guildId', guildId)
+      .eq('ownerId', ownerId)
+      .single();
+
+    if (error) return 0;
+
+    return data?.total || 0;
+  } catch (err) {
+    return 0;
+  }
 }
 
-// ==============================
-// CHECK USER USED
-// ==============================
-export function hasUserUsedReferral(guildId, userId) {
-  return !!db.prepare(`
-    SELECT 1 FROM referrals
-    WHERE guildId = ? AND userId = ?
-  `).get(guildId, userId);
-}
+/**
+ * Redeem referral reward (placeholder for premium system later)
+ */
+export async function redeemReferral(guildId, ownerId) {
+  try {
+    const count = await getUserReferrals(guildId, ownerId);
 
-// ==============================
-// APPLY REFERRAL
-// ==============================
-export function useReferral(guildId, userId, code) {
-  const ref = getReferral(code);
-  if (!ref) return false;
+    if (count < 5) {
+      return {
+        success: false,
+        message: 'Not enough referrals yet.'
+      };
+    }
 
-  db.prepare(`
-    INSERT INTO referrals (guildId, userId, code, ownerId, createdAt)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(guildId, userId, code, ref.ownerId, Date.now());
+    // reset after redeem (optional logic)
+    await supabase
+      .from('referrals')
+      .update({ total: 0 })
+      .eq('guildId', guildId)
+      .eq('ownerId', ownerId);
 
-  db.prepare(`
-    UPDATE referral_codes
-    SET usedCount = usedCount + 1
-    WHERE code = ?
-  `).run(code);
+    return {
+      success: true,
+      message: 'Referral reward redeemed!'
+    };
 
-  return true;
-}
-
-// ==============================
-// COUNT REFERRALS
-// ==============================
-export function getReferralCount(ownerId) {
-  const row = db.prepare(`
-    SELECT COUNT(*) as count
-    FROM referrals
-    WHERE ownerId = ?
-  `).get(ownerId);
-
-  return row?.count || 0;
+  } catch (err) {
+    console.log('redeemReferral error:', err);
+    return {
+      success: false,
+      message: 'Error redeeming referral'
+    };
+  }
 }
