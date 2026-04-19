@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import supabase from '../db/supabase.js';
+import { supabase } from '../db/supabase.js';
 import { saveGuildConfig, getGuildConfig } from '../utils/guildConfig.js';
 
 export default {
