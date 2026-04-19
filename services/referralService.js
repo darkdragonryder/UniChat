@@ -70,7 +70,7 @@ export async function addReferral(guildId, ownerId) {
 
 /**
  * =========================
- * GET USER REFERRALS
+ * GET USER TOTAL REFERRALS
  * =========================
  */
 export async function getUserReferrals(guildId, ownerId) {
@@ -87,6 +87,33 @@ export async function getUserReferrals(guildId, ownerId) {
     return data?.total || 0;
   } catch (err) {
     return 0;
+  }
+}
+
+/**
+ * =========================
+ * GET SINGLE REFERRAL RECORD (FIXED MISSING EXPORT)
+ * =========================
+ */
+export async function getReferral(guildId, ownerId) {
+  try {
+    const { data, error } = await supabase
+      .from('referrals')
+      .select('*')
+      .eq('guildId', guildId)
+      .eq('ownerId', ownerId)
+      .maybeSingle();
+
+    if (error) {
+      console.log('getReferral error:', error);
+      return null;
+    }
+
+    return data || null;
+
+  } catch (err) {
+    console.log('getReferral exception:', err);
+    return null;
   }
 }
 
@@ -124,7 +151,7 @@ export async function createReferralCode(guildId, ownerId) {
 
 /**
  * =========================
- * REDEEM REWARD
+ * REDEEM REFERRAL REWARD
  * =========================
  */
 export async function redeemReferral(guildId, ownerId) {
