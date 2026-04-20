@@ -33,6 +33,23 @@ export async function generateLicenseKey(type, durationDays) {
 export async function validateKey(key) {
   const { data, error } = await supabase
     .from('licenses')
+    .select('*');
+
+  console.log("RAW SUPABASE RESPONSE:", { data, error });
+
+  const match = data?.find(x => x.key === key);
+
+  console.log("LOOKING FOR KEY:", key);
+  console.log("FOUND MATCH:", match);
+
+  if (!match) {
+    return { ok: false, reason: 'NOT_FOUND_RAW' };
+  }
+
+  return { ok: true, entry: match };
+}
+  const { data, error } = await supabase
+    .from('licenses')
     .select('*')
     .eq('key', key)
     .maybeSingle(); // ✅ FIXED (was .single())
