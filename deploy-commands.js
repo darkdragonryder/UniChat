@@ -1,55 +1,24 @@
-import 'dotenv/config';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { REST, Routes } from 'discord.js';
+import { createClient } from '@supabase/supabase-js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// detect deploy script safely
+const isDeploy = process.argv[1]?.includes('deploy-commands');
 
-const commands = [];
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-
-  // 👇 ONLY extract the builder WITHOUT executing full file logic
-  const content = fs.readFileSync(filePath, 'utf8');
-
-  // crude but effective: extract SlashCommandBuilder section
-  const match = content.match(/new SlashCommandBuilder\(\)[\s\S]*?\}\);/);
-
-  if (!match) {
-    console.log(`❌ Skipping ${file} (no command builder found)`);
-    continue;
+// ==============================
+// SAFE GUARD
+// ==============================
+if (!supabaseUrl || !supabaseKey) {
+  if (!isDeploy) {
+    throw new Error('SUPABASE ENV MISSING');
+  } else {
+    console.warn('⚠️ Supabase disabled during deploy');
   }
-
-  // eval ONLY the builder (safe scope)
-  const { SlashCommandBuilder } = await import('discord.js');
-
-  const commandData = eval(match[0]);
-
-  commands.push(commandData.toJSON());
-
-  console.log(`✅ Loaded (safe): ${file}`);
 }
 
 // ==============================
-const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-
-(async () => {
-  try {
-    console.log(`🚀 Deploying ${commands.length} commands...`);
-
-    await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commands }
-    );
-
-    console.log('✅ Commands deployed successfully');
-  } catch (err) {
-    console.error('❌ Deploy failed:', err);
-  }
-})();
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseKey || 'placeholder-key'
+);
