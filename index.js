@@ -1,3 +1,4 @@
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
