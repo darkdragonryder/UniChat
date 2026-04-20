@@ -1,107 +1,114 @@
-import { SlashCommandBuilder } from 'discord.js';
+const userActionMap = new Map();
+const cooldownMap = new Map();
+const punishMap = new Map();
 
-import { generateLicenseKey, validateKey, revokeLicense } from '../services/licenseStore.js';
-import { applyLicenseKey } from '../services/unichatCore.js';
-import { checkFraud, resetFraudData } from '../services/fraudCheck.js';
+// ==============================
+// CLEANUP LOOP
+// ==============================
+setInterval(() => {
+  const now = Date.now();
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('test')
-    .setDescription('FULL system stress + diagnostics test (OWNER ONLY)'),
-
-  async execute(interaction) {
-    const startTime = Date.now();
-
-    await interaction.deferReply({ ephemeral: true });
-
-    // =========================
-    // OWNER CHECK
-    // =========================
-    if (interaction.user.id !== process.env.OWNER_ID) {
-      return interaction.editReply('❌ Owner only');
-    }
-
-    const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
-
-    const results = [];
-
-    try {
-      // =========================
-      // FRAUD TEST (FAKE USER)
-      // =========================
-      let blocked = 0;
-      const testUserId = `test-${Date.now()}`;
-
-      for (let i = 0; i < 5; i++) {
-        const fraud = checkFraud({
-          userId: testUserId,
-          ownerId: process.env.OWNER_ID,
-          code: 'TEST_CODE',
-          guildId
-        });
-
-        if (!fraud.ok) blocked++;
-      }
-
-      results.push(`🛡 Fraud stress: ${blocked}/5 blocked`);
-
-      // =========================
-      // GENERATE
-      // =========================
-      const gen = await generateLicenseKey('7day', 7);
-      const key = gen.key;
-
-      results.push(`🔑 Generate: OK`);
-
-      // =========================
-      // VALIDATE
-      // =========================
-      const val = await validateKey(key);
-
-      results.push(`📦 Validate: ${val.ok ? 'OK' : val.reason}`);
-
-      // =========================
-      // APPLY
-      // =========================
-      let applyResult = { ok: false, reason: 'SKIPPED' };
-
-      if (val.ok) {
-        applyResult = await applyLicenseKey(guildId, userId, key);
-      }
-
-      results.push(`⚙️ Apply: ${applyResult.ok ? 'OK' : applyResult.reason}`);
-
-      // =========================
-      // REVOKE
-      // =========================
-      const revoke = await revokeLicense(guildId);
-
-      results.push(`♻️ Revoke: ${revoke.ok ? 'OK' : 'FAIL'}`);
-
-      // =========================
-      // CLEANUP (reset your account fraud just in case)
-      // =========================
-      resetFraudData(userId);
-
-      // =========================
-      // PERFORMANCE
-      // =========================
-      const duration = Date.now() - startTime;
-      results.push(`⚡ Execution: ${duration}ms`);
-
-      // =========================
-      // FINAL OUTPUT
-      // =========================
-      return interaction.editReply(
-        `🧪 **SYSTEM DIAGNOSTICS COMPLETE**\n\n` +
-        results.map(r => `• ${r}`).join('\n') +
-        `\n\n✅ System stable`
-      );
-
-    } catch (err) {
-      console.log('TEST ERROR:', err);
-      return interaction.editReply('❌ Test failed (check logs)');
-    }
+  for (const [userId, actions] of userActionMap.entries()) {
+    const filtered = actions.filter(t => now - t < 10 * 60 * 1000);
+    if (filtered.length === 0) userActionMap.delete(userId);
+    else userActionMap.set(userId, filtered);
   }
-};
+
+  for (const [key, time] of cooldownMap.entries()) {
+    if (now - time > 30 * 1000) cooldownMap.delete(key);
+  }
+
+  for (const [userId, data] of punishMap.entries()) {
+    if (now >= data.until) punishMap.delete(userId);
+  }
+
+}, 60 * 1000);
+
+// ==============================
+// MAIN FRAUD CHECK
+// ==============================
+export function checkFraud({ userId, ownerId, code, guildId }) {
+  const now = Date.now();
+
+  const punishment = punishMap.get(userId);
+  if (punishment && now < punishment.until) {
+    return { ok: false, reason: 'LOCKED', until: punishment.until };
+  }
+
+  if (userId === ownerId && process.env.BLOCK_OWNER_SELF_USE === 'true') {
+    punish(userId, 'SELF_USE_BLOCKED');
+    return { ok: false, reason: 'SELF_USE_BLOCKED' };
+  }
+
+  const actions = userActionMap.get(userId) || [];
+  const recent = actions.filter(t => now - t < 10 * 60 * 1000);
+
+  if (recent.length >= 3) {
+    punish(userId, 'RATE_LIMIT');
+    return { ok: false, reason: 'RATE_LIMIT' };
+  }
+
+  recent.push(now);
+  userActionMap.set(userId, recent);
+
+  if (code) {
+    const last = cooldownMap.get(code);
+    if (last && now - last < 5000) {
+      punish(userId, 'CODE_SPAM');
+      return { ok: false, reason: 'CODE_SPAM' };
+    }
+    cooldownMap.set(code, now);
+  }
+
+  if (guildId) {
+    const guildKey = `${guildId}:${userId}`;
+    const last = cooldownMap.get(guildKey);
+
+    if (last && now - last < 3000) {
+      punish(userId, 'GUILD_SPAM');
+      return { ok: false, reason: 'GUILD_SPAM' };
+    }
+
+    cooldownMap.set(guildKey, now);
+  }
+
+  return { ok: true };
+}
+
+// ==============================
+// PUNISHMENT
+// ==============================
+function punish(userId, reason) {
+  const now = Date.now();
+  const current = punishMap.get(userId);
+
+  let strikes = current?.strikes || 0;
+  strikes++;
+
+  let duration =
+    strikes === 1 ? 60_000 :
+    strikes === 2 ? 300_000 :
+    strikes === 3 ? 900_000 :
+    3600_000;
+
+  punishMap.set(userId, {
+    strikes,
+    until: now + duration
+  });
+
+  console.log(`🚨 FRAUD ${userId} | ${reason} | strikes:${strikes}`);
+}
+
+// ==============================
+// RESET
+// ==============================
+export function resetFraudData(userId) {
+  if (userId) {
+    userActionMap.delete(userId);
+    punishMap.delete(userId);
+  } else {
+    userActionMap.clear();
+    cooldownMap.clear();
+    punishMap.clear();
+  }
+}
