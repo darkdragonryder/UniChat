@@ -28,7 +28,7 @@ export async function generateLicenseKey(type, durationDays) {
 }
 
 // ==============================
-// VALIDATE
+// VALIDATE LICENSE (FIXED)
 // ==============================
 export async function validateKey(key) {
   const { data, error } = await supabase
@@ -41,11 +41,21 @@ export async function validateKey(key) {
     return { ok: false, reason: 'INVALID_KEY' };
   }
 
+  // ❌ already used check
+  if (data.used) {
+    return { ok: false, reason: 'ALREADY_USED' };
+  }
+
+  // ❌ expiry check
+  if (data.expiresAt && Date.now() > data.expiresAt) {
+    return { ok: false, reason: 'EXPIRED' };
+  }
+
   return { ok: true, entry: data };
 }
 
 // ==============================
-// MARK USED
+// MARK KEY AS USED (FIXED FLOW)
 // ==============================
 export async function useKey(key, guildId, userId) {
   const { error } = await supabase
@@ -60,7 +70,7 @@ export async function useKey(key, guildId, userId) {
 
   if (error) throw error;
 
-  return true;
+  return { ok: true };
 }
 
 // ==============================
@@ -79,5 +89,5 @@ export async function revokeLicense(guildId) {
 
   if (error) throw error;
 
-  return true;
+  return { ok: true };
 }
