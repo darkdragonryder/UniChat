@@ -31,6 +31,13 @@ export function checkFraud({ userId, ownerId, code, guildId }) {
   const now = Date.now();
 
   // ===============================
+  // OWNER BYPASS (prevents self-lock)
+  // ===============================
+  if (userId === ownerId) {
+    return { ok: true };
+  }
+
+  // ===============================
   // ACTIVE PUNISHMENT CHECK
   // ===============================
   const punishment = punishMap.get(userId);
