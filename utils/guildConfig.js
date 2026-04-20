@@ -1,23 +1,14 @@
-import fs from 'fs';
-
-const getPath = (guildId) => `./data/${guildId}.json`;
-
-// ==============================
-// ENSURE DATA FOLDER
-// ==============================
-function ensureDataFolder() {
-  if (!fs.existsSync('./data')) {
-    fs.mkdirSync('./data', { recursive: true });
-  }
-}
+import { supabase } from '../db/supabase.js';
 
 // ==============================
 // DEFAULT CONFIG
 // ==============================
-function defaultConfig() {
+function defaultConfig(guildId) {
   const now = Date.now();
 
   return {
+    guildid: guildId,
+
     languages: {},
 
     // 💎 PREMIUM SYSTEM
@@ -43,10 +34,8 @@ function defaultConfig() {
       cycleStart: now
     },
 
-    // 🔗 REFERRAL LINK
     referredBy: null,
 
-    // 🏆 ROLE SYSTEM
     referralRoles: {
       enabled: true,
       map: {
@@ -60,85 +49,91 @@ function defaultConfig() {
 }
 
 // ==============================
-// GET CONFIG
+// GET CONFIG (FAST + SAFE)
 // ==============================
-export function getGuildConfig(guildId) {
-  ensureDataFolder();
+export async function getGuildConfig(guildId) {
+  const { data, error } = await supabase
+    .from('guild_setup')
+    .select('*')
+    .eq('guildid', guildId)
+    .maybeSingle();
 
-  const path = getPath(guildId);
+  if (error) {
+    console.log('GET CONFIG ERROR:', error);
+    return null;
+  }
 
-  try {
-    if (!fs.existsSync(path)) {
-      const config = defaultConfig();
-      fs.writeFileSync(path, JSON.stringify(config, null, 2));
+  // If not found → create default
+  if (!data) {
+    const config = defaultConfig(guildId);
+
+    const { error: insertError } = await supabase
+      .from('guild_setup')
+      .insert(config);
+
+    if (insertError) {
+      console.log('CREATE CONFIG ERROR:', insertError);
       return config;
     }
 
-    const parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
-    const base = defaultConfig();
-
-    // IMPORTANT FIX:
-    // deep merge instead of shallow spread (prevents undefined overwrites)
-    return {
-      ...base,
-      ...parsed,
-
-      licenses: {
-        ...base.licenses,
-        ...(parsed.licenses || {})
-      },
-
-      referrals: {
-        ...base.referrals,
-        ...(parsed.referrals || {})
-      },
-
-      referralRoles: {
-        ...base.referralRoles,
-        ...(parsed.referralRoles || {})
-      }
-    };
-
-  } catch (err) {
-    console.log("⚠️ Config corrupted, resetting:", guildId);
-
-    const config = defaultConfig();
-    fs.writeFileSync(path, JSON.stringify(config, null, 2));
     return config;
   }
+
+  return {
+    ...defaultConfig(guildId),
+    ...data,
+
+    licenses: {
+      ...defaultConfig(guildId).licenses,
+      ...(data.licenses || {})
+    },
+
+    referrals: {
+      ...defaultConfig(guildId).referrals,
+      ...(data.referrals || {})
+    },
+
+    referralRoles: {
+      ...defaultConfig(guildId).referralRoles,
+      ...(data.referralRoles || {})
+    }
+  };
 }
 
 // ==============================
-// SAVE CONFIG (SAFE + CONSISTENT)
+// SAVE CONFIG (UPSERT)
 // ==============================
-export function saveGuildConfig(guildId, config) {
-  ensureDataFolder();
-
-  const path = getPath(guildId);
-
+export async function saveGuildConfig(guildId, config) {
   const safeConfig = {
-    ...defaultConfig(),
-
+    ...defaultConfig(guildId),
     ...config,
 
+    guildid: guildId,
+
     licenses: {
-      ...defaultConfig().licenses,
+      ...defaultConfig(guildId).licenses,
       ...(config.licenses || {})
     },
 
     referrals: {
-      ...defaultConfig().referrals,
+      ...defaultConfig(guildId).referrals,
       ...(config.referrals || {})
     },
 
     referralRoles: {
-      ...defaultConfig().referralRoles,
+      ...defaultConfig(guildId).referralRoles,
       ...(config.referralRoles || {})
     }
   };
 
-  const tmpPath = `${path}.tmp`;
+  const { error } = await supabase
+    .from('guild_setup')
+    .upsert(safeConfig);
 
-  fs.writeFileSync(tmpPath, JSON.stringify(safeConfig, null, 2), 'utf8');
-  fs.renameSync(tmpPath, path);
+  if (error) {
+    console.log('SAVE CONFIG ERROR:', error);
+    throw error;
+  }
+
+  return safeConfig;
 }
