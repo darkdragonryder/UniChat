@@ -1,52 +1,92 @@
-async execute(interaction) {
-  console.log("TEST START");
+import { SlashCommandBuilder } from 'discord.js';
 
-  try {
-    await interaction.deferReply({ ephemeral: true });
-    console.log("DEFER OK");
+import { generateLicenseKey, validateKey, revokeLicense } from '../services/licenseStore.js';
+import { applyLicenseKey } from '../services/unichatCore.js';
+import { checkFraud, resetFraudData } from '../services/fraudCheck.js';
 
-    const guildId = interaction.guild.id;
-    const userId = interaction.user.id;
+export default {
+  data: new SlashCommandBuilder()
+    .setName('test')
+    .setDescription('System diagnostics test'),
 
-    const results = [];
+  async execute(interaction) {
+    console.log("TEST START");
 
-    console.log("STEP 1 FRAUD");
+    try {
+      await interaction.deferReply({ ephemeral: true });
 
-    const fraud = checkFraud({
-      userId: "debug-user",
-      ownerId: process.env.OWNER_ID,
-      code: "TEST",
-      guildId
-    });
+      const guildId = interaction.guild.id;
+      const userId = interaction.user.id;
 
-    results.push(`Fraud: ${fraud.ok}`);
+      const results = [];
 
-    console.log("STEP 2 GENERATE");
+      // =========================
+      // FRAUD TEST
+      // =========================
+      let blocked = 0;
+      const fakeUser = `test-${Date.now()}`;
 
-    const gen = await generateLicenseKey("7day", 7);
-    results.push("Generate OK");
+      for (let i = 0; i < 5; i++) {
+        const fraud = checkFraud({
+          userId: fakeUser,
+          ownerId: process.env.OWNER_ID,
+          code: 'TEST',
+          guildId
+        });
 
-    console.log("STEP 3 VALIDATE");
+        if (!fraud.ok) blocked++;
+      }
 
-    const val = await validateKey(gen.key);
-    results.push(`Validate: ${val.ok}`);
+      results.push(`🛡 Fraud: ${blocked}/5 blocked`);
 
-    console.log("STEP 4 APPLY");
+      // =========================
+      // GENERATE
+      // =========================
+      const gen = await generateLicenseKey('7day', 7);
+      const key = gen.key;
 
-    const apply = await applyLicenseKey(guildId, userId, gen.key);
-    results.push(`Apply: ${apply.ok}`);
+      results.push(`🔑 Generate: OK`);
 
-    console.log("STEP 5 REVOKE");
+      // =========================
+      // VALIDATE
+      // =========================
+      const val = await validateKey(key);
+      results.push(`📦 Validate: ${val.ok ? 'OK' : val.reason}`);
 
-    const revoke = await revokeLicense(guildId);
-    results.push(`Revoke: ${revoke.ok}`);
+      // =========================
+      // APPLY
+      // =========================
+      let apply = { ok: false, reason: 'SKIPPED' };
 
-    console.log("FINAL");
+      if (val.ok) {
+        apply = await applyLicenseKey(guildId, userId, key);
+      }
 
-    return interaction.editReply(results.join("\n"));
+      results.push(`⚙️ Apply: ${apply.ok ? 'OK' : apply.reason}`);
 
-  } catch (err) {
-    console.log("TEST FAILED:", err);
-    return interaction.reply({ content: "Crash detected (check logs)", ephemeral: true });
+      // =========================
+      // REVOKE
+      // =========================
+      const revoke = await revokeLicense(guildId);
+      results.push(`♻️ Revoke: ${revoke.ok ? 'OK' : 'FAIL'}`);
+
+      resetFraudData(userId);
+
+      // =========================
+      // OUTPUT
+      // =========================
+      return interaction.editReply(
+        `🧪 SYSTEM TEST\n\n` +
+        results.map(r => `• ${r}`).join('\n') +
+        `\n\n✅ Complete`
+      );
+
+    } catch (err) {
+      console.log("TEST ERROR:", err);
+      return interaction.reply({
+        content: "❌ Test failed (check logs)",
+        ephemeral: true
+      });
+    }
   }
-}
+};
