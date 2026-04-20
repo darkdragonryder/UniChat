@@ -7,7 +7,7 @@ import { Client, GatewayIntentBits, Collection, REST, Routes } from 'discord.js'
 import { loadGuildCache } from './services/guildCache.js';
 import { repairGuild } from './services/guildRepair.js';
 import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
-import { runLicenseCron } from './services/
+import { runLicenseCron } from './services/licenseCron.js';
 
 // ==============================
 // AUTO DEPLOY TOGGLE
