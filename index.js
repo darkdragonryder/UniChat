@@ -19,7 +19,7 @@ import { runLicenseCron } from './services/licenseCron.js';
 // AUTO DEPLOY TOGGLE
 // ==============================
 const AUTO_DEPLOY_COMMANDS = process.env.AUTO_DEPLOY === 'true';
-
+let hasDeployed = false;
 // ==============================
 // PATH SETUP
 // ==============================
@@ -95,16 +95,20 @@ client.once('ready', async () => {
   // ==========================
   // AUTO DEPLOY
   // ==========================
-  if (AUTO_DEPLOY_COMMANDS) {
-    console.log('⚙️ Auto-deploy ENABLED');
-    try {
-      await deployCommands();
-    } catch (err) {
-      console.error('❌ Deploy failed:', err);
-    }
-  } else {
-    console.log('⚙️ Auto-deploy DISABLED');
+  if (AUTO_DEPLOY_COMMANDS && !hasDeployed) {
+  hasDeployed = true;
+
+  console.log('⚙️ Auto-deploy ENABLED');
+
+  try {
+    await deployCommands();
+  } catch (err) {
+    console.error('❌ Deploy failed:', err);
   }
+
+} else {
+  console.log('⚙️ Auto-deploy DISABLED or already deployed');
+}
 
   await loadGuildCache(client);
 
