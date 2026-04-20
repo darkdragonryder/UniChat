@@ -12,9 +12,6 @@ export default {
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
-    // =========================
-    // OWNER CHECK
-    // =========================
     if (interaction.user.id !== process.env.OWNER_ID) {
       return interaction.editReply('❌ Owner only');
     }
@@ -26,7 +23,7 @@ export default {
 
     try {
       // =========================
-      // FRAUD TEST (multi hit)
+      // FRAUD TEST
       // =========================
       let blocked = 0;
 
@@ -46,7 +43,8 @@ export default {
       // =========================
       // GENERATE
       // =========================
-      const key = await generateLicenseKey('7day', 7);
+      const gen = await generateLicenseKey('7day', 7);
+      const key = gen.key; // ✅ FIX
 
       results.push(`🔑 Generate: OK`);
 
@@ -55,27 +53,25 @@ export default {
       // =========================
       const val = await validateKey(key);
 
-      results.push(
-        `📦 Validate: ${val.ok ? 'OK' : 'FAIL'}`
-      );
+      results.push(`📦 Validate: ${val.ok ? 'OK' : val.reason}`);
 
       // =========================
       // APPLY
       // =========================
-      const apply = await applyLicenseKey(guildId, userId, key);
+      let applyResult = { ok: false, reason: 'SKIPPED' };
 
-      results.push(
-        `⚙️ Apply: ${apply.ok ? 'OK' : apply.reason}`
-      );
+      if (val.ok) {
+        applyResult = await applyLicenseKey(guildId, userId, key);
+      }
+
+      results.push(`⚙️ Apply: ${applyResult.ok ? 'OK' : applyResult.reason}`);
 
       // =========================
       // REVOKE
       // =========================
       const revoke = await revokeLicense(guildId);
 
-      results.push(
-        `♻️ Revoke: ${revoke ? 'OK' : 'FAIL'}`
-      );
+      results.push(`♻️ Revoke: ${revoke.ok ? 'OK' : 'FAIL'}`);
 
       // =========================
       // FINAL OUTPUT
