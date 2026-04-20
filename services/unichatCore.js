@@ -3,24 +3,28 @@ import { validateKey, useKey } from './licenseStore.js';
 import { checkFraud } from './fraudCheck.js';
 
 // ==============================
-// APPLY LICENSE KEY (HARDENED)
+// APPLY LICENSE KEY (FIXED)
 // ==============================
 export async function applyLicenseKey(guildId, userId, key) {
   const config = getGuildConfig(guildId);
   if (!config) return { ok: false, reason: 'NO_CONFIG' };
 
-  // ==============================
-  // FRAUD CHECK
-  // ==============================
-  const fraud = checkFraud({
-    userId,
-    ownerId: process.env.OWNER_ID,
-    code: key,
-    guildId
-  });
+  const isOwner = userId === process.env.OWNER_ID;
 
-  if (!fraud.ok) {
-    return { ok: false, reason: fraud.reason };
+  // ==============================
+  // FRAUD CHECK (skip for owner)
+  // ==============================
+  if (!isOwner) {
+    const fraud = checkFraud({
+      userId,
+      ownerId: process.env.OWNER_ID,
+      code: key,
+      guildId
+    });
+
+    if (!fraud.ok) {
+      return { ok: false, reason: fraud.reason };
+    }
   }
 
   // ==============================
