@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { SlashCommandBuilder } from 'discord.js';
 
 import { generateLicenseKey, validateKey, revokeLicense } from '../services/licenseStore.js';
