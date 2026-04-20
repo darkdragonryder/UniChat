@@ -35,18 +35,22 @@ export async function validateKey(key) {
     .from('licenses')
     .select('*')
     .eq('key', key)
-    .single();
+    .maybeSingle(); // ✅ FIXED (was .single())
 
-  if (error || !data) {
+  console.log("VALIDATE DEBUG:", { data, error, key });
+
+  if (error) {
+    return { ok: false, reason: 'SUPABASE_ERROR', error };
+  }
+
+  if (!data) {
     return { ok: false, reason: 'INVALID_KEY' };
   }
 
-  // ❌ already used check
   if (data.used) {
     return { ok: false, reason: 'ALREADY_USED' };
   }
 
-  // ❌ expiry check
   if (data.expiresAt && Date.now() > data.expiresAt) {
     return { ok: false, reason: 'EXPIRED' };
   }
@@ -55,7 +59,7 @@ export async function validateKey(key) {
 }
 
 // ==============================
-// MARK KEY AS USED (FIXED FLOW)
+// MARK KEY AS USED
 // ==============================
 export async function useKey(key, guildId, userId) {
   const { error } = await supabase
