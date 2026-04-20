@@ -12,7 +12,7 @@ import { runLicenseCron } from './services/licenseCron.js';
 // ==============================
 // AUTO DEPLOY TOGGLE
 // ==============================
-const AUTO_DEPLOY_COMMANDS = process.env.AUTO_DEPLOY === 'false';
+const AUTO_DEPLOY_COMMANDS = process.env.AUTO_DEPLOY === 'true';
 
 // ==============================
 // PATH SETUP
