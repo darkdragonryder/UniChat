@@ -1,18 +1,28 @@
 import 'dotenv/config';
-console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, REST, Routes } from 'discord.js';
 
 import { loadGuildCache } from './services/guildCache.js';
 import { repairGuild } from './services/guildRepair.js';
 import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
-import { runLicenseCron } from './services/licenseCron.js';
+import { runLicenseCron } from './services/
 
+// ==============================
+// AUTO DEPLOY TOGGLE
+// ==============================
+const AUTO_DEPLOY_COMMANDS = process.env.AUTO_DEPLOY === 'true';
+
+// ==============================
+// PATH SETUP
+// ==============================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ==============================
+// CLIENT
+// ==============================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -31,10 +41,46 @@ const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
-  const command = (await import(`file://${filePath}`)).default;
 
-  client.commands.set(command.data.name, command);
-  console.log(`✅ Loaded: ${command.data.name}`);
+  try {
+    const command = (await import(`file://${filePath}`)).default;
+
+    if (!command?.data) {
+      console.log(`❌ Skipping ${file} (no data)`);
+      continue;
+    }
+
+    client.commands.set(command.data.name, command);
+    console.log(`✅ Loaded: ${command.data.name}`);
+
+  } catch (err) {
+    console.log(`❌ Failed to load ${file}:`, err.message);
+  }
+}
+
+// ==============================
+// AUTO DEPLOY FUNCTION
+// ==============================
+async function deployCommands() {
+  const commands = [];
+
+  for (const [name, command] of client.commands) {
+    commands.push(command.data.toJSON());
+  }
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+
+  console.log('🚀 Deploying slash commands...');
+
+  await rest.put(
+    Routes.applicationGuildCommands(
+      process.env.CLIENT_ID,
+      process.env.GUILD_ID
+    ),
+    { body: commands }
+  );
+
+  console.log(`✅ Deployed ${commands.length} commands`);
 }
 
 // ==============================
@@ -43,6 +89,16 @@ for (const file of commandFiles) {
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
+  // ==========================
+  // AUTO DEPLOY (TOGGLEABLE)
+  // ==========================
+  if (AUTO_DEPLOY_COMMANDS) {
+    console.log('⚙️ Auto-deploy ENABLED');
+    await deployCommands();
+  } else {
+    console.log('⚙️ Auto-deploy DISABLED');
+  }
+
   await loadGuildCache(client);
 
   client.guilds.cache.forEach(guild => {
@@ -50,12 +106,10 @@ client.once('ready', async () => {
     repairGuild(guild);
   });
 
-  // license cron
   setInterval(() => {
     runLicenseCron();
   }, 60 * 60 * 1000);
 
-  // repair + sync
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
       syncGuildLicenseExpiry(guild.id);
@@ -88,4 +142,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// ==============================
+// LOGIN
+// ==============================
 client.login(process.env.TOKEN);
