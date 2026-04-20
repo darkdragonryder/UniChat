@@ -2,7 +2,13 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Client, GatewayIntentBits, Collection, REST, Routes } from 'discord.js';
+import {
+  Client,
+  GatewayIntentBits,
+  Collection,
+  REST,
+  Routes
+} from 'discord.js';
 
 import { loadGuildCache } from './services/guildCache.js';
 import { repairGuild } from './services/guildRepair.js';
@@ -59,28 +65,25 @@ for (const file of commandFiles) {
 }
 
 // ==============================
-// AUTO DEPLOY FUNCTION
+// GLOBAL COMMAND DEPLOY
 // ==============================
 async function deployCommands() {
   const commands = [];
 
-  for (const [name, command] of client.commands) {
+  for (const [, command] of client.commands) {
     commands.push(command.data.toJSON());
   }
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
-  console.log('🚀 Deploying slash commands...');
+  console.log('🚀 Deploying GLOBAL slash commands...');
 
   await rest.put(
-    Routes.applicationGuildCommands(
-      process.env.CLIENT_ID,
-      process.env.GUILD_ID
-    ),
+    Routes.applicationCommands(process.env.CLIENT_ID),
     { body: commands }
   );
 
-  console.log(`✅ Deployed ${commands.length} commands`);
+  console.log(`✅ Deployed ${commands.length} global commands`);
 }
 
 // ==============================
@@ -90,11 +93,15 @@ client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
   // ==========================
-  // AUTO DEPLOY (TOGGLEABLE)
+  // AUTO DEPLOY
   // ==========================
   if (AUTO_DEPLOY_COMMANDS) {
     console.log('⚙️ Auto-deploy ENABLED');
-    await deployCommands();
+    try {
+      await deployCommands();
+    } catch (err) {
+      console.error('❌ Deploy failed:', err);
+    }
   } else {
     console.log('⚙️ Auto-deploy DISABLED');
   }
