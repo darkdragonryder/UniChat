@@ -1,24 +1,24 @@
-// src/index.js
 import "dotenv/config";
-import { Client, GatewayIntentBits, Partials } from "discord.js";
-import messageCreate from "./events/messageCreate.js";
-import messageReactionAdd from "./events/messageReactionAdd.js";
+import fs from "fs";
+
+console.log("FILES IN SRC:", fs.readdirSync("./src/events"));
+
+import { Client, GatewayIntentBits } from "discord.js";
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 client.on("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log("BOT ONLINE");
 });
 
-client.on("messageCreate", messageCreate(client));
-client.on("messageReactionAdd", messageReactionAdd(client));
+client.on("messageCreate", (m) => {
+  console.log("MESSAGE:", m.content);
+});
 
 client.login(process.env.DISCORD_TOKEN);
