@@ -17,7 +17,7 @@ import { runLicenseCron } from './services/licenseCron.js';
 import { commandGuard } from './middleware/commandGuard.js';
 
 // ==============================
-// AUTO DEPLOY
+// AUTO DEPLOY TOGGLE
 // ==============================
 const AUTO_DEPLOY_COMMANDS = process.env.AUTO_DEPLOY === 'true';
 let hasDeployed = false;
@@ -42,7 +42,7 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS (FIXED)
+// LOAD COMMANDS
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
@@ -89,12 +89,12 @@ async function deployCommands() {
 }
 
 // ==============================
-// READY
+// READY EVENT
 // ==============================
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // AUTO DEPLOY SAFE
+  // AUTO DEPLOY
   if (AUTO_DEPLOY_COMMANDS && !hasDeployed) {
     hasDeployed = true;
 
@@ -117,7 +117,9 @@ client.once('ready', async () => {
     repairGuild(guild);
   });
 
-  setInterval(() => runLicenseCron(), 60 * 60 * 1000);
+  setInterval(() => {
+    runLicenseCron();
+  }, 60 * 60 * 1000);
 
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
@@ -128,7 +130,7 @@ client.once('ready', async () => {
 });
 
 // ==============================
-// COMMAND HANDLER (WITH MIDDLEWARE HOOK)
+// COMMAND HANDLER (UPDATED WITH GUARD)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -137,25 +139,9 @@ client.on('interactionCreate', async (interaction) => {
   if (!command) return;
 
   try {
-
-    // =========================
-    // GLOBAL MIDDLEWARE (YOU ADDED THIS SYSTEM)
-    // =========================
-    const guard = await commandGuard(interaction, command);
-
-    if (!guard.ok) {
-      return interaction.reply({
-        content: guard.reply,
-        ephemeral: true
-      });
-    }
-
-    interaction.guildConfig = guard.config;
-
-    // =========================
-    // RUN COMMAND
-    // =========================
-    await command.execute(interaction);
+    await commandGuard(interaction, async (config) => {
+      await command.execute(interaction, config);
+    });
 
   } catch (err) {
     console.error(err);
