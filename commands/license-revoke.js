@@ -5,29 +5,30 @@ import { saveGuildSetup, getGuildSetup } from '../services/guildSetupStore.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('license-revoke')
-    .setDescription('Revoke this server license (full reset)' ),
+    .setDescription('Revoke this server license'),
 
   async execute(interaction) {
     const guildId = interaction.guild.id;
 
     try {
-      // ==============================
-      // GET CURRENT GUILD SETUP
-      // ==============================
+      console.log('🔍 Revoking guild:', guildId);
+
       const config = await getGuildSetup(guildId);
 
       if (!config) {
         return interaction.reply({
-          content: '❌ No guild setup found.',
+          content: '❌ No guild setup exists in database for this server.',
           ephemeral: true
         });
       }
 
+      console.log('📦 Current config:', config);
+
       // ==============================
-      // OPTIONAL: unmark license in Supabase (NOT deleting)
+      // RESET LICENSE IN SUPABASE
       // ==============================
       if (config.licensekey) {
-        await supabase
+        const { error: supaError } = await supabase
           .from('licenses')
           .update({
             used: false,
@@ -35,34 +36,43 @@ export default {
             usedat: null
           })
           .eq('key', config.licensekey);
+
+        if (supaError) {
+          console.error('❌ Supabase revoke error:', supaError);
+        }
       }
 
       // ==============================
-      // RESET GUILD SETUP (FULL WIPE)
+      // RESET GUILD SETUP
       // ==============================
-      await saveGuildSetup(guildId, {
-        premium: false,
-        licensekey: null,
-        premiumexpiry: null
-      });
+      const { error: updateError } = await supabase
+        .from('guild_setup')
+        .update({
+          premium: false,
+          licensekey: null,
+          premiumexpiry: null
+        })
+        .eq('guildid', guildId);
 
-      // ==============================
-      // RESPONSE
-      // ==============================
+      if (updateError) {
+        console.error('❌ Guild setup update error:', updateError);
+
+        return interaction.reply({
+          content: '❌ Database error while revoking license.',
+          ephemeral: true
+        });
+      }
+
       return interaction.reply({
-        content:
-          '🧨 **License Revoked Successfully**\n\n' +
-          '✔ Premium disabled\n' +
-          '✔ License unlinked\n' +
-          '✔ Server reset to free state',
+        content: '🧨 License successfully revoked.',
         ephemeral: true
       });
 
     } catch (err) {
-      console.error('REVOKE ERROR:', err);
+      console.error('🔥 REVOKE CRASH:', err);
 
       return interaction.reply({
-        content: '❌ Failed to revoke license.',
+        content: '❌ Unexpected revoke failure.',
         ephemeral: true
       });
     }
