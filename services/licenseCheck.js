@@ -1,16 +1,13 @@
 import { getGuildSetup } from './guildSetupStore.js';
 
-/**
- * Returns true if guild has valid license
- */
 export async function isGuildLicensed(guildId) {
-  const config = await getGuildSetup(guildId);
+  const guild = await getGuildSetup(guildId);
 
-  if (!config) return false;
+  if (!guild) return false;
 
-  const active =
-    config.premium === true &&
-    (!config.premiumexpiry || Date.now() < config.premiumexpiry);
+  const hasPremium = guild.premium === true;
+  const notExpired =
+    !guild.premiumexpiry || Date.now() < guild.premiumexpiry;
 
-  return active;
+  return hasPremium && notExpired;
 }
