@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { supabase } from '../../db/supabase.js';
 import { saveGuildSetup } from '../../services/guildSetupStore.js';
+import { withLicenseCheck } from '../../middleware/commandGuard.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -13,7 +14,7 @@ export default {
         .setRequired(true)
     ),
 
-  async execute(interaction) {
+  execute: withLicenseCheck(async (interaction) => {
     try {
       const key = interaction.options.getString('key');
       const guildId = interaction.guild.id;
@@ -59,5 +60,5 @@ export default {
         ephemeral: true
       });
     }
-  }
+  })
 };
