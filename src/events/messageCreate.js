@@ -1,40 +1,18 @@
-export default (client) => async (message) => {
+export default () => async (message) => {
   console.log("EVENT FIRED:", message.content);
 
+  // ignore bots
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  const settings = await getGuildSettings(message.guild.id);
+  try {
+    // STEP 1: PROVE BOT CAN RESPOND
+    await message.channel.send("✅ BOT IS WORKING");
 
-// DEBUG
-console.log("SETTINGS:", settings);
+    // STEP 2: show raw input
+    console.log("MESSAGE RECEIVED:", message.content);
 
-// SAFE DEFAULT (IMPORTANT)
-const autoTranslate = settings?.auto_translate ?? true;
-
-if (!autoTranslate) {
-  console.log("Auto translate disabled");
-  return;
-}
-  const sourceLang = detectLang(message.content);
-  const targetLang = settings?.default_language || "en";
-
-  if (sourceLang === targetLang.toUpperCase()) return;
-
-  const translated = await translateText(message.content, targetLang);
-
-  if (!translated) {
-    console.log("DeepL returned empty result");
-    return;
+  } catch (err) {
+    console.error("SEND ERROR:", err);
   }
-
-  await message.channel.send({
-    embeds: [
-      {
-        title: `🌍 Translation (${sourceLang} → ${targetLang.toUpperCase()})`,
-        description: translated,
-        color: 0x00ffcc
-      }
-    ]
-  });
 };
