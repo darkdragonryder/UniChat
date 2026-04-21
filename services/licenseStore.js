@@ -1,7 +1,7 @@
 import { supabase } from '../db/supabase.js';
 
 // ==============================
-// GENERATE LICENSE
+// GENERATE LICENSE KEY
 // ==============================
 export async function generateLicenseKey(type, durationDays) {
   const key = `${type.toLowerCase()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
@@ -24,11 +24,12 @@ export async function generateLicenseKey(type, durationDays) {
 
   if (error) throw error;
 
-  return { key }; // IMPORTANT: returns object
+  // IMPORTANT: return STRING ONLY
+  return key;
 }
 
 // ==============================
-// VALIDATE LICENSE (FINAL FIX)
+// VALIDATE LICENSE
 // ==============================
 export async function validateKey(key) {
   const { data, error } = await supabase
@@ -57,7 +58,7 @@ export async function validateKey(key) {
 }
 
 // ==============================
-// MARK KEY AS USED
+// USE LICENSE
 // ==============================
 export async function useKey(key, guildId, userId) {
   const { error } = await supabase
@@ -69,25 +70,6 @@ export async function useKey(key, guildId, userId) {
       usedAt: Date.now()
     })
     .eq('key', key);
-
-  if (error) throw error;
-
-  return { ok: true };
-}
-
-// ==============================
-// REVOKE LICENSE
-// ==============================
-export async function revokeLicense(guildId) {
-  const { error } = await supabase
-    .from('licenses')
-    .update({
-      used: false,
-      usedByGuild: null,
-      usedByUser: null,
-      usedAt: null
-    })
-    .eq('usedByGuild', guildId);
 
   if (error) throw error;
 
