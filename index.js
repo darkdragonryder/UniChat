@@ -30,31 +30,61 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS
+// LOAD COMMANDS (FULL DEBUG)
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(commandsPath);
 
-for (const folder of commandFolders) {
-  const folderPath = path.join(commandsPath, folder);
+if (!fs.existsSync(commandsPath)) {
+  console.error('❌ /commands folder not found');
+} else {
+  const commandFolders = fs.readdirSync(commandsPath);
 
-  if (!fs.lstatSync(folderPath).isDirectory()) continue;
+  for (const folder of commandFolders) {
+    const folderPath = path.join(commandsPath, folder);
 
-  const commandFiles = fs.readdirSync(folderPath).filter(file => file.endsWith('.js'));
+    if (!fs.lstatSync(folderPath).isDirectory()) continue;
 
-  for (const file of commandFiles) {
-    const filePath = path.join(folderPath, file);
+    console.log(`📂 Reading folder: ${folder}`);
 
-    try {
-      const command = (await import(`file://${filePath}`)).default;
+    const commandFiles = fs.readdirSync(folderPath);
 
-      if (!command?.data) continue;
+    for (const file of commandFiles) {
+      console.log(`   📄 Found file: ${file}`);
 
-      client.commands.set(command.data.name, command);
-      console.log(`✅ Loaded: ${command.data.name}`);
+      if (!file.endsWith('.js')) {
+        console.log(`   ⏭️ Skipped (not .js): ${file}`);
+        continue;
+      }
 
-    } catch (err) {
-      console.error(`❌ Failed to load ${file}:`, err.message);
+      const filePath = path.join(folderPath, file);
+
+      try {
+        const imported = await import(`file://${filePath}`);
+        const command = imported.default;
+
+        if (!command) {
+          console.log(`   ❌ No default export: ${file}`);
+          continue;
+        }
+
+        if (!command.data) {
+          console.log(`   ❌ Missing data: ${file}`);
+          continue;
+        }
+
+        if (!command.execute) {
+          console.log(`   ❌ Missing execute: ${file}`);
+          continue;
+        }
+
+        client.commands.set(command.data.name, command);
+
+        console.log(`   ✅ Loaded: ${command.data.name}`);
+
+      } catch (err) {
+        console.error(`   ❌ FAILED TO LOAD ${file}`);
+        console.error(err);
+      }
     }
   }
 }
@@ -72,7 +102,9 @@ client.once('ready', () => {
 client.on('interactionCreate', async (interaction) => {
   try {
 
+    // =========================
     // SLASH COMMANDS
+    // =========================
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
@@ -84,7 +116,9 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    // =========================
     // AUTOCOMPLETE
+    // =========================
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
 
@@ -95,7 +129,9 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // PANEL SYSTEM (buttons + dropdowns)
+    // =========================
+    // PANEL SYSTEM
+    // =========================
     if (
       interaction.isStringSelectMenu() ||
       interaction.isButton()
