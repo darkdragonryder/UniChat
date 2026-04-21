@@ -17,8 +17,8 @@ client.on("ready", () => {
   console.log("BOT ONLINE");
 });
 
-client.on("messageCreate", (m) => {
-  console.log("MESSAGE:", m.content);
+client.on("messageCreate", (message) => {
+  console.log("RAW MESSAGE EVENT:", message.content);
 });
 
 client.login(process.env.DISCORD_TOKEN);
