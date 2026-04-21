@@ -4,46 +4,44 @@ import { generateLicenseKey } from '../services/licenseStore.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('genkey')
-    .setDescription('Generate a license key')
-    .addStringOption(opt =>
-      opt.setName('type')
-        .setDescription('7day, 30day, lifetime')
+    .setDescription('Generate a license key (OWNER ONLY)')
+    .addStringOption(option =>
+      option.setName('type')
+        .setDescription('Key type (7day, 30day, lifetime)')
         .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option.setName('days')
+        .setDescription('Duration in days (use 0 for lifetime)')
+        .setRequired(false)
     ),
 
   async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
     try {
-      if (interaction.user.id !== process.env.OWNER_ID)
-        return interaction.reply({ content: '❌ No permission', ephemeral: true });
+      // OWNER CHECK
+      if (interaction.user.id !== process.env.OWNER_ID) {
+        return interaction.editReply('❌ Owner only');
+      }
 
-      const type = interaction.options.getString('type').toLowerCase();
+      const type = interaction.options.getString('type');
+      const daysInput = interaction.options.getInteger('days');
 
-      const map = {
-        '7day': 7,
-        '30day': 30,
-        'lifetime': null
-      };
+      const durationDays =
+        daysInput === 0
+          ? null
+          : (daysInput ?? (type === '7day' ? 7 : type === '30day' ? 30 : null));
 
-      if (!(type in map))
-        return interaction.reply({ content: '❌ Invalid type', ephemeral: true });
+      const key = await generateLicenseKey(type, durationDays);
 
-      const result = await generateLicenseKey(type, map[type]);
-      if (!result.ok)
-        return interaction.reply({ content: `❌ Error: ${result.error}`, ephemeral: true });
-
-      const key = result.data;
-
-      return interaction.reply({
-        content:
-          `🔑 Key generated:\n\n\`${key}\`\n\n` +
-          `Type: **${type}**\n` +
-          `Duration: **${map[type] ?? 'lifetime'} days**`,
-        ephemeral: true
-      });
+      return interaction.editReply(
+        `🔑 **License Generated**\n\n\`${key}\``
+      );
 
     } catch (err) {
-      console.log(err);
-      return interaction.reply({ content: '❌ Failed to generate key', ephemeral: true });
+      console.error('GENKEY ERROR:', err);
+      return interaction.editReply('❌ Failed to generate key');
     }
   }
 };
