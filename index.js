@@ -25,6 +25,7 @@ const languageMap = {
   "🇸🇦": "AR"
 };
 
+// 🌐 DeepL translate
 async function translate(text, targetLang) {
   const res = await fetch('https://api-free.deepl.com/v2/translate', {
     method: 'POST',
@@ -42,6 +43,7 @@ async function translate(text, targetLang) {
   return data.translations?.[0]?.text || 'Translation failed';
 }
 
+// 🤖 MESSAGE HANDLER
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -54,12 +56,13 @@ client.on('messageCreate', async (message) => {
   if (!text) return;
 
   const result = await translate(text, lang);
-
   message.reply(`🌍 ${result}`);
 });
 
+// 🚀 READY
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// 🔐 FIXED LOGIN LINE
+client.login(process.env.TOKEN);
