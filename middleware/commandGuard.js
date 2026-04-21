@@ -1,40 +1,48 @@
 import { isGuildLicensed } from '../services/licenseCheck.js';
 
 /**
- * Middleware wrapper for licensed commands
+ * GLOBAL COMMAND GUARD
+ * Handles ALL license checks automatically
  */
-export function withLicenseCheck(handler) {
-  return async (interaction) => {
-    try {
-      const guildId = interaction.guild?.id;
+export async function globalGuard(interaction, command) {
+  try {
+    const guildId = interaction.guild?.id;
 
-      if (!guildId) {
-        return interaction.reply({
-          content: '❌ Guild only command.',
-          ephemeral: true
-        });
-      }
-
-      const licensed = await isGuildLicensed(guildId);
-
-      if (!licensed) {
-        return interaction.reply({
-          content: '❌ This server is not licensed.',
-          ephemeral: true
-        });
-      }
-
-      return await handler(interaction);
-
-    } catch (err) {
-      console.error('Command guard error:', err);
-
-      if (!interaction.replied) {
-        return interaction.reply({
-          content: '❌ Internal error.',
-          ephemeral: true
-        });
-      }
+    // If command does NOT require license → allow
+    if (!command?.meta?.licensed) {
+      return true;
     }
-  };
+
+    if (!guildId) {
+      await interaction.reply({
+        content: '❌ Guild only command.',
+        ephemeral: true
+      });
+      return false;
+    }
+
+    const licensed = await isGuildLicensed(guildId);
+
+    if (!licensed) {
+      await interaction.reply({
+        content: '❌ This server is not licensed.',
+        ephemeral: true
+      });
+      return false;
+    }
+
+    return true;
+
+  } catch (err) {
+    console.error('Global guard error:', err);
+
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: '❌ Internal error.',
+        ephemeral: true
+      });
+    }
+
+    return false;
+  }
 }
