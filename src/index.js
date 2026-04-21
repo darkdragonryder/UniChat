@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 
+console.log("🚨 THIS IS THE ACTIVE BUILD 🚨", Date.now());
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
