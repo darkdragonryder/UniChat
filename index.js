@@ -5,20 +5,11 @@ import { fileURLToPath } from 'url';
 import {
   Client,
   GatewayIntentBits,
-  Collection,
-  REST,
-  Routes
+  Collection
 } from 'discord.js';
 
 import { loadGuildCache } from './services/guildCache.js';
-import { repairGuild } from './services/guildRepair.js';
-import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
-import { runLicenseCron } from './services/licenseCron.js';
-import { commandGuard } from './middleware/commandGuard.js';
 
-// ==============================
-// PATH SETUP
-// ==============================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -26,11 +17,7 @@ const __dirname = path.dirname(__filename);
 // CLIENT
 // ==============================
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
 client.commands = new Collection();
@@ -42,21 +29,11 @@ const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
+  const command = (await import(`file://${path.join(commandsPath, file)}`)).default;
 
-  try {
-    const command = (await import(`file://${filePath}`)).default;
-
-    if (!command?.data || !command?.execute) {
-      console.log(`❌ Skipping ${file}`);
-      continue;
-    }
-
+  if (command?.data && command?.execute) {
     client.commands.set(command.data.name, command);
     console.log(`✅ Loaded: ${command.data.name}`);
-
-  } catch (err) {
-    console.log(`❌ Failed: ${file}`, err.message);
   }
 }
 
@@ -66,25 +43,17 @@ for (const file of commandFiles) {
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  await loadGuildCache(client);
+  try {
+    await loadGuildCache(client);
+  } catch (err) {
+    console.error('Cache error:', err);
+  }
 
-  client.guilds.cache.forEach(guild => {
-    syncGuildLicenseExpiry(guild.id);
-    repairGuild(guild);
-  });
-
-  setInterval(runLicenseCron, 60 * 60 * 1000);
-
-  setInterval(() => {
-    client.guilds.cache.forEach(guild => {
-      syncGuildLicenseExpiry(guild.id);
-      repairGuild(guild);
-    });
-  }, 60 * 60 * 1000);
+  console.log(`🚀 Cache ready: ${client.guilds.cache.size} guilds`);
 });
 
 // ==============================
-// COMMAND HANDLER (SAFE + GUARDED)
+// COMMAND HANDLER
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -93,18 +62,12 @@ client.on('interactionCreate', async (interaction) => {
   if (!command) return;
 
   try {
-    await commandGuard(interaction, async (config) => {
-      await command.execute(interaction, config);
-    });
-
+    await command.execute(interaction);
   } catch (err) {
     console.error(err);
-
-    if (interaction.replied || interaction.deferred) {
-      await interaction.editReply('❌ Error executing command');
-    } else {
+    if (!interaction.replied) {
       await interaction.reply({
-        content: '❌ Error executing command',
+        content: '❌ Command error',
         ephemeral: true
       });
     }
