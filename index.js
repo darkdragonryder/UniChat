@@ -30,61 +30,55 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS (FULL DEBUG)
+// LOAD COMMANDS (CLEAN + STABLE)
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 
 if (!fs.existsSync(commandsPath)) {
-  console.error('❌ /commands folder not found');
-} else {
-  const commandFolders = fs.readdirSync(commandsPath);
+  console.error('❌ Commands folder not found');
+  process.exit(1);
+}
 
-  for (const folder of commandFolders) {
-    const folderPath = path.join(commandsPath, folder);
+const commandFolders = fs.readdirSync(commandsPath);
 
-    if (!fs.lstatSync(folderPath).isDirectory()) continue;
+console.log('🔍 Loading commands...');
 
-    console.log(`📂 Reading folder: ${folder}`);
+for (const folder of commandFolders) {
+  const folderPath = path.join(commandsPath, folder);
 
-    const commandFiles = fs.readdirSync(folderPath);
+  if (!fs.lstatSync(folderPath).isDirectory()) {
+    console.log(`⏭️ Skipping non-folder: ${folder}`);
+    continue;
+  }
 
-    for (const file of commandFiles) {
-      console.log(`   📄 Found file: ${file}`);
+  console.log(`📂 Folder: ${folder}`);
 
-      if (!file.endsWith('.js')) {
-        console.log(`   ⏭️ Skipped (not .js): ${file}`);
+  const files = fs.readdirSync(folderPath).filter(f => f.endsWith('.js'));
+
+  for (const file of files) {
+    const filePath = path.join(folderPath, file);
+
+    try {
+      const imported = await import(`file://${filePath}`);
+      const command = imported.default;
+
+      if (!command) {
+        console.log(`❌ No export: ${file}`);
         continue;
       }
 
-      const filePath = path.join(folderPath, file);
-
-      try {
-        const imported = await import(`file://${filePath}`);
-        const command = imported.default;
-
-        if (!command) {
-          console.log(`   ❌ No default export: ${file}`);
-          continue;
-        }
-
-        if (!command.data) {
-          console.log(`   ❌ Missing data: ${file}`);
-          continue;
-        }
-
-        if (!command.execute) {
-          console.log(`   ❌ Missing execute: ${file}`);
-          continue;
-        }
-
-        client.commands.set(command.data.name, command);
-
-        console.log(`   ✅ Loaded: ${command.data.name}`);
-
-      } catch (err) {
-        console.error(`   ❌ FAILED TO LOAD ${file}`);
-        console.error(err);
+      if (!command.data || !command.execute) {
+        console.log(`❌ Invalid command structure: ${file}`);
+        continue;
       }
+
+      client.commands.set(command.data.name, command);
+
+      console.log(`✅ Loaded: ${command.data.name}`);
+
+    } catch (err) {
+      console.error(`❌ Failed: ${file}`);
+      console.error(err);
     }
   }
 }
@@ -130,7 +124,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // =========================
-    // PANEL SYSTEM
+    // PANEL SYSTEM (V2)
     // =========================
     if (
       interaction.isStringSelectMenu() ||
@@ -144,7 +138,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
   } catch (err) {
-    console.error('Interaction error:', err);
+    console.error('❌ Interaction error:', err);
 
     if (!interaction.replied) {
       await interaction.reply({
