@@ -7,8 +7,12 @@ import {
 } from 'discord.js';
 
 import { supabase } from '../db/supabase.js';
+import { logAction } from '../services/auditLogger.js';
+import { resolveUser } from '../services/userResolver.js';
 
 export async function handleLicensePanel(interaction) {
+
+  const client = interaction.client;
 
   // =========================
   // SELECT LICENSE
@@ -19,36 +23,38 @@ export async function handleLicensePanel(interaction) {
 
     const key = interaction.values[0];
 
-    const { data: license, error } = await supabase
+    const { data: license } = await supabase
       .from('licenses')
       .select('*')
       .eq('key', key)
       .single();
 
-    if (error || !license) {
+    if (!license) {
       return interaction.reply({
         content: '❌ License not found',
         ephemeral: true
       });
     }
 
+    const userTag = await resolveUser(client, license.usedbyguild || license.user_id);
+
     const embed = new EmbedBuilder()
-      .setTitle('🔐 License Panel')
-      .setColor(0x00d4ff)
+      .setTitle('🔐 License Dashboard V6')
+      .setColor(0x00e5ff)
       .addFields(
         { name: '🔑 Key', value: license.key, inline: false },
-        { name: '🏠 Used By Guild', value: license.usedbyguild || 'Not used', inline: true },
+        { name: '🏠 Guild', value: license.usedbyguild || 'Not used', inline: true },
+        { name: '👤 User', value: userTag, inline: true },
         { name: '📊 Used', value: license.used ? 'Yes' : 'No', inline: true },
-        { name: '⏳ Expires', value: license.expires_at || 'Lifetime', inline: true },
-        { name: '📅 Used At', value: license.usedat || 'Never', inline: true }
+        { name: '⏳ Expires', value: license.expires_at || 'Lifetime', inline: true }
       );
 
-    const revokeBtn = new ButtonBuilder()
-      .setCustomId(`revoke_${license.key}`)
+    const btn = new ButtonBuilder()
+      .setCustomId(`v6_revoke_${license.key}`)
       .setLabel('Revoke License')
       .setStyle(ButtonStyle.Danger);
 
-    const row = new ActionRowBuilder().addComponents(revokeBtn);
+    const row = new ActionRowBuilder().addComponents(btn);
 
     return interaction.update({
       embeds: [embed],
@@ -57,16 +63,15 @@ export async function handleLicensePanel(interaction) {
   }
 
   // =========================
-  // REVOKE LICENSE
+  // REVOKE LICENSE (V6 SAFE)
   // =========================
   if (interaction.isButton()) {
 
-    if (!interaction.customId.startsWith('revoke_')) return;
+    if (!interaction.customId.startsWith('v6_revoke_')) return;
 
-    const key = interaction.customId.replace('revoke_', '');
+    const key = interaction.customId.replace('v6_revoke_', '');
 
-    // 1. Reset license
-    const { error: licErr } = await supabase
+    const { error } = await supabase
       .from('licenses')
       .update({
         used: false,
@@ -75,27 +80,24 @@ export async function handleLicensePanel(interaction) {
       })
       .eq('key', key);
 
-    // 2. Remove from guild_setup
-    const { error: guildErr } = await supabase
-      .from('guild_setup')
-      .update({
-        premium: false,
-        licensekey: null,
-        premiumexpirary: null
-      })
-      .eq('licensekey', key);
-
-    if (licErr || guildErr) {
-      console.error({ licErr, guildErr });
-
+    if (error) {
       return interaction.reply({
         content: '❌ Failed to revoke license',
         ephemeral: true
       });
     }
 
+    // audit log
+    await logAction({
+      action: 'LICENSE_REVOKE',
+      user_id: interaction.user.id,
+      guild_id: interaction.guildId,
+      license_key: key,
+      details: 'License revoked via panel V6'
+    });
+
     return interaction.reply({
-      content: '✅ License revoked and guild downgraded',
+      content: '✅ License revoked successfully (V6)',
       ephemeral: true
     });
   }
