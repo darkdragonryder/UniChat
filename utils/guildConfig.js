@@ -15,7 +15,7 @@ function defaultConfig(guildId) {
     premium: false,
     licenseKey: null,
     premiumStart: null,
-    premiumExpiry: null,
+    premiumExpiary: null,
     mode: 'reaction',
 
     // 🔑 LICENSE SYSTEM

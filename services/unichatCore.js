@@ -56,9 +56,9 @@ export async function applyLicenseKey(guildId, userId, key) {
   config.premiumStart = now;
 
   if (days === null || type === 'lifetime') {
-    config.premiumExpiry = null;
+    config.premiumExpiary = null;
   } else {
-    config.premiumExpiry = now + days * 86400000;
+    config.premiumExpiary = now + days * 86400000;
   }
 
   await useKey(key, guildId, userId);
@@ -69,6 +69,6 @@ export async function applyLicenseKey(guildId, userId, key) {
     ok: true,
     type,
     days,
-    expiry: config.premiumExpiry
+    expiry: config.premiumExpiary
   };
 }

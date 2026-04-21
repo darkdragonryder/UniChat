@@ -97,12 +97,12 @@ export function applyKeyToConfig(config, keyEntry, key) {
   // lifetime
   if (keyEntry.durationDays === -1) {
     config.premiumStart = now;
-    config.premiumExpiry = null;
+    config.premiumExpiary = null;
     return config;
   }
 
   config.premiumStart = now;
-  config.premiumExpiry = now + keyEntry.durationDays * 86400000;
+  config.premiumExpiary = now + keyEntry.durationDays * 86400000;
 
   return config;
 }

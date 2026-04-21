@@ -83,7 +83,7 @@ export default {
 
       if (config) {
         config.premium = false;
-        config.premiumExpiry = null;
+        config.premiumExpiary = null;
         config.mode = 'revoked';
 
         saveGuildConfig(guildId, config);

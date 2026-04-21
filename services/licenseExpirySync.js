@@ -9,12 +9,12 @@ export function syncGuildLicenseExpiry(guildId) {
   if (!config?.premium) return;
 
   if (
-    config.premiumExpiry !== null &&
-    Date.now() > config.premiumExpiry
+    config.premiumExpiary !== null &&
+    Date.now() > config.premiumExpiary
   ) {
     config.premium = false;
     config.mode = 'expired';
-    config.premiumExpiry = null;
+    config.premiumExpiary = null;
 
     saveGuildConfig(guildId, config);
 
