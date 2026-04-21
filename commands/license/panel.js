@@ -1,52 +1,59 @@
 import {
   SlashCommandBuilder,
+  EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder
+  ButtonStyle
 } from 'discord.js';
 
 import { supabase } from '../../db/supabase.js';
 
 export default {
-  meta: {
-    licensed: false
-  },
-
   data: new SlashCommandBuilder()
     .setName('license-panel')
-    .setDescription('Open license control panel'),
+    .setDescription('Admin License Control Panel (V2)'),
 
   async execute(interaction) {
+    // Fetch all licenses
+    const { data: licenses, error } = await supabase
+      .from('licenses')
+      .select('*');
 
-    // Fetch guilds bot knows about (from DB)
-    const { data: guilds } = await supabase
-      .from('guild_setup')
-      .select('guildid, premium, licensekey');
+    if (error) {
+      return interaction.reply({
+        content: '❌ Failed to load licenses',
+        ephemeral: true
+      });
+    }
 
-    const options = (guilds || []).map(g => ({
-      label: `Guild ${g.guildid}`,
-      description: g.premium ? 'Premium Active' : 'Not Licensed',
-      value: g.guildid
-    })).slice(0, 25);
+    if (!licenses || licenses.length === 0) {
+      return interaction.reply({
+        content: '⚠️ No licenses found',
+        ephemeral: true
+      });
+    }
 
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId('license_select_guild')
-      .setPlaceholder('Select a server')
-      .addOptions(options.length ? options : [{
-        label: 'No guilds found',
-        value: 'none'
-      }]);
+    // Build dropdown options
+    const options = licenses.map(l => ({
+      label: `${l.guild_name || 'Unknown Server'}`,
+      description: `User: ${l.user_id || 'Unknown'} | Key: ${l.key}`,
+      value: l.id
+    }));
 
-    const row = new ActionRowBuilder().addComponents(menu);
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('license_select')
+      .setPlaceholder('Select a license...')
+      .addOptions(options.slice(0, 25));
+
+    const row = new ActionRowBuilder().addComponents(select);
 
     const embed = new EmbedBuilder()
-      .setTitle('🔐 License Control Panel')
-      .setDescription('Select a server to manage license')
+      .setTitle('🔐 License Control Panel V2')
+      .setDescription('Select a license below to manage it.')
       .setColor(0x00ff99);
 
-    await interaction.reply({
+    return interaction.reply({
       embeds: [embed],
       components: [row],
       ephemeral: true
