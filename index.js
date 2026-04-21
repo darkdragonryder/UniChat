@@ -12,11 +12,6 @@ import {
 import { globalGuard } from './middleware/globalGuard.js';
 import { handleLicensePanel } from './handlers/licensePanel.js';
 
-import { loadGuildCache } from './services/guildCache.js';
-import { runLicenseCron } from './services/licenseCron.js';
-import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
-import { repairGuild } from './services/guildRepair.js';
-
 // ==============================
 // PATH SETUP
 // ==============================
@@ -28,16 +23,14 @@ const __dirname = path.dirname(__filename);
 // ==============================
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.Guilds
   ]
 });
 
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS (FOLDER BASED)
+// LOAD COMMANDS
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(commandsPath);
@@ -69,46 +62,21 @@ for (const folder of commandFolders) {
 // ==============================
 // READY EVENT
 // ==============================
-client.once('ready', async () => {
+client.once('ready', () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
-
-  // Load cached guild data
-  await loadGuildCache(client);
-
-  // Initial sync
-  client.guilds.cache.forEach(guild => {
-    syncGuildLicenseExpiry(guild.id);
-    repairGuild(guild);
-  });
-
-  // Run license cron every hour
-  setInterval(() => {
-    runLicenseCron();
-  }, 60 * 60 * 1000);
-
-  // Re-check guilds every hour
-  setInterval(() => {
-    client.guilds.cache.forEach(guild => {
-      syncGuildLicenseExpiry(guild.id);
-      repairGuild(guild);
-    });
-  }, 60 * 60 * 1000);
 });
 
 // ==============================
-// INTERACTION HANDLER (FULL)
+// INTERACTION HANDLER
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   try {
 
-    // =========================
     // SLASH COMMANDS
-    // =========================
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
 
-      // GLOBAL LICENSE CHECK
       const allowed = await globalGuard(interaction, command);
       if (!allowed) return;
 
@@ -116,9 +84,7 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // =========================
-    // AUTOCOMPLETE SUPPORT
-    // =========================
+    // AUTOCOMPLETE
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
 
@@ -129,14 +95,11 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // =========================
-    // PANEL SYSTEM (SELECTS + BUTTONS)
-    // =========================
+    // PANEL SYSTEM (buttons + dropdowns)
     if (
       interaction.isStringSelectMenu() ||
       interaction.isButton()
     ) {
-      // Route license panel interactions
       if (interaction.customId.startsWith('license_')) {
         return handleLicensePanel(interaction);
       }
