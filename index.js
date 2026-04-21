@@ -6,12 +6,12 @@ import { fileURLToPath } from 'url';
 import {
   Client,
   GatewayIntentBits,
-  Collection,
-  REST,
-  Routes
+  Collection
 } from 'discord.js';
 
 import { globalGuard } from './middleware/globalGuard.js';
+import { handleLicensePanel } from './handlers/licensePanel.js';
+
 import { loadGuildCache } from './services/guildCache.js';
 import { runLicenseCron } from './services/licenseCron.js';
 import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
@@ -24,7 +24,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ==============================
-// CLIENT
+// CLIENT SETUP
 // ==============================
 const client = new Client({
   intents: [
@@ -35,10 +35,9 @@ const client = new Client({
 });
 
 client.commands = new Collection();
-client.componentHandlers = new Collection();
 
 // ==============================
-// LOAD COMMANDS
+// LOAD COMMANDS (FOLDER BASED)
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(commandsPath);
@@ -48,7 +47,7 @@ for (const folder of commandFolders) {
 
   if (!fs.lstatSync(folderPath).isDirectory()) continue;
 
-  const commandFiles = fs.readdirSync(folderPath).filter(f => f.endsWith('.js'));
+  const commandFiles = fs.readdirSync(folderPath).filter(file => file.endsWith('.js'));
 
   for (const file of commandFiles) {
     const filePath = path.join(folderPath, file);
@@ -73,17 +72,21 @@ for (const folder of commandFolders) {
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
+  // Load cached guild data
   await loadGuildCache(client);
 
+  // Initial sync
   client.guilds.cache.forEach(guild => {
     syncGuildLicenseExpiry(guild.id);
     repairGuild(guild);
   });
 
+  // Run license cron every hour
   setInterval(() => {
     runLicenseCron();
   }, 60 * 60 * 1000);
 
+  // Re-check guilds every hour
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
       syncGuildLicenseExpiry(guild.id);
@@ -127,16 +130,15 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // =========================
-    // BUTTONS / SELECT MENUS (FUTURE ADMIN PANEL)
+    // PANEL SYSTEM (SELECTS + BUTTONS)
     // =========================
     if (
-      interaction.isButton() ||
-      interaction.isStringSelectMenu()
+      interaction.isStringSelectMenu() ||
+      interaction.isButton()
     ) {
-      const handler = client.componentHandlers.get(interaction.customId);
-
-      if (handler) {
-        await handler(interaction);
+      // Route license panel interactions
+      if (interaction.customId.startsWith('license_')) {
+        return handleLicensePanel(interaction);
       }
 
       return;
