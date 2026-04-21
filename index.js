@@ -10,11 +10,14 @@ import {
 } from 'discord.js';
 
 // ==============================
-// SERVICES (V5)
+// CORE SERVICES (V8 STACK)
 // ==============================
 import { globalGuard } from './middleware/globalGuard.js';
 import { handleLicensePanel } from './handlers/licensePanel.js';
 import { runLicenseSync } from './services/licenseSync.js';
+
+// optional V7 API layer (safe even if unused)
+import { validateLicense } from './api/licenseAPI.js';
 
 // ==============================
 // PATH SETUP
@@ -34,12 +37,12 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS
+// LOAD COMMANDS SYSTEM
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 
 if (!fs.existsSync(commandsPath)) {
-  console.error('❌ commands folder missing');
+  console.error('❌ Missing commands folder');
   process.exit(1);
 }
 
@@ -58,6 +61,7 @@ for (const folder of folders) {
   const files = fs.readdirSync(folderPath).filter(f => f.endsWith('.js'));
 
   for (const file of files) {
+
     const filePath = path.join(folderPath, file);
 
     try {
@@ -73,29 +77,31 @@ for (const folder of folders) {
       console.log(`✅ Loaded: ${command.data.name}`);
 
     } catch (err) {
-      console.error(`❌ Failed loading ${file}`);
+      console.error(`❌ Failed: ${file}`);
       console.error(err);
     }
   }
 }
 
 // ==============================
-// READY EVENT (V5 SYNC ACTIVE)
+// READY EVENT (V8 CORE SYNC)
 // ==============================
 client.once('ready', async () => {
+
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // 🔄 Run license sync on boot
+  // 🔄 Run license cleanup sync
   await runLicenseSync(client);
 
-  // 🔁 Auto sync every 5 minutes
+  // 🔁 periodic sync (self-healing system)
   setInterval(() => {
     runLicenseSync(client);
   }, 5 * 60 * 1000);
+
 });
 
 // ==============================
-// INTERACTION HANDLER
+// INTERACTION HANDLER (V8 ROUTER)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
 
@@ -131,17 +137,19 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // =========================
-    // LICENSE PANEL SYSTEM (V4/V5)
+    // LICENSE PANEL SYSTEM
     // =========================
     if (
       interaction.isStringSelectMenu() ||
       interaction.isButton()
     ) {
 
-      if (interaction.customId.startsWith('license_') ||
-          interaction.customId.startsWith('v4_') ||
-          interaction.customId.startsWith('revoke_')) {
-
+      if (
+        interaction.customId.startsWith('license_') ||
+        interaction.customId.startsWith('v4_') ||
+        interaction.customId.startsWith('v6_') ||
+        interaction.customId.startsWith('revoke_')
+      ) {
         return handleLicensePanel(interaction);
       }
 
@@ -159,6 +167,13 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 });
+
+// ==============================
+// OPTIONAL LICENSE CHECK HOOK (API READY)
+// ==============================
+export async function checkGuildLicense(guildId) {
+  return await validateLicense(guildId);
+}
 
 // ==============================
 // LOGIN
