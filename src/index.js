@@ -10,19 +10,26 @@ const client = new Client({
 });
 
 client.on("ready", () => {
-  console.log("BOT ONLINE:", client.user.tag);
+  console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
 client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  if (!message.guild) return;
+
   console.log("MESSAGE:", message.content);
 
-  if (message.author.bot) return;
-
   try {
-    await message.channel.send("✅ BOT IS RESPONDING");
-    console.log("SEND OK");
+    // STEP 1: SAFE BASE RESPONSE (NO API, NO DATABASE YET)
+    const response = `🌍 Echo: ${message.content}`;
+
+    await message.channel.send({
+      content: response
+    });
+
+    console.log("MESSAGE SENT OK");
   } catch (err) {
-    console.error("SEND FAILED:", err);
+    console.error("SEND ERROR:", err);
   }
 });
 
