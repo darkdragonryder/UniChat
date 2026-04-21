@@ -1,90 +1,114 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { validateKey } from '../services/licenseStore.js';
-import { applyLicenseKey } from '../services/unichatCore.js';
+import { supabase } from '../db/supabase.js';
+import { getGuildSetup, saveGuildSetup } from '../services/guildSetupStore.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('redeem')
-    .setDescription('Redeem a license key')
-    .addStringOption(o =>
-      o.setName('key')
+    .setDescription('Redeem a license key for this server')
+    .addStringOption(opt =>
+      opt
+        .setName('key')
         .setDescription('License key')
         .setRequired(true)
     ),
 
   async execute(interaction) {
+    const key = interaction.options.getString('key');
+    const guildId = interaction.guild.id;
+    const now = Date.now();
+
     try {
-      const key = interaction.options.getString('key');
+      // ==============================
+      // 1. GET LICENSE FROM SUPABASE
+      // ==============================
+      const { data: license, error } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('key', key)
+        .maybeSingle();
 
-      await interaction.deferReply({ ephemeral: true });
-
-      // =========================
-      // VALIDATE KEY
-      // =========================
-      const result = await validateKey(key);
-
-      if (!result.ok) {
-        return interaction.editReply('❌ Invalid or unknown license key');
-      }
-
-      const license = result.data;
-
-      // =========================
-      // ALREADY USED CHECK
-      // =========================
-      if (license.used) {
-        return interaction.editReply('❌ This license has already been used');
-      }
-
-      // =========================
-      // EXPIRED CHECK
-      // =========================
-      if (
-        license.expiresAt !== null &&
-        Date.now() > license.expiresAt
-      ) {
-        return interaction.editReply('❌ This license has expired');
-      }
-
-      // =========================
-      // APPLY LICENSE
-      // =========================
-      let apply;
-
-      try {
-        apply = await applyLicenseKey(
-          interaction.guild.id,
-          interaction.user.id,
-          key
-        );
-      } catch (err) {
-        console.log('applyLicenseKey error:', err);
-        return interaction.editReply('❌ Failed to apply license');
-      }
-
-      if (!apply?.ok) {
-        return interaction.editReply('❌ License activation failed');
-      }
-
-      // =========================
-      // SUCCESS RESPONSE
-      // =========================
-      return interaction.editReply(
-        `✅ License Redeemed!\n\n` +
-        `⭐ Type: **${license.type}**\n` +
-        `⏳ Duration: **${license.durationDays ?? 'lifetime'}**\n` +
-        `🏷️ Guild Locked: **${interaction.guild.name}**`
-      );
-
-    } catch (err) {
-      console.log('Redeem crash:', err);
-
-      if (!interaction.replied && !interaction.deferred) {
+      if (error) {
+        console.error('LICENSE ERROR:', error);
         return interaction.reply({
-          content: '❌ Command error occurred',
+          content: '❌ Database error while checking license.',
           ephemeral: true
         });
       }
+
+      if (!license) {
+        return interaction.reply({
+          content: '❌ Invalid license key.',
+          ephemeral: true
+        });
+      }
+
+      if (license.used) {
+        return interaction.reply({
+          content: '❌ This license key has already been used.',
+          ephemeral: true
+        });
+      }
+
+      if (license.expiresAt && now > license.expiresAt) {
+        return interaction.reply({
+          content: '❌ This license key has expired.',
+          ephemeral: true
+        });
+      }
+
+      // ==============================
+      // 2. MARK LICENSE AS USED
+      // ==============================
+      const { error: updateError } = await supabase
+        .from('licenses')
+        .update({
+          used: true,
+          usedByGuild: guildId,
+          usedAt: now
+        })
+        .eq('key', key);
+
+      if (updateError) {
+        console.error('UPDATE ERROR:', updateError);
+        return interaction.reply({
+          content: '❌ Failed to activate license.',
+          ephemeral: true
+        });
+      }
+
+      // ==============================
+      // 3. UPDATE GUILD SETUP (CACHE)
+      // ==============================
+      await saveGuildSetup(guildId, {
+        premium: true,
+        licensekey: key,
+        premiumexpiry: license.expiresAt || null
+      });
+
+      // ==============================
+      // 4. SUCCESS RESPONSE
+      // ==============================
+      return interaction.reply({
+        content:
+          `✅ License activated successfully!\n\n` +
+          `🔑 Key: ${key}\n` +
+          `🏷️ Premium: Enabled\n` +
+          `⏳ Expiry: ${
+            license.expiresAt
+              ? new Date(license.expiresAt).toLocaleString()
+              : 'Lifetime'
+          }`,
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.error('REDEEM ERROR:', err);
+
+      return interaction.reply({
+        content: '❌ Unexpected error while redeeming license.',
+        ephemeral: true
+      });
     }
   }
 };
