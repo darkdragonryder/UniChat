@@ -6,69 +6,75 @@ import { checkFraud } from '../services/fraudCheck.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('test')
-    .setDescription('System diagnostic test (SAFE MODE)'),
+    .setDescription('Advanced system diagnostic'),
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
-    const results = [];
     const guildId = interaction.guild.id;
     const userId = interaction.user.id;
 
+    const results = [];
+
+    const time = (label, fn) => {
+      const start = Date.now();
+      const res = fn();
+      const ms = Date.now() - start;
+      return { res, ms, label };
+    };
+
     try {
       // =========================
-      // 1. FRAUD CHECK
+      // FRAUD
       // =========================
+      const fraudStart = Date.now();
       const fraud = checkFraud({
         userId,
         ownerId: process.env.OWNER_ID,
-        code: 'DIAG_TEST',
+        code: 'DIAG_V2',
         guildId
       });
-
-      results.push(`🛡 Fraud check: ${fraud.ok ? 'PASS' : fraud.reason}`);
+      results.push(`🛡 Fraud: ${fraud.ok ? 'PASS' : fraud.reason} (${Date.now() - fraudStart}ms)`);
 
       // =========================
-      // 2. GENERATE LICENSE
+      // GENERATE
       // =========================
+      const genStart = Date.now();
       const { key } = await generateLicenseKey('7day', 7);
-      results.push(`🔑 Generate: OK`);
+      results.push(`🔑 Generate: OK (${Date.now() - genStart}ms)`);
 
       // =========================
-      // 3. VALIDATE LICENSE
+      // VALIDATE
       // =========================
+      const valStart = Date.now();
       const validate = await validateKey(key);
-      results.push(`📦 Validate: ${validate.ok ? 'PASS' : validate.reason}`);
+      results.push(`📦 Validate: ${validate.ok ? 'PASS' : validate.reason} (${Date.now() - valStart}ms)`);
 
       // =========================
-      // 4. APPLY LICENSE
+      // APPLY
       // =========================
+      const appStart = Date.now();
       const apply = await applyLicenseKey(guildId, userId, key);
-      results.push(`⚙️ Apply: ${apply.ok ? 'PASS' : apply.reason}`);
+      results.push(`⚙ Apply: ${apply.ok ? 'PASS' : apply.reason} (${Date.now() - appStart}ms)`);
 
       // =========================
-      // 5. USE KEY (MARK USED TEST)
+      // USE KEY
       // =========================
+      const useStart = Date.now();
       if (validate.ok) {
         await useKey(key, guildId, userId);
-        results.push(`🔐 UseKey: PASS`);
+        results.push(`🔐 UseKey: PASS (${Date.now() - useStart}ms)`);
       }
 
-      // =========================
-      // FINAL OUTPUT
-      // =========================
       return interaction.editReply(
-        `🧪 **DIAGNOSTIC COMPLETE**\n\n` +
+        `🧪 **DIAGNOSTIC v2 COMPLETE**\n\n` +
         results.map(r => `• ${r}`).join('\n') +
-        `\n\n✅ System stable`
+        `\n\n✅ System Healthy`
       );
 
     } catch (err) {
-      console.error('TEST ERROR:', err);
-
-      return interaction.editReply(
-        `❌ **DIAGNOSTIC FAILED**\n\nError:\n\`\`\`${err.message}\`\`\``
-      );
+      console.error(err);
+      return interaction.editReply(`❌ FAILED:\n\`\`\`${err.message}\`\`\``);
     }
   }
 };
