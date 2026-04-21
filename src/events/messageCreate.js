@@ -6,8 +6,16 @@ export default (client) => async (message) => {
 
   const settings = await getGuildSettings(message.guild.id);
 
-  if (!settings?.auto_translate) return;
+// DEBUG
+console.log("SETTINGS:", settings);
 
+// SAFE DEFAULT (IMPORTANT)
+const autoTranslate = settings?.auto_translate ?? true;
+
+if (!autoTranslate) {
+  console.log("Auto translate disabled");
+  return;
+}
   const sourceLang = detectLang(message.content);
   const targetLang = settings?.default_language || "en";
 
