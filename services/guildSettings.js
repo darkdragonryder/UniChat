@@ -1,8 +1,5 @@
 const guildSettings = new Map();
 
-/**
- * Default settings per guild
- */
 export function getGuildSettings(guildId) {
 
   if (!guildSettings.has(guildId)) {
@@ -15,18 +12,12 @@ export function getGuildSettings(guildId) {
   return guildSettings.get(guildId);
 }
 
-/**
- * Enable/disable auto translate
- */
 export function setAutoTranslate(guildId, value) {
-  const settings = getGuildSettings(guildId);
-  settings.autoTranslate = value;
+  const s = getGuildSettings(guildId);
+  s.autoTranslate = value;
 }
 
-/**
- * Set target language
- */
 export function setTargetLang(guildId, lang) {
-  const settings = getGuildSettings(guildId);
-  settings.targetLang = lang;
+  const s = getGuildSettings(guildId);
+  s.targetLang = lang;
 }
