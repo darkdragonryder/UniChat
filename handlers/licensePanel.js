@@ -1,45 +1,48 @@
 import {
+  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder
+  ButtonStyle
 } from 'discord.js';
 
 import { supabase } from '../db/supabase.js';
-import { saveGuildSetup } from '../services/guildSetupStore.js';
 
 export async function handleLicensePanel(interaction) {
 
   // =========================
-  // GUILD SELECTED
+  // SELECT MENU HANDLER
   // =========================
-  if (interaction.customId === 'license_select_guild') {
-    const guildId = interaction.values[0];
+  if (interaction.isStringSelectMenu()) {
 
-    const { data: guild } = await supabase
-      .from('guild_setup')
+    if (interaction.customId !== 'license_select') return;
+
+    const licenseId = interaction.values[0];
+
+    const { data: license } = await supabase
+      .from('licenses')
       .select('*')
-      .eq('guildid', guildId)
-      .maybeSingle();
+      .eq('id', licenseId)
+      .single();
+
+    if (!license) {
+      return interaction.reply({
+        content: '❌ License not found',
+        ephemeral: true
+      });
+    }
 
     const embed = new EmbedBuilder()
-      .setTitle(`📄 Guild License`)
-      .setDescription(`Guild ID: ${guildId}`)
+      .setTitle('📄 License Details')
       .addFields(
-        { name: 'Premium', value: String(guild?.premium ?? false), inline: true },
-        { name: 'License Key', value: guild?.licensekey || 'None', inline: true },
-        {
-          name: 'Expiry',
-          value: guild?.premiumexpiry
-            ? new Date(guild.premiumexpiry).toLocaleString()
-            : 'None',
-          inline: true
-        }
+        { name: 'Server', value: license.guild_name || 'Unknown', inline: true },
+        { name: 'User', value: license.user_id || 'Unknown', inline: true },
+        { name: 'Key', value: license.key, inline: false },
+        { name: 'Expires', value: license.expires_at || 'Lifetime', inline: true }
       )
       .setColor(0xffcc00);
 
     const revokeBtn = new ButtonBuilder()
-      .setCustomId(`license_revoke_${guildId}`)
+      .setCustomId(`license_revoke_${license.id}`)
       .setLabel('Revoke License')
       .setStyle(ButtonStyle.Danger);
 
@@ -52,38 +55,29 @@ export async function handleLicensePanel(interaction) {
   }
 
   // =========================
-  // REVOKE BUTTON
+  // BUTTON HANDLER
   // =========================
-  if (interaction.customId.startsWith('license_revoke_')) {
-    const guildId = interaction.customId.split('_')[2];
+  if (interaction.isButton()) {
 
-    const { data: guild } = await supabase
-      .from('guild_setup')
-      .select('*')
-      .eq('guildid', guildId)
-      .maybeSingle();
+    if (!interaction.customId.startsWith('license_revoke_')) return;
 
-    if (guild?.licensekey) {
-      await supabase
-        .from('licenses')
-        .update({
-          used: false,
-          usedbyguild: null,
-          usedat: null
-        })
-        .eq('key', guild.licensekey);
+    const licenseId = interaction.customId.split('_')[2];
+
+    const { error } = await supabase
+      .from('licenses')
+      .delete()
+      .eq('id', licenseId);
+
+    if (error) {
+      return interaction.reply({
+        content: '❌ Failed to revoke license',
+        ephemeral: true
+      });
     }
 
-    await saveGuildSetup(guildId, {
-      premium: false,
-      licensekey: null,
-      premiumexpiry: null
-    });
-
-    return interaction.update({
-      content: `🧨 License revoked for ${guildId}`,
-      embeds: [],
-      components: []
+    return interaction.reply({
+      content: '✅ License revoked successfully',
+      ephemeral: true
     });
   }
 }
