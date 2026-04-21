@@ -1,85 +1,57 @@
 import { getGuildSetup } from '../services/guildSetupStore.js';
-import { checkFraud } from '../services/fraudCheck.js';
 
-// ==============================
-// GLOBAL COMMAND GUARD
-// ==============================
-export async function commandGuard(interaction, commandFn) {
-  const guildId = interaction.guild?.id;
+const punishMap = new Map();
+const userActionMap = new Map();
+
+export async function commandGuard(interaction, next) {
   const userId = interaction.user.id;
+  const guildId = interaction.guild?.id;
+  const now = Date.now();
 
-  try {
-    // =========================
-    // NO GUILD SAFE EXIT
-    // =========================
-    if (!guildId) {
-      return interaction.reply({
-        content: '❌ This command can only be used in a server.',
-        ephemeral: true
-      });
-    }
+  // =========================
+  // LOAD CONFIG
+  // =========================
+  const config = await getGuildSetup(guildId);
 
-    // =========================
-    // LOAD GUILD CONFIG
-    // =========================
-    const config = await getGuildSetup(guildId);
+  // fallback safe config
+  const safeConfig = config || {
+    premium: false,
+    premiumExpiry: null
+  };
 
-    if (!config) {
-      return interaction.reply({
-        content: '❌ Server not set up.',
-        ephemeral: true
-      });
-    }
-
-    // =========================
-    // FRAUD CHECK
-    // =========================
-    const fraud = checkFraud({
-      userId,
-      ownerId: process.env.OWNER_ID,
-      code: interaction.commandName,
-      guildId
-    });
-
-    if (!fraud.ok) {
-      return interaction.reply({
-        content: `🚫 Blocked: ${fraud.reason}`,
-        ephemeral: true
-      });
-    }
-
-    // =========================
-    // LICENSE CHECK (GLOBAL)
-    // =========================
-    const premium = config?.premium === true;
-    const notExpired =
-      !config?.premiumExpiry || Date.now() < config.premiumExpiry;
-
-    if (!premium || !notExpired) {
-      return interaction.reply({
-        content: '❌ This server is not licensed.',
-        ephemeral: true
-      });
-    }
-
-    // =========================
-    // RUN COMMAND
-    // =========================
-    return await commandFn(config);
-
-  } catch (err) {
-    console.error('COMMAND GUARD ERROR:', err);
-
-    if (interaction.replied || interaction.deferred) {
-      return interaction.followUp({
-        content: '❌ Internal error in guard',
-        ephemeral: true
-      });
-    }
-
+  // =========================
+  // LICENSE CHECK
+  // =========================
+  if (
+    !safeConfig.premium ||
+    (safeConfig.premiumExpiry && now > safeConfig.premiumExpiry)
+  ) {
     return interaction.reply({
-      content: '❌ Internal error',
+      content: '❌ This server is not licensed.',
       ephemeral: true
     });
   }
+
+  // =========================
+  // DEV-FRIENDLY FRAUD (SO YOU STOP GETTING LOCKED)
+  // =========================
+  const actions = userActionMap.get(userId) || [];
+  const recent = actions.filter(t => now - t < 10 * 60 * 1000);
+
+  // ONLY punish if extreme spam (safe for testing)
+  if (recent.length >= 20) {
+    punishMap.set(userId, { until: now + 60 * 1000 });
+    return interaction.reply({
+      content: '🚫 Rate limited (temporary)',
+      ephemeral: true
+    });
+  }
+
+  recent.push(now);
+  userActionMap.set(userId, recent);
+
+  // =========================
+  // RUN COMMAND
+  // =========================
+  return next(safeConfig);
 }
