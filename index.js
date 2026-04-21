@@ -14,12 +14,14 @@ import { loadGuildCache } from './services/guildCache.js';
 import { repairGuild } from './services/guildRepair.js';
 import { syncGuildLicenseExpiry } from './services/licenseExpirySync.js';
 import { runLicenseCron } from './services/licenseCron.js';
+import { commandGuard } from './middleware/commandGuard.js';
 
 // ==============================
-// AUTO DEPLOY TOGGLE
+// AUTO DEPLOY
 // ==============================
 const AUTO_DEPLOY_COMMANDS = process.env.AUTO_DEPLOY === 'true';
 let hasDeployed = false;
+
 // ==============================
 // PATH SETUP
 // ==============================
@@ -40,7 +42,7 @@ const client = new Client({
 client.commands = new Collection();
 
 // ==============================
-// LOAD COMMANDS
+// LOAD COMMANDS (FIXED)
 // ==============================
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
@@ -51,8 +53,8 @@ for (const file of commandFiles) {
   try {
     const command = (await import(`file://${filePath}`)).default;
 
-    if (!command?.data) {
-      console.log(`❌ Skipping ${file} (no data)`);
+    if (!command?.data || !command?.execute) {
+      console.log(`❌ Skipping ${file} (invalid command)`);
       continue;
     }
 
@@ -65,7 +67,7 @@ for (const file of commandFiles) {
 }
 
 // ==============================
-// GLOBAL COMMAND DEPLOY
+// DEPLOY COMMANDS
 // ==============================
 async function deployCommands() {
   const commands = [];
@@ -83,7 +85,7 @@ async function deployCommands() {
     { body: commands }
   );
 
-  console.log(`✅ Deployed ${commands.length} global commands`);
+  console.log(`✅ Deployed ${commands.length} commands`);
 }
 
 // ==============================
@@ -92,23 +94,21 @@ async function deployCommands() {
 client.once('ready', async () => {
   console.log(`🚀 Logged in as ${client.user.tag}`);
 
-  // ==========================
-  // AUTO DEPLOY
-  // ==========================
+  // AUTO DEPLOY SAFE
   if (AUTO_DEPLOY_COMMANDS && !hasDeployed) {
-  hasDeployed = true;
+    hasDeployed = true;
 
-  console.log('⚙️ Auto-deploy ENABLED');
+    console.log('⚙️ Auto-deploy ENABLED');
 
-  try {
-    await deployCommands();
-  } catch (err) {
-    console.error('❌ Deploy failed:', err);
+    try {
+      await deployCommands();
+    } catch (err) {
+      console.error('❌ Deploy failed:', err);
+    }
+
+  } else {
+    console.log('⚙️ Auto-deploy DISABLED or already deployed');
   }
-
-} else {
-  console.log('⚙️ Auto-deploy DISABLED or already deployed');
-}
 
   await loadGuildCache(client);
 
@@ -117,9 +117,7 @@ client.once('ready', async () => {
     repairGuild(guild);
   });
 
-  setInterval(() => {
-    runLicenseCron();
-  }, 60 * 60 * 1000);
+  setInterval(() => runLicenseCron(), 60 * 60 * 1000);
 
   setInterval(() => {
     client.guilds.cache.forEach(guild => {
@@ -130,7 +128,7 @@ client.once('ready', async () => {
 });
 
 // ==============================
-// COMMAND HANDLER
+// COMMAND HANDLER (WITH MIDDLEWARE HOOK)
 // ==============================
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -139,7 +137,26 @@ client.on('interactionCreate', async (interaction) => {
   if (!command) return;
 
   try {
+
+    // =========================
+    // GLOBAL MIDDLEWARE (YOU ADDED THIS SYSTEM)
+    // =========================
+    const guard = await commandGuard(interaction, command);
+
+    if (!guard.ok) {
+      return interaction.reply({
+        content: guard.reply,
+        ephemeral: true
+      });
+    }
+
+    interaction.guildConfig = guard.config;
+
+    // =========================
+    // RUN COMMAND
+    // =========================
     await command.execute(interaction);
+
   } catch (err) {
     console.error(err);
 
