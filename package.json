@@ -1,29 +1,11 @@
 {
   "name": "unichat",
   "version": "1.0.0",
-  "description": "Discord translation + license system bot",
+  "description": "Simple Discord translation bot",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "web": "node web/server.js"
+    "start": "node index.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/darkdragonryder/UniChat.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/darkdragonryder/UniChat/issues"
-  },
-  "homepage": "https://github.com/darkdragonryder/UniChat#readme",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.103.3",
-    "axios": "^1.15.0",
-    "discord.js": "^14.26.3",
-    "dotenv": "^17.4.2",
-    "express": "^4.19.2"
-  }
+  "dependencies": {}
 }
