@@ -1,25 +1,20 @@
-import axios from 'axios';
+import fetch from 'node-fetch';
 
-const API_KEY = process.env.DEEPL_API_KEY;
+export async function translateText(text, targetLang) {
 
-export async function translateText(text, targetLang = 'EN') {
+  const res = await fetch('https://api-free.deepl.com/v2/translate', {
+    method: 'POST',
+    headers: {
+      'Authorization': `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      text,
+      target_lang: targetLang
+    })
+  });
 
-  try {
+  const data = await res.json();
 
-    const params = new URLSearchParams();
-    params.append('auth_key', API_KEY);
-    params.append('text', text);
-    params.append('target_lang', targetLang);
-
-    const res = await axios.post(
-      'https://api-free.deepl.com/v2/translate',
-      params
-    );
-
-    return res.data.translations[0].text;
-
-  } catch (err) {
-    console.error(err.message);
-    return text;
-  }
+  return data.translations?.[0]?.text || text;
 }
