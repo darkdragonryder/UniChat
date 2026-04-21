@@ -1,23 +1,26 @@
-// src/events/messageCreate.js
-import { getGuildSettings } from "../services/supabase.js";
-import { translateText } from "../services/deepl.js";
-import { detectLang } from "../utils/detectLang.js";
-
 export default (client) => async (message) => {
+  console.log("EVENT FIRED:", message.content);
+
   if (message.author.bot) return;
   if (!message.guild) return;
 
   const settings = await getGuildSettings(message.guild.id);
-  if (!settings.auto_translate) return;
+
+  if (!settings?.auto_translate) return;
 
   const sourceLang = detectLang(message.content);
-  const targetLang = settings.default_language;
+  const targetLang = settings?.default_language || "en";
 
   if (sourceLang === targetLang.toUpperCase()) return;
 
   const translated = await translateText(message.content, targetLang);
 
-  message.channel.send({
+  if (!translated) {
+    console.log("DeepL returned empty result");
+    return;
+  }
+
+  await message.channel.send({
     embeds: [
       {
         title: `🌍 Translation (${sourceLang} → ${targetLang.toUpperCase()})`,
