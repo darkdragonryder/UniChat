@@ -1,16 +1,20 @@
 import {
   EmbedBuilder,
   ActionRowBuilder,
+  StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle
 } from 'discord.js';
 
 import { supabase } from '../db/supabase.js';
 
+// simple in-memory confirmation cache (safe for now)
+const pendingRevoke = new Map();
+
 export async function handleLicensePanel(interaction) {
 
   // =========================
-  // SELECT MENU HANDLER
+  // SELECT LICENSE
   // =========================
   if (interaction.isStringSelectMenu()) {
 
@@ -18,13 +22,13 @@ export async function handleLicensePanel(interaction) {
 
     const licenseId = interaction.values[0];
 
-    const { data: license } = await supabase
+    const { data: license, error } = await supabase
       .from('licenses')
       .select('*')
       .eq('id', licenseId)
       .single();
 
-    if (!license) {
+    if (error || !license) {
       return interaction.reply({
         content: '❌ License not found',
         ephemeral: true
@@ -32,14 +36,15 @@ export async function handleLicensePanel(interaction) {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('📄 License Details')
+      .setTitle('🔐 License Details (V3)')
+      .setColor(0x00ffcc)
       .addFields(
-        { name: 'Server', value: license.guild_name || 'Unknown', inline: true },
-        { name: 'User', value: license.user_id || 'Unknown', inline: true },
-        { name: 'Key', value: license.key, inline: false },
-        { name: 'Expires', value: license.expires_at || 'Lifetime', inline: true }
-      )
-      .setColor(0xffcc00);
+        { name: '🏠 Server', value: license.guild_name || 'Unknown', inline: true },
+        { name: '👤 User ID', value: license.user_id || 'Unknown', inline: true },
+        { name: '🔑 Key', value: license.key, inline: false },
+        { name: '⏳ Expires', value: license.expires_at || 'Lifetime', inline: true },
+        { name: '📊 Status', value: license.expires_at ? 'Timed' : 'Lifetime', inline: true }
+      );
 
     const revokeBtn = new ButtonBuilder()
       .setCustomId(`license_revoke_${license.id}`)
@@ -55,7 +60,7 @@ export async function handleLicensePanel(interaction) {
   }
 
   // =========================
-  // BUTTON HANDLER
+  // REVOKE BUTTON (STEP 1)
   // =========================
   if (interaction.isButton()) {
 
@@ -63,10 +68,48 @@ export async function handleLicensePanel(interaction) {
 
     const licenseId = interaction.customId.split('_')[2];
 
+    // store pending confirmation
+    pendingRevoke.set(interaction.user.id, licenseId);
+
+    const confirm = new ButtonBuilder()
+      .setCustomId(`confirm_revoke`)
+      .setLabel('Confirm Revoke')
+      .setStyle(ButtonStyle.Danger);
+
+    const cancel = new ButtonBuilder()
+      .setCustomId(`cancel_revoke`)
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(confirm, cancel);
+
+    return interaction.reply({
+      content: '⚠️ Are you sure you want to revoke this license?',
+      components: [row],
+      ephemeral: true
+    });
+  }
+
+  // =========================
+  // CONFIRM REVOKE
+  // =========================
+  if (interaction.isButton() && interaction.customId === 'confirm_revoke') {
+
+    const licenseId = pendingRevoke.get(interaction.user.id);
+
+    if (!licenseId) {
+      return interaction.reply({
+        content: '❌ No pending action found',
+        ephemeral: true
+      });
+    }
+
     const { error } = await supabase
       .from('licenses')
       .delete()
       .eq('id', licenseId);
+
+    pendingRevoke.delete(interaction.user.id);
 
     if (error) {
       return interaction.reply({
@@ -75,9 +118,24 @@ export async function handleLicensePanel(interaction) {
       });
     }
 
-    return interaction.reply({
-      content: '✅ License revoked successfully',
-      ephemeral: true
+    return interaction.update({
+      content: '✅ License successfully revoked',
+      components: [],
+      embeds: []
+    });
+  }
+
+  // =========================
+  // CANCEL REVOKE
+  // =========================
+  if (interaction.isButton() && interaction.customId === 'cancel_revoke') {
+
+    pendingRevoke.delete(interaction.user.id);
+
+    return interaction.update({
+      content: '❎ Revocation cancelled',
+      components: [],
+      embeds: []
     });
   }
 }
