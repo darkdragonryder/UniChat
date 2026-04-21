@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 
 const client = new Client({
@@ -9,7 +8,7 @@ const client = new Client({
   ]
 });
 
-// 🌍 FLAG → LANGUAGE MAP
+// 🌍 FLAGS → LANGUAGES
 const languageMap = {
   "🇬🇧": "EN",
   "🇺🇸": "EN",
@@ -19,26 +18,13 @@ const languageMap = {
   "🇮🇹": "IT",
   "🇵🇹": "PT",
   "🇧🇷": "PT",
-  "🇳🇱": "NL",
-  "🇵🇱": "PL",
-  "🇷🇺": "RU",
   "🇯🇵": "JA",
   "🇰🇷": "KO",
   "🇨🇳": "ZH",
-  "🇹🇷": "TR",
-  "🇸🇪": "SV",
-  "🇳🇴": "NO",
-  "🇩🇰": "DA",
-  "🇫🇮": "FI",
-  "🇺🇦": "UK",
-  "🇨🇿": "CS",
-  "🇬🇷": "EL",
-  "🇮🇳": "HI",
-  "🇸🇦": "AR",
-  "🇮🇱": "HE"
+  "🇷🇺": "RU",
+  "🇸🇦": "AR"
 };
 
-// 🔥 DeepL translate
 async function translate(text, targetLang) {
   const res = await fetch('https://api-free.deepl.com/v2/translate', {
     method: 'POST',
@@ -56,7 +42,6 @@ async function translate(text, targetLang) {
   return data.translations?.[0]?.text || 'Translation failed';
 }
 
-// 🤖 MESSAGE HANDLER
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
