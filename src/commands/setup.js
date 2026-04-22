@@ -18,7 +18,6 @@ export default async function setupCommand(message) {
 
   const guild = message.guild;
 
-  // ================= CHANNEL PICKER =================
   const channels = guild.channels.cache
     .filter(c => c.type === ChannelType.GuildText)
     .map(c => ({
@@ -39,30 +38,24 @@ export default async function setupCommand(message) {
     components: [row]
   });
 
-  // ================= CREATE LANGUAGE CHANNELS =================
   const enabled_channels = {};
 
   for (const [code, lang] of Object.entries(LANGUAGES)) {
-    const channelName = `general-${lang.flag}`;
-
     const channel = await guild.channels.create({
-      name: channelName,
+      name: `general-${lang.flag}`,
       type: ChannelType.GuildText,
-      reason: "UniChat Phase 3 setup"
+      reason: "Phase 4 setup"
     });
 
     enabled_channels[code] = channel.id;
 
-    console.log(`📁 Channel created: ${channelName}`);
+    console.log(`📁 Created: ${channel.name}`);
   }
 
-  // ================= SAVE TO DATABASE =================
   const { supabase } = await import("../services/supabase.js");
 
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
     enabled_channels
   });
-
-  console.log("💾 Setup saved successfully");
 }
