@@ -15,28 +15,18 @@ const client = new Client({
   ]
 });
 
-console.log("🚀 UniChat PHASE 7 STARTING");
+console.log("🚀 UniChat PHASE 7 ONLINE");
 
-// ================= IMPROVED LANGUAGE DETECTION =================
+// ================= LANGUAGE DETECTION =================
 function guessLanguage(text) {
   const t = text.toLowerCase();
 
-  // Cyrillic (Russian)
   if (/[а-яё]/i.test(text)) return "RU";
-
-  // Korean
   if (/[\u3131-\uD79D]/.test(text)) return "KO";
-
-  // Spanish indicators
   if (/[ñ¿¡]/.test(text)) return "ES";
-
-  // German
   if (/[äöüß]/i.test(text)) return "DE";
-
-  // Italian accents
   if (/[àèìòù]/i.test(text)) return "IT";
 
-  // Extra heuristic: common English words bias
   const englishHints = /\b(the|and|is|hello|you|this|that)\b/i.test(t);
   if (englishHints) return "EN";
 
@@ -45,7 +35,7 @@ function guessLanguage(text) {
 
 const processed = new Set();
 
-// ================= MESSAGE ENGINE =================
+// ================= MESSAGE TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
@@ -104,32 +94,95 @@ client.on("messageCreate", async (message) => {
       if (role && !member.roles.cache.has(role.id)) {
         await member.roles.add(role);
       }
-    } catch {}
+    } catch (err) {
+      console.log("ROLE ERROR:", err.message);
+    }
   }
 
-  for (const [channelId, targetLang] of Object.entries(channelMap)) {
-    if (channelId === message.channel.id) continue;
-    if (targetLang === sourceLang) continue;
+  try {
+    for (const [channelId, targetLang] of Object.entries(channelMap)) {
+      if (channelId === message.channel.id) continue;
+      if (targetLang === sourceLang) continue;
 
-    const translated = await translateCached(content, targetLang);
+      const translated = await translateCached(content, targetLang);
 
-    const channel = message.guild.channels.cache.get(channelId);
-    if (!channel) continue;
+      const channel = message.guild.channels.cache.get(channelId);
+      if (!channel) continue;
 
-    await channel.send(`🌍 ${translated}`);
+      await channel.send(`🌍 ${translated}`);
+    }
+  } catch (err) {
+    console.log("TRANSLATION ERROR:", err.message);
   }
 });
 
 // ================= SLASH COMMANDS =================
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === "setup") {
-    return setupCommand(interaction);
+  // ================= SLASH COMMAND HANDLER =================
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "setup") {
+      return setupCommand(interaction);
+    }
+
+    if (interaction.commandName === "uninstall") {
+      return uninstallCommand(interaction);
+    }
   }
 
-  if (interaction.commandName === "uninstall") {
-    return uninstallCommand(interaction);
+  // ================= BUTTON HANDLER =================
+  if (interaction.isButton()) {
+
+    const { customId } = interaction;
+
+    // USE CURRENT CHANNEL
+    if (customId === "setup_use_current") {
+      const { supabase } = await import("./services/supabase.js");
+
+      await supabase.from("guild_settings").upsert({
+        guild_id: interaction.guild.id,
+        default_channel: interaction.channel.id
+      });
+
+      return interaction.reply({
+        content: "✅ Current channel set as default",
+        ephemeral: true
+      });
+    }
+
+    // PICK CHANNEL MENU TRIGGER
+    if (customId === "setup_pick_channel") {
+      return interaction.reply({
+        content: "⚠️ Channel picker will be handled in next step of setup.",
+        ephemeral: true
+      });
+    }
+
+    // UNINSTALL DISMISS
+    if (customId === "dismiss_uninstall") {
+      return interaction.message.delete().catch(() => {});
+    }
+  }
+
+  // ================= SELECT MENU HANDLER =================
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId !== "select_default_channel") return;
+
+    const channelId = interaction.values[0];
+
+    await supabase.from("guild_settings").upsert({
+      guild_id: interaction.guild.id,
+      default_channel: channelId
+    });
+
+    await interaction.reply({
+      content: `✅ Default channel set to <#${channelId}>`,
+      ephemeral: true
+    });
+
+    setTimeout(() => {
+      interaction.message.delete().catch(() => {});
+    }, 3000);
   }
 });
 
