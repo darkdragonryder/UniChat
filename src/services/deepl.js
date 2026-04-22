@@ -1,4 +1,3 @@
-// src/services/deepl.js
 import axios from "axios";
 
 export async function translateText(text, targetLang) {
