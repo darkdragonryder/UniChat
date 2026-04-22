@@ -4,8 +4,6 @@ import setupCommand from "./commands/setup.js";
 import { supabase } from "./services/supabase.js";
 import { translateText } from "./services/deepl.js";
 
-const log = (m) => console.log(m);
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -14,23 +12,22 @@ const client = new Client({
   ]
 });
 
-log("🚨 UNI CHAT MIRROR BOT STARTING 🚨 " + Date.now());
+console.log("🚨 BOT STARTING 🚨");
 
 // ================= READY =================
 client.once("ready", () => {
-  log(`✅ BOT ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat is ONLINE: ${client.user.tag}`);
 });
 
-// ================= SETUP COMMAND =================
+// ================= MESSAGE MIRROR =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  const content = message.content.trim();
+  if (message.content === "!setup") {
+    return setupCommand(message);
+  }
 
-  if (content === "!setup") return setupCommand(message);
-
-  // ================= LOAD SETTINGS =================
   const { data: guildData } = await supabase
     .from("guild_settings")
     .select("*")
@@ -40,12 +37,8 @@ client.on("messageCreate", async (message) => {
   if (!guildData) return;
 
   const channels = guildData.enabled_channels || {};
-  const defaultChannel = guildData.default_channel;
-
   const allChannels = Object.values(channels);
-  if (defaultChannel) allChannels.push(defaultChannel);
 
-  // ignore non-managed channels
   if (!allChannels.includes(message.channel.id)) return;
 
   try {
@@ -59,9 +52,8 @@ client.on("messageCreate", async (message) => {
 
       await channel.send(`🌍 ${translated}`);
     }
-
   } catch (err) {
-    log("❌ MIRROR ERROR: " + err.message);
+    console.log("❌ MIRROR ERROR:", err.message);
   }
 });
 
@@ -72,30 +64,17 @@ client.on("interactionCreate", async (interaction) => {
 
   const channelId = interaction.values[0];
 
-  log("📌 DEFAULT CHANNEL SET: " + channelId);
+  const supabase = (await import("./services/supabase.js")).supabase;
 
-  try {
-    await supabase.from("guild_settings").upsert({
-      guild_id: interaction.guild.id,
-      default_channel: channelId,
-      enabled_channels: {}
-    });
+  await supabase.from("guild_settings").upsert({
+    guild_id: interaction.guild.id,
+    default_channel: channelId
+  });
 
-    await interaction.reply({
-      content: `✅ Default channel set to <#${channelId}>`,
-      ephemeral: true
-    });
-
-  } catch (err) {
-    log("❌ DB ERROR: " + err.message);
-
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: "❌ Failed to save setup",
-        ephemeral: true
-      });
-    }
-  }
+  await interaction.reply({
+    content: `✅ Default channel set to <#${channelId}>`,
+    ephemeral: true
+  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
