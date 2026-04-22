@@ -19,7 +19,6 @@ export default async function setupCommand(message) {
 
   const guild = message.guild;
 
-  // ================= STEP MESSAGE =================
   const statusMsg = await message.reply("⚙️ Starting UniChat setup...");
 
   // ================= CHANNEL SELECT =================
@@ -43,7 +42,7 @@ export default async function setupCommand(message) {
     components: [row]
   });
 
-  // ================= CREATE CATEGORY =================
+  // ================= CATEGORY =================
   let category = guild.channels.cache.find(
     c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
   );
@@ -55,22 +54,25 @@ export default async function setupCommand(message) {
     });
   }
 
-  // ================= CREATE ROLES =================
+  // 🔥 MOVE CATEGORY NEAR TOP
+  await category.setPosition(1);
+
+  // ================= ROLES =================
   await statusMsg.edit("🔧 Creating roles...");
 
   for (const lang of Object.values(LANGUAGES)) {
     let role = guild.roles.cache.find(r => r.name === lang.name);
 
     if (!role) {
-      role = await guild.roles.create({
+      await guild.roles.create({
         name: lang.name,
         reason: "UniChat setup"
       });
     }
   }
 
-  // ================= CREATE CHANNELS =================
-  await statusMsg.edit("📁 Creating language channels...");
+  // ================= CHANNELS =================
+  await statusMsg.edit("📁 Creating / syncing channels...");
 
   const enabled_channels = {};
 
@@ -80,11 +82,17 @@ export default async function setupCommand(message) {
     let channel = guild.channels.cache.find(c => c.name === name);
 
     if (!channel) {
+      // create new
       channel = await guild.channels.create({
         name,
         type: ChannelType.GuildText,
         parent: category.id
       });
+    } else {
+      // 🔥 MOVE EXISTING CHANNEL INTO CATEGORY
+      if (channel.parentId !== category.id) {
+        await channel.setParent(category.id);
+      }
     }
 
     enabled_channels[code] = channel.id;
@@ -98,15 +106,10 @@ export default async function setupCommand(message) {
     enabled_channels
   });
 
-  // ================= FINAL EMBED =================
+  // ================= FINAL =================
   const embed = new EmbedBuilder()
     .setTitle("✅ UniChat Setup Complete")
-    .setDescription("Your translation system is now active.")
-    .addFields(
-      { name: "🌍 Languages", value: Object.values(LANGUAGES).map(l => l.name).join(", ") },
-      { name: "📁 Channels", value: "Created and organised under 🌍 UniChat" },
-      { name: "⚙️ Status", value: "Ready" }
-    )
+    .setDescription("Channels organised and system active.")
     .setColor("Green");
 
   await statusMsg.edit({ content: "", embeds: [embed] });
