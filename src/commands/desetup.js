@@ -1,48 +1,19 @@
-export default async function desetupCommand(message, supabase) {
-  if (!message.member.permissions.has("Administrator")) {
-    return message.reply("❌ Admin only");
-  }
+import axios from "axios";
 
-  const guild = message.guild;
-
-  const { data } = await supabase
-    .from("guild_settings")
-    .select("*")
-    .eq("guild_id", guild.id)
-    .single();
-
-  if (!data) return message.reply("⚠️ Nothing to remove");
-
-  const channels = data.enabled_channels || {};
-
-  // ===== DELETE CHANNELS (SAFE FETCH) =====
-  for (const id of Object.values(channels)) {
-    try {
-      const channel = await guild.channels.fetch(id).catch(() => null);
-      if (channel) await channel.delete("UniChat cleanup");
-    } catch (err) {
-      console.log("Channel delete failed:", err.message);
-    }
-  }
-
-  // ===== DELETE ROLES (if they exist) =====
-  for (const lang of Object.keys(channels)) {
-    try {
-      const role = guild.roles.cache.find(r => r.name.toLowerCase() === lang);
-
-      if (role) {
-        await role.delete("UniChat cleanup");
+export async function translateText(text, targetLang) {
+  const res = await axios.post(
+    "https://api-free.deepl.com/v2/translate",
+    new URLSearchParams({
+      text,
+      target_lang: targetLang
+    }),
+    {
+      headers: {
+        Authorization: `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded"
       }
-    } catch (err) {
-      console.log("Role delete failed:", err.message);
     }
-  }
+  );
 
-  // ===== REMOVE DB ENTRY =====
-  await supabase
-    .from("guild_settings")
-    .delete()
-    .eq("guild_id", guild.id);
-
-  message.reply("🗑️ Cleanup completed (channels + roles removed)");
+  return res.data.translations[0].text;
 }
