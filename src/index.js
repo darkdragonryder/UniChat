@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 import axios from "axios";
 
+// Stable logging for Railway
 const log = (m) => process.stdout.write(m + "\n");
 
 log("🚨 ACTIVE BUILD WITH DEEPL 🚨 " + Date.now());
@@ -14,11 +15,11 @@ const client = new Client({
   ]
 });
 
-// FIXED EVENT (no more deprecation / instability)
-client.once("clientReady", () => {
+client.once("ready", () => {
   log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
+// MESSAGE HANDLER
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
@@ -51,5 +52,13 @@ client.on("messageCreate", async (message) => {
     await message.channel.send("⚠️ Translation failed");
   }
 });
+
+// KEEP PROCESS ALIVE (Railway stability fix)
+setInterval(() => {
+  process.stdout.write("💓 alive\n");
+}, 30000);
+
+// Safety heartbeat (prevents idle shutdown misreads)
+setInterval(() => {}, 1 << 30);
 
 client.login(process.env.DISCORD_TOKEN);
