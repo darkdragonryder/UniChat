@@ -1,7 +1,8 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 
-console.log("🚨 THIS IS THE ACTIVE BUILD 🚨", Date.now());
+// PROOF THIS IS THE ACTIVE BUILD
+console.log("🚨 ACTIVE BUILD LOADED 🚨", Date.now());
 
 const client = new Client({
   intents: [
@@ -19,19 +20,17 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  console.log("MESSAGE:", message.content);
+  console.log("NEW BUILD MESSAGE:", message.content);
 
   try {
-    // STEP 1: SAFE BASE RESPONSE (NO API, NO DATABASE YET)
-    const response = `🌍 Echo: ${message.content}`;
+    // Send current time to prove this exact code is running
+    const time = new Date().toLocaleTimeString();
 
-    await message.channel.send({
-      content: response
-    });
+    await message.channel.send(`🧪 ACTIVE BUILD TIME: ${time}`);
 
-    console.log("MESSAGE SENT OK");
+    console.log("SEND SUCCESS");
   } catch (err) {
-    console.error("SEND ERROR:", err);
+    console.error("SEND FAILED:", err);
   }
 });
 
