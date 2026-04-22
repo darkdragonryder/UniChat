@@ -8,16 +8,26 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
-console.log("🚨 UNI CHAT PHASE 3 STARTING 🚨");
+console.log("🚨 PHASE 4 TRANSLATION SYSTEM STARTING 🚨");
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
+  console.log(`🚀UniChat ONLINE: ${client.user.tag}`);
 });
+
+// ================= LANGUAGE DETECTION (simple fallback) =================
+function guessLanguage(text) {
+  if (/[àèìòù]/i.test(text)) return "IT";
+  if (/[äöüß]/i.test(text)) return "DE";
+  if (/[ñ¿¡]/i.test(text)) return "ES";
+  if (/[\u3131-\uD79D]/.test(text)) return "KO";
+  return "EN";
+}
 
 // ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
@@ -28,11 +38,9 @@ client.on("messageCreate", async (message) => {
   const content = message.content.trim();
   if (!content) return;
 
-  if (content === "!setup") {
-    return setupCommand(message);
-  }
+  if (content === "!setup") return setupCommand(message);
 
-  // ================= LOAD GUILD SETTINGS =================
+  // ================= LOAD DATA =================
   const { data: guildData } = await supabase
     .from("guild_settings")
     .select("*")
@@ -41,10 +49,9 @@ client.on("messageCreate", async (message) => {
 
   if (!guildData) return;
 
-  const defaultChannel = guildData.default_channel;
   const channels = guildData.enabled_channels || {};
+  const defaultChannel = guildData.default_channel;
 
-  // ================= BUILD CHANNEL MAP =================
   const channelMap = {
     [defaultChannel]: "EN",
     ...Object.entries(channels).reduce((acc, [lang, id]) => {
@@ -53,8 +60,13 @@ client.on("messageCreate", async (message) => {
     }, {})
   };
 
-  const sourceLang = channelMap[message.channel.id];
-  if (!sourceLang) return;
+  const sourceLang = channelMap[message.channel.id] || guessLanguage(content);
+
+  // ================= SAVE USER LANGUAGE =================
+  await supabase.from("user_settings").upsert({
+    user_id: message.author.id,
+    language: sourceLang
+  });
 
   const allChannelIds = Object.keys(channelMap);
 
@@ -63,7 +75,6 @@ client.on("messageCreate", async (message) => {
       if (targetChannelId === message.channel.id) continue;
 
       const targetLang = channelMap[targetChannelId];
-
       if (!targetLang || targetLang === sourceLang) continue;
 
       const translated = await translateText(
@@ -76,42 +87,8 @@ client.on("messageCreate", async (message) => {
 
       await channel.send(`🌍 ${translated}`);
     }
-  } catch (err) {
-    console.log("❌ PHASE 3 ERROR:", err.message);
-  }
-});
-
-// ================= INTERACTIONS =================
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isStringSelectMenu()) return;
-  if (interaction.customId !== "select_default_channel") return;
-
-  const channelId = interaction.values[0];
-
-  console.log("📌 Default channel set:", channelId);
-
-  try {
-    await supabase.from("guild_settings").upsert({
-      guild_id: interaction.guild.id,
-      default_channel: channelId,
-      enabled_channels: {}
-    });
-
-    await interaction.reply({
-      content: `✅ Default channel set to <#${channelId}>`,
-      ephemeral: true
-    });
 
   } catch (err) {
-    console.log("❌ DB ERROR:", err.message);
-
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: "❌ Failed to save setup",
-        ephemeral: true
-      });
-    }
+    console.log("❌ PHASE 4 ERROR:", err.message);
   }
 });
-
-client.login(process.env.DISCORD_TOKEN);
