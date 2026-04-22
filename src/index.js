@@ -13,11 +13,11 @@ const client = new Client({
   ]
 });
 
-console.log("🚨 PHASE 5 SYSTEM ONLINE 🚨");
+console.log("🚨 UNI CHAT PHASE 6.5 STARTING 🚨");
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat is ONLINE: ${client.user.tag}`);
 });
 
 // ================= LANGUAGE GUESS =================
@@ -29,9 +29,10 @@ function guessLanguage(text) {
   return "EN";
 }
 
-// ================= MESSAGE ENGINE =================
+// ================= LOOP PROTECTION =================
 const processed = new Set();
 
+// ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.webhookId) return;
@@ -44,9 +45,12 @@ client.on("messageCreate", async (message) => {
   if (processed.has(key)) return;
   processed.add(key);
 
-  if (content === "!setup") return setupCommand(message);
+  // ================= SETUP COMMAND =================
+  if (content === "!setup") {
+    return setupCommand(message);
+  }
 
-  // ================= LOAD GUILD DATA =================
+  // ================= LOAD GUILD SETTINGS =================
   const { data: guildData } = await supabase
     .from("guild_settings")
     .select("*")
@@ -58,7 +62,7 @@ client.on("messageCreate", async (message) => {
   const channels = guildData.enabled_channels || {};
   const defaultChannel = guildData.default_channel;
 
-  // ================= CHANNEL MAP =================
+  // ================= CHANNEL LANGUAGE MAP =================
   const channelMap = {
     [defaultChannel]: "EN",
     ...Object.entries(channels).reduce((acc, [lang, id]) => {
@@ -76,7 +80,7 @@ client.on("messageCreate", async (message) => {
     language: sourceLang
   });
 
-  // ================= ROLE ASSIGN =================
+  // ================= ROLE ASSIGNMENT =================
   const roleMap = {
     ES: "Spanish",
     DE: "German",
@@ -87,15 +91,19 @@ client.on("messageCreate", async (message) => {
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
-    const role = message.guild.roles.cache.find(r => r.name === roleName);
-    const member = await message.guild.members.fetch(message.author.id);
+    try {
+      const role = message.guild.roles.cache.find(r => r.name === roleName);
+      const member = await message.guild.members.fetch(message.author.id);
 
-    if (role && member && !member.roles.cache.has(role.id)) {
-      await member.roles.add(role);
+      if (role && member && !member.roles.cache.has(role.id)) {
+        await member.roles.add(role);
+      }
+    } catch (err) {
+      console.log("⚠️ ROLE ASSIGN ERROR:", err.message);
     }
   }
 
-  // ================= MIRROR TRANSLATION =================
+  // ================= TRANSLATION ENGINE =================
   try {
     for (const targetChannelId of allChannelIds) {
       if (targetChannelId === message.channel.id) continue;
@@ -113,28 +121,46 @@ client.on("messageCreate", async (message) => {
 
       await channel.send(`🌍 ${translated}`);
     }
-
   } catch (err) {
-    console.log("❌ PHASE 5 ERROR:", err.message);
+    console.log("❌ TRANSLATION ERROR:", err.message);
   }
 });
 
-// ================= INTERACTION =================
+// ================= INTERACTION HANDLER =================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId !== "select_default_channel") return;
 
   const channelId = interaction.values[0];
 
-  await supabase.from("guild_settings").upsert({
-    guild_id: interaction.guild.id,
-    default_channel: channelId
-  });
+  try {
+    await supabase.from("guild_settings").upsert({
+      guild_id: interaction.guild.id,
+      default_channel: channelId
+    });
 
-  await interaction.reply({
-    content: `✅ Default channel set to <#${channelId}>`,
-    ephemeral: true
-  });
+    await interaction.reply({
+      content: `✅ Default channel set to <#${channelId}>`,
+      ephemeral: true
+    });
+
+    // 🧹 CLEAN DROPDOWN AFTER USE
+    setTimeout(async () => {
+      try {
+        await interaction.message.delete();
+      } catch {}
+    }, 3000);
+
+  } catch (err) {
+    console.log("❌ INTERACTION ERROR:", err.message);
+
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: "❌ Failed to save default channel",
+        ephemeral: true
+      });
+    }
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
