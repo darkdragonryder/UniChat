@@ -74,11 +74,12 @@ client.on("messageCreate", async (message) => {
     language: sourceLang
   });
 
-  const roleMap = {
-    ES: "Spanish",
-    DE: "German",
-    IT: "Italian",
-    KO: "Korean"
+   const roleMap = {
+   ES: "Spanish",
+   DE: "German",
+   IT: "Italian",
+   KO: "Korean",
+   RU: "Russian"
   };
 
   const roleName = roleMap[sourceLang];
