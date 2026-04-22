@@ -10,7 +10,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -28,15 +29,9 @@ client.on("messageCreate", async (message) => {
 
   const content = message.content.trim();
 
-  if (content === "!setup") {
-    return setupCommand(message);
-  }
+  if (content === "!setup") return setupCommand(message);
 
-  if (content === "!desetup") {
-    return message.reply("⚠️ Desetup not added in this build yet");
-  }
-
-  // ===== LOAD GUILD SETTINGS =====
+  // ================= LOAD GUILD SETTINGS =================
   const { data: guildData } = await supabase
     .from("guild_settings")
     .select("*")
@@ -54,6 +49,7 @@ client.on("messageCreate", async (message) => {
     .find(([lang, id]) => id === message.channel.id);
 
   try {
+
     // ================= DEFAULT CHANNEL → ALL LANGUAGES =================
     if (isDefault) {
       for (const [lang, channelId] of Object.entries(channels)) {
@@ -78,24 +74,29 @@ client.on("messageCreate", async (message) => {
     }
 
   } catch (err) {
-    log("❌ ERROR: " + err.message);
+    log("❌ TRANSLATION ERROR: " + err.message);
   }
 });
 
 // ================= INTERACTION HANDLER =================
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isStringSelectMenu()) return;
+  console.log("🧩 INTERACTION:", interaction.customId);
 
+  if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId !== "select_default_channel") return;
 
   const channelId = interaction.values[0];
+
+  console.log("📌 CHANNEL SELECTED:", channelId);
 
   try {
     await supabase.from("guild_settings").upsert({
       guild_id: interaction.guild.id,
       default_channel: channelId,
-      enabled_channels: {} // will be filled in setup later
+      enabled_channels: {}
     });
+
+    console.log("💾 SAVED TO SUPABASE");
 
     await interaction.reply({
       content: `✅ Default channel set to <#${channelId}>`,
@@ -105,10 +106,12 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     console.log("❌ DB ERROR:", err.message);
 
-    await interaction.reply({
-      content: "❌ Failed to save setup",
-      ephemeral: true
-    });
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: "❌ Failed to save setup",
+        ephemeral: true
+      });
+    }
   }
 });
 
