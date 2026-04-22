@@ -35,21 +35,30 @@ export default async function setupCommand(message) {
   const row = new ActionRowBuilder().addComponents(menu);
 
   await message.reply({
-    content: "📌 Select your DEFAULT English channel:",
+    content: "📌 Select DEFAULT English channel:",
     components: [row]
   });
 
-  // ================= CREATE LANGUAGE ROLES =================
-  for (const name of Object.values(LANGUAGES)) {
-    const existing = guild.roles.cache.find(r => r.name === name);
+  // ================= CREATE LANGUAGE CHANNELS =================
+  const enabled_channels = {};
 
-    if (!existing) {
-      await guild.roles.create({
-        name,
-        reason: "UniChat language setup"
-      });
+  for (const [code, name] of Object.entries(LANGUAGES)) {
+    const channel = await guild.channels.create({
+      name: `chat-${code}`,
+      type: 0,
+      reason: "UniChat mirror system setup"
+    });
 
-      console.log(`✅ Role created: ${name}`);
-    }
+    enabled_channels[code] = channel.id;
+
+    console.log(`📁 Channel created: ${channel.name}`);
   }
+
+  // ================= SAVE CHANNELS =================
+  await require("../services/supabase.js").supabase
+    .from("guild_settings")
+    .upsert({
+      guild_id: guild.id,
+      enabled_channels
+    });
 }
