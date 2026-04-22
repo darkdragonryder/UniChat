@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 import setupCommand from "./commands/setup.js";
+import uninstallCommand from "./commands/uninstall.js";
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
@@ -13,11 +14,10 @@ const client = new Client({
   ]
 });
 
-console.log("🚨 UNI CHAT PHASE 6.5 STARTING 🚨");
+console.log("🚨 UNI CHAT SYSTEM STARTING 🚨");
 
-// ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat is ONLINE: ${client.user.tag}`);
+  console.log('🚀 UniChat is ONLINE: ${client.user.tag}`);
 });
 
 // ================= LANGUAGE GUESS =================
@@ -29,10 +29,9 @@ function guessLanguage(text) {
   return "EN";
 }
 
-// ================= LOOP PROTECTION =================
 const processed = new Set();
 
-// ================= MESSAGE ENGINE =================
+// ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.webhookId) return;
@@ -41,16 +40,19 @@ client.on("messageCreate", async (message) => {
   const content = message.content.trim();
   if (!content) return;
 
+  // ================= COMMANDS =================
+  if (content === "!setup") return setupCommand(message);
+  if (content === "!uninstall") return uninstallCommand(message);
+
+  // 🚫 BLOCK COMMANDS FROM TRANSLATION
+  if (content.startsWith("!")) return;
+
+  // ================= LOOP PROTECTION =================
   const key = `${message.id}`;
   if (processed.has(key)) return;
   processed.add(key);
 
-  // ================= SETUP COMMAND =================
-  if (content === "!setup") {
-    return setupCommand(message);
-  }
-
-  // ================= LOAD GUILD SETTINGS =================
+  // ================= LOAD SETTINGS =================
   const { data: guildData } = await supabase
     .from("guild_settings")
     .select("*")
@@ -62,7 +64,6 @@ client.on("messageCreate", async (message) => {
   const channels = guildData.enabled_channels || {};
   const defaultChannel = guildData.default_channel;
 
-  // ================= CHANNEL LANGUAGE MAP =================
   const channelMap = {
     [defaultChannel]: "EN",
     ...Object.entries(channels).reduce((acc, [lang, id]) => {
@@ -72,15 +73,14 @@ client.on("messageCreate", async (message) => {
   };
 
   const sourceLang = channelMap[message.channel.id] || guessLanguage(content);
-  const allChannelIds = Object.keys(channelMap);
 
-  // ================= SAVE USER LANGUAGE =================
+  // ================= SAVE USER =================
   await supabase.from("user_settings").upsert({
     user_id: message.author.id,
     language: sourceLang
   });
 
-  // ================= ROLE ASSIGNMENT =================
+  // ================= ROLE ASSIGN =================
   const roleMap = {
     ES: "Spanish",
     DE: "German",
@@ -95,72 +95,52 @@ client.on("messageCreate", async (message) => {
       const role = message.guild.roles.cache.find(r => r.name === roleName);
       const member = await message.guild.members.fetch(message.author.id);
 
-      if (role && member && !member.roles.cache.has(role.id)) {
+      if (role && !member.roles.cache.has(role.id)) {
         await member.roles.add(role);
       }
-    } catch (err) {
-      console.log("⚠️ ROLE ASSIGN ERROR:", err.message);
-    }
+    } catch {}
   }
 
-  // ================= TRANSLATION ENGINE =================
+  // ================= TRANSLATION =================
   try {
-    for (const targetChannelId of allChannelIds) {
-      if (targetChannelId === message.channel.id) continue;
+    for (const [channelId, targetLang] of Object.entries(channelMap)) {
+      if (channelId === message.channel.id) continue;
+      if (targetLang === sourceLang) continue;
 
-      const targetLang = channelMap[targetChannelId];
-      if (!targetLang || targetLang === sourceLang) continue;
+      const translated = await translateCached(content, targetLang);
 
-      const translated = await translateCached(
-        content,
-        targetLang === "EN" ? "EN" : targetLang
-      );
-
-      const channel = message.guild.channels.cache.get(targetChannelId);
+      const channel = message.guild.channels.cache.get(channelId);
       if (!channel) continue;
 
       await channel.send(`🌍 ${translated}`);
     }
   } catch (err) {
-    console.log("❌ TRANSLATION ERROR:", err.message);
+    console.log("❌ ERROR:", err.message);
   }
 });
 
-// ================= INTERACTION HANDLER =================
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId !== "select_default_channel") return;
 
   const channelId = interaction.values[0];
 
-  try {
-    await supabase.from("guild_settings").upsert({
-      guild_id: interaction.guild.id,
-      default_channel: channelId
-    });
+  await supabase.from("guild_settings").upsert({
+    guild_id: interaction.guild.id,
+    default_channel: channelId
+  });
 
-    await interaction.reply({
-      content: `✅ Default channel set to <#${channelId}>`,
-      ephemeral: true
-    });
+  await interaction.reply({
+    content: `✅ Default channel set to <#${channelId}>`,
+    ephemeral: true
+  });
 
-    // 🧹 CLEAN DROPDOWN AFTER USE
-    setTimeout(async () => {
-      try {
-        await interaction.message.delete();
-      } catch {}
-    }, 3000);
-
-  } catch (err) {
-    console.log("❌ INTERACTION ERROR:", err.message);
-
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: "❌ Failed to save default channel",
-        ephemeral: true
-      });
-    }
-  }
+  setTimeout(async () => {
+    try {
+      await interaction.message.delete();
+    } catch {}
+  }, 3000);
 });
 
 client.login(process.env.DISCORD_TOKEN);
