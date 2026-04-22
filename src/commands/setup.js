@@ -1,51 +1,31 @@
-const LANGUAGES = {
-  es: "Spanish",
-  de: "German",
-  it: "Italian",
-  ko: "Korean"
-};
+import {
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ChannelType
+} from "discord.js";
 
-export default async function setupCommand(message, supabase) {
+export default async function setupCommand(message) {
   if (!message.member.permissions.has("Administrator")) {
     return message.reply("❌ Admin only");
   }
 
-  const guild = message.guild;
+  const channels = message.guild.channels.cache
+    .filter(c => c.type === ChannelType.GuildText)
+    .map(c => ({
+      label: c.name,
+      value: c.id
+    }))
+    .slice(0, 25);
 
-  await message.reply("📌 Mention the DEFAULT (English) channel.");
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("select_default_channel")
+    .setPlaceholder("Select default English channel")
+    .addOptions(channels);
 
-  const collected = await message.channel.awaitMessages({
-    filter: m => m.author.id === message.author.id,
-    max: 1,
-    time: 60000
+  const row = new ActionRowBuilder().addComponents(menu);
+
+  await message.reply({
+    content: "📌 Choose your DEFAULT English channel:",
+    components: [row]
   });
-
-  const defaultChannel = collected.first()?.mentions.channels.first();
-  if (!defaultChannel) return message.reply("❌ No channel selected");
-
-  const enabledChannels = {};
-
-  // CREATE LANGUAGE CHANNELS
-  for (const lang of Object.keys(LANGUAGES)) {
-    const channel = await guild.channels.create({
-      name: `${defaultChannel.name}-${lang}`,
-      type: 0
-    });
-
-    enabledChannels[lang] = channel.id;
-  }
-
-  // SAVE TO SUPABASE
-  const { error } = await supabase.from("guild_settings").upsert({
-    guild_id: guild.id,
-    default_channel: defaultChannel.id,
-    enabled_channels: enabledChannels
-  });
-
-  if (error) {
-    console.log(error);
-    return message.reply("❌ Failed setup: " + error.message);
-  }
-
-  message.reply("✅ Setup complete!");
 }
