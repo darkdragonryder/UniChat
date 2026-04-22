@@ -1,11 +1,11 @@
-// src/services/supabase.js
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
+export const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
+// 🏢 GET OR CREATE GUILD SETTINGS
 export async function getGuildSettings(guildId) {
   let { data } = await supabase
     .from("guild_settings")
@@ -13,10 +13,16 @@ export async function getGuildSettings(guildId) {
     .eq("guild_id", guildId)
     .single();
 
+  // AUTO CREATE IF MISSING
   if (!data) {
     const { data: created } = await supabase
       .from("guild_settings")
-      .insert({ guild_id: guildId })
+      .insert({
+        guild_id: guildId,
+        auto_translate: true,
+        default_language: "EN",
+        enabled_channels: []
+      })
       .select()
       .single();
 
@@ -26,26 +32,36 @@ export async function getGuildSettings(guildId) {
   return data;
 }
 
-export async function updateGuildSettings(guildId, updates) {
-  return supabase
-    .from("guild_settings")
-    .update(updates)
-    .eq("guild_id", guildId);
-}
-
-export async function getUserLanguage(userId) {
+// 👤 GET OR CREATE USER SETTINGS
+export async function getUserSettings(userId) {
   let { data } = await supabase
     .from("user_settings")
     .select("*")
     .eq("user_id", userId)
     .single();
 
-  if (!data) return "en";
-  return data.language;
+  if (!data) {
+    const { data: created } = await supabase
+      .from("user_settings")
+      .insert({
+        user_id: userId,
+        language: null
+      })
+      .select()
+      .single();
+
+    return created;
+  }
+
+  return data;
 }
 
-export async function setUserLanguage(userId, lang) {
-  return supabase
+// 👤 SET USER LANGUAGE
+export async function setUserLanguage(userId, language) {
+  return await supabase
     .from("user_settings")
-    .upsert({ user_id: userId, language: lang });
+    .upsert({
+      user_id: userId,
+      language
+    });
 }
