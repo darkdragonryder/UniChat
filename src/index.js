@@ -1,11 +1,11 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 import axios from "axios";
+import { getGuildSettings, getUserSettings } from "./services/supabase.js";
 
-// Stable logging for Railway
 const log = (m) => process.stdout.write(m + "\n");
 
-log("🚨 ACTIVE BUILD WITH DEEPL 🚨 " + Date.now());
+log("🚨 TRANSLATOR BOT ONLINE 🚨 " + Date.now());
 
 const client = new Client({
   intents: [
@@ -16,22 +16,36 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-  log(`✅ BOT ONLINE: ${client.user.tag}`);
+  log(`✅ BOT READY: ${client.user.tag}`);
 });
 
-// MESSAGE HANDLER
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  log("📩 MESSAGE: " + message.content);
+  log("📩 " + message.content);
 
   try {
+    // 🏢 GET SERVER SETTINGS (auto creates if missing)
+    const guild = await getGuildSettings(message.guild.id);
+
+    if (!guild.auto_translate) return;
+
+    // 🚫 CHANNEL FILTER
+    const allowed = guild.enabled_channels || [];
+    if (allowed.length && !allowed.includes(message.channel.id)) return;
+
+    // 👤 GET USER SETTINGS (auto creates if missing)
+    const user = await getUserSettings(message.author.id);
+
+    const targetLang = user.language || guild.default_language || "EN";
+
+    // 🌍 TRANSLATE
     const res = await axios.post(
       "https://api-free.deepl.com/v2/translate",
       new URLSearchParams({
         text: message.content,
-        target_lang: "EN"
+        target_lang: targetLang
       }),
       {
         headers: {
@@ -43,19 +57,12 @@ client.on("messageCreate", async (message) => {
 
     const translated = res.data.translations[0].text;
 
-    await message.channel.send(`🌍 ${translated}`);
+    await message.channel.send(`🌍 (${targetLang}) ${translated}`);
 
-    log("✅ TRANSLATION SENT");
+    log("✅ SENT");
   } catch (err) {
-    log("❌ DEEPL ERROR: " + JSON.stringify(err?.response?.data || err.message));
-
-    await message.channel.send("⚠️ Translation failed");
+    log("❌ ERROR: " + JSON.stringify(err?.response?.data || err.message));
   }
 });
-
-// KEEP PROCESS ALIVE (Railway stability fix)
-setInterval(() => {
-  process.stdout.write("💓 alive\n");
-}, 30000);
 
 client.login(process.env.DISCORD_TOKEN);
