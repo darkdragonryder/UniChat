@@ -2,8 +2,7 @@ import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 import axios from "axios";
 
-// FORCE LOG FLUSH (important for Railway)
-const log = (msg) => process.stdout.write(msg + "\n");
+const log = (m) => process.stdout.write(m + "\n");
 
 log("🚨 ACTIVE BUILD WITH DEEPL 🚨 " + Date.now());
 
@@ -15,10 +14,9 @@ const client = new Client({
   ]
 });
 
-client.on("ready", () => {
-  setTimeout(() => {
-    log(`✅ BOT ONLINE: ${client.user.tag}`);
-  }, 500);
+// FIXED EVENT (no more deprecation / instability)
+client.once("clientReady", () => {
+  log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
 client.on("messageCreate", async (message) => {
@@ -28,17 +26,15 @@ client.on("messageCreate", async (message) => {
   log("📩 MESSAGE: " + message.content);
 
   try {
-    const targetLang = "EN";
-
     const res = await axios.post(
       "https://api-free.deepl.com/v2/translate",
       new URLSearchParams({
         text: message.content,
-        target_lang: targetLang
+        target_lang: "EN"
       }),
       {
         headers: {
-          "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+          Authorization: `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
           "Content-Type": "application/x-www-form-urlencoded"
         }
       }
