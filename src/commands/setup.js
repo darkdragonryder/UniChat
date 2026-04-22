@@ -18,7 +18,7 @@ export default async function setupCommand(message) {
 
   const guild = message.guild;
 
-  // ================= CHANNEL SELECT =================
+  // ================= CHANNEL PICKER =================
   const channels = guild.channels.cache
     .filter(c => c.type === ChannelType.GuildText)
     .map(c => ({
@@ -35,37 +35,20 @@ export default async function setupCommand(message) {
   const row = new ActionRowBuilder().addComponents(menu);
 
   await message.reply({
-    content: "📌 Select your DEFAULT English channel:",
+    content: "📌 Select DEFAULT English channel:",
     components: [row]
   });
 
-  // ================= CREATE ROLES =================
-  for (const lang of Object.values(LANGUAGES)) {
-    const existing = guild.roles.cache.find(r => r.name === lang.name);
-
-    if (!existing) {
-      await guild.roles.create({
-        name: lang.name,
-        reason: "UniChat language role setup"
-      });
-
-      console.log(`✅ Role created: ${lang.name}`);
-    }
-  }
-
-  // ================= CREATE CHANNELS =================
+  // ================= CREATE LANGUAGE CHANNELS =================
   const enabled_channels = {};
 
   for (const [code, lang] of Object.entries(LANGUAGES)) {
-    const channelName =
-      code === "en"
-        ? "general"
-        : `general-${lang.flag}`;
+    const channelName = `general-${lang.flag}`;
 
     const channel = await guild.channels.create({
       name: channelName,
       type: ChannelType.GuildText,
-      reason: "UniChat mirror setup"
+      reason: "UniChat Phase 3 setup"
     });
 
     enabled_channels[code] = channel.id;
@@ -73,13 +56,13 @@ export default async function setupCommand(message) {
     console.log(`📁 Channel created: ${channelName}`);
   }
 
-  // ================= SAVE ROLES + CHANNELS =================
-  const supabase = (await import("../services/supabase.js")).supabase;
+  // ================= SAVE TO DATABASE =================
+  const { supabase } = await import("../services/supabase.js");
 
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
     enabled_channels
   });
 
-  console.log("💾 Setup saved to DB");
+  console.log("💾 Setup saved successfully");
 }
