@@ -1,4 +1,10 @@
-import { ChannelType, EmbedBuilder } from "discord.js";
+import {
+  ChannelType,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from "discord.js";
 
 const LANGUAGES = {
   es: { name: "Spanish", flag: "🇪🇸" },
@@ -13,9 +19,28 @@ export default async function uninstallCommand(message) {
   }
 
   const guild = message.guild;
-  const statusMsg = await message.reply("🧹 Uninstalling UniChat...");
 
-  // ================= CHANNELS =================
+  // 🧹 DELETE COMMAND MESSAGE
+  await message.delete().catch(() => {});
+
+  // ================= UI =================
+  const dismissButton = new ButtonBuilder()
+    .setCustomId("dismiss_uninstall")
+    .setLabel("Dismiss")
+    .setStyle(ButtonStyle.Secondary);
+
+  const row = new ActionRowBuilder().addComponents(dismissButton);
+
+  const statusMsg = await message.channel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("🧹 Uninstalling UniChat...")
+        .setColor("Orange")
+    ],
+    components: [row]
+  });
+
+  // ================= DELETE CHANNELS =================
   for (const lang of Object.values(LANGUAGES)) {
     const ch = guild.channels.cache.find(
       c => c.name === `general-${lang.flag}`
@@ -23,13 +48,13 @@ export default async function uninstallCommand(message) {
     if (ch) await ch.delete().catch(() => {});
   }
 
-  // ================= CATEGORY =================
+  // ================= DELETE CATEGORY =================
   const category = guild.channels.cache.find(
     c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
   );
   if (category) await category.delete().catch(() => {});
 
-  // ================= ROLES =================
+  // ================= DELETE ROLES =================
   for (const lang of Object.values(LANGUAGES)) {
     const role = guild.roles.cache.find(r => r.name === lang.name);
     if (role) await role.delete().catch(() => {});
@@ -38,13 +63,24 @@ export default async function uninstallCommand(message) {
   // ================= DB =================
   const { supabase } = await import("../services/supabase.js");
 
-  await supabase.from("guild_settings").delete().eq("guild_id", guild.id);
+  await supabase
+    .from("guild_settings")
+    .delete()
+    .eq("guild_id", guild.id);
 
-  setTimeout(() => message.delete().catch(() => {}), 3000);
+  // ================= FINAL =================
+  await statusMsg.edit({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("✅ UniChat Removed")
+        .setDescription("All channels, roles, and data removed.")
+        .setColor("Red")
+    ],
+    components: [row]
+  });
 
-  const embed = new EmbedBuilder()
-    .setTitle("🧹 UniChat Removed")
-    .setColor("Red");
-
-  await statusMsg.edit({ content: "", embeds: [embed] });
+  // ================= AUTO CLEAN =================
+  setTimeout(() => {
+    statusMsg.delete().catch(() => {});
+  }, 15000);
 }
