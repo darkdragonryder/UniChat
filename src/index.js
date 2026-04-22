@@ -1,8 +1,9 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
+import axios from "axios";
 
-// PROOF THIS IS THE ACTIVE BUILD
-console.log("🚨 ACTIVE BUILD LOADED 🚨", Date.now());
+// PROOF BUILD
+console.log("🚨 ACTIVE BUILD WITH DEEPL 🚨", Date.now());
 
 const client = new Client({
   intents: [
@@ -20,17 +21,35 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  console.log("NEW BUILD MESSAGE:", message.content);
+  console.log("MESSAGE:", message.content);
 
   try {
-    // Send current time to prove this exact code is running
-    const time = new Date().toLocaleTimeString();
+    // 🌍 TARGET LANGUAGE (hardcoded for now)
+    const targetLang = "EN";
 
-    await message.channel.send(`🧪 ACTIVE BUILD TIME: ${time}`);
+    // 🔥 CALL DEEPL API
+    const res = await axios.post(
+      "https://api-free.deepl.com/v2/translate",
+      null,
+      {
+        params: {
+          auth_key: process.env.DEEPL_API_KEY,
+          text: message.content,
+          target_lang: targetLang
+        }
+      }
+    );
 
-    console.log("SEND SUCCESS");
+    const translated = res.data.translations[0].text;
+
+    await message.channel.send(`🌍 ${translated}`);
+
+    console.log("TRANSLATION SENT");
   } catch (err) {
-    console.error("SEND FAILED:", err);
+    console.error("DEEPL ERROR:", err?.response?.data || err.message);
+
+    // fallback so bot never goes silent again
+    await message.channel.send("⚠️ Translation failed");
   }
 });
 
