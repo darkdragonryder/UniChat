@@ -58,7 +58,4 @@ setInterval(() => {
   process.stdout.write("💓 alive\n");
 }, 30000);
 
-// Safety heartbeat (prevents idle shutdown misreads)
-setInterval(() => {}, 1 << 30);
-
 client.login(process.env.DISCORD_TOKEN);
