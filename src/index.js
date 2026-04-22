@@ -2,7 +2,6 @@ import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 import axios from "axios";
 
-// PROOF BUILD
 console.log("🚨 ACTIVE BUILD WITH DEEPL 🚨", Date.now());
 
 const client = new Client({
@@ -24,18 +23,18 @@ client.on("messageCreate", async (message) => {
   console.log("MESSAGE:", message.content);
 
   try {
-    // 🌍 TARGET LANGUAGE (hardcoded for now)
     const targetLang = "EN";
 
-    // 🔥 CALL DEEPL API
     const res = await axios.post(
       "https://api-free.deepl.com/v2/translate",
-      null,
+      new URLSearchParams({
+        text: message.content,
+        target_lang: targetLang
+      }),
       {
-        params: {
-          auth_key: process.env.DEEPL_API_KEY,
-          text: message.content,
-          target_lang: targetLang
+        headers: {
+          "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+          "Content-Type": "application/x-www-form-urlencoded"
         }
       }
     );
@@ -48,7 +47,6 @@ client.on("messageCreate", async (message) => {
   } catch (err) {
     console.error("DEEPL ERROR:", err?.response?.data || err.message);
 
-    // fallback so bot never goes silent again
     await message.channel.send("⚠️ Translation failed");
   }
 });
