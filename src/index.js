@@ -1,11 +1,11 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
-import axios from "axios";
-import { getGuildSettings, getUserSettings } from "./services/supabase.js";
+import setupCommand from "./commands/setup.js";
+import { supabase } from "./services/supabase.js";
 
-const log = (m) => process.stdout.write(m + "\n");
+const log = (msg) => process.stdout.write(msg + "\n");
 
-log("🚨 TRANSLATOR BOT ONLINE 🚨 " + Date.now());
+log("🚨 UNI CHAT BOT STARTING 🚨 " + Date.now());
 
 const client = new Client({
   intents: [
@@ -15,54 +15,37 @@ const client = new Client({
   ]
 });
 
+// ✅ Bot Ready
 client.once("ready", () => {
-  log(`✅ BOT READY: ${client.user.tag}`);
+  log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
+// ✅ Message Handler
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
 
-  log("📩 " + message.content);
+  log("📩 MESSAGE: " + message.content);
 
   try {
-    // 🏢 GET SERVER SETTINGS (auto creates if missing)
-    const guild = await getGuildSettings(message.guild.id);
+    // ===== SETUP COMMAND =====
+    if (message.content === "!setup") {
+      return setupCommand(message, supabase);
+    }
 
-    if (!guild.auto_translate) return;
+    // (Phase 1 ends here — no translation yet)
 
-    // 🚫 CHANNEL FILTER
-    const allowed = guild.enabled_channels || [];
-    if (allowed.length && !allowed.includes(message.channel.id)) return;
-
-    // 👤 GET USER SETTINGS (auto creates if missing)
-    const user = await getUserSettings(message.author.id);
-
-    const targetLang = user.language || guild.default_language || "EN";
-
-    // 🌍 TRANSLATE
-    const res = await axios.post(
-      "https://api-free.deepl.com/v2/translate",
-      new URLSearchParams({
-        text: message.content,
-        target_lang: targetLang
-      }),
-      {
-        headers: {
-          Authorization: `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-        }
-      }
-    );
-
-    const translated = res.data.translations[0].text;
-
-    await message.channel.send(`🌍 (${targetLang}) ${translated}`);
-
-    log("✅ SENT");
   } catch (err) {
-    log("❌ ERROR: " + JSON.stringify(err?.response?.data || err.message));
+    log("❌ ERROR: " + (err?.message || err));
   }
 });
+
+// KEEP ALIVE (Railway stability)
+setInterval(() => {
+  process.stdout.write("💓 alive\n");
+}, 30000);
+
+// Safety no-op loop
+setInterval(() => {}, 1 << 30);
 
 client.login(process.env.DISCORD_TOKEN);
