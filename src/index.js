@@ -15,26 +15,37 @@ const client = new Client({
   ]
 });
 
-console.log("🚨 UNI CHAT SYSTEM STARTING 🚨");
+console.log("🚀 UniChat PHASE 7 STARTING");
 
-// ================= READY =================
-client.once("ready", () => {
-  console.log(`🚀 UniChat BOT ONLINE: ${client.user.tag}`);
-});
-
-// ================= LANGUAGE DETECTION =================
+// ================= IMPROVED LANGUAGE DETECTION =================
 function guessLanguage(text) {
-  if (/[àèìòù]/i.test(text)) return "IT";
-  if (/[äöüß]/i.test(text)) return "DE";
-  if (/[ñ¿¡]/i.test(text)) return "ES";
+  const t = text.toLowerCase();
+
+  // Cyrillic (Russian)
+  if (/[а-яё]/i.test(text)) return "RU";
+
+  // Korean
   if (/[\u3131-\uD79D]/.test(text)) return "KO";
-  if (/[а-яА-ЯЁё]/.test(text)) return "RU";
+
+  // Spanish indicators
+  if (/[ñ¿¡]/.test(text)) return "ES";
+
+  // German
+  if (/[äöüß]/i.test(text)) return "DE";
+
+  // Italian accents
+  if (/[àèìòù]/i.test(text)) return "IT";
+
+  // Extra heuristic: common English words bias
+  const englishHints = /\b(the|and|is|hello|you|this|that)\b/i.test(t);
+  if (englishHints) return "EN";
+
   return "EN";
 }
 
 const processed = new Set();
 
-// ================= MESSAGE HANDLER =================
+// ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
@@ -70,13 +81,11 @@ client.on("messageCreate", async (message) => {
   const sourceLang =
     channelMap[message.channel.id] || guessLanguage(content);
 
-  // ================= SAVE USER =================
   await supabase.from("user_settings").upsert({
     user_id: message.author.id,
     language: sourceLang
   });
 
-  // ================= ROLE ASSIGN =================
   const roleMap = {
     ES: "Spanish",
     DE: "German",
@@ -95,26 +104,19 @@ client.on("messageCreate", async (message) => {
       if (role && !member.roles.cache.has(role.id)) {
         await member.roles.add(role);
       }
-    } catch (err) {
-      console.log("ROLE ERROR:", err.message);
-    }
+    } catch {}
   }
 
-  // ================= TRANSLATION =================
-  try {
-    for (const [channelId, targetLang] of Object.entries(channelMap)) {
-      if (channelId === message.channel.id) continue;
-      if (targetLang === sourceLang) continue;
+  for (const [channelId, targetLang] of Object.entries(channelMap)) {
+    if (channelId === message.channel.id) continue;
+    if (targetLang === sourceLang) continue;
 
-      const translated = await translateCached(content, targetLang);
+    const translated = await translateCached(content, targetLang);
 
-      const channel = message.guild.channels.cache.get(channelId);
-      if (!channel) continue;
+    const channel = message.guild.channels.cache.get(channelId);
+    if (!channel) continue;
 
-      await channel.send(`🌍 ${translated}`);
-    }
-  } catch (err) {
-    console.log("TRANSLATION ERROR:", err.message);
+    await channel.send(`🌍 ${translated}`);
   }
 });
 
