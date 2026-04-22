@@ -28,6 +28,7 @@ function guessLanguage(text) {
   if (/[äöüß]/i.test(text)) return "DE";
   if (/[ñ¿¡]/i.test(text)) return "ES";
   if (/[\u3131-\uD79D]/.test(text)) return "KO";
+  if (/[а-яА-ЯЁё]/.test(text)) return "RU";
   return "EN";
 }
 
@@ -69,17 +70,19 @@ client.on("messageCreate", async (message) => {
   const sourceLang =
     channelMap[message.channel.id] || guessLanguage(content);
 
+  // ================= SAVE USER =================
   await supabase.from("user_settings").upsert({
     user_id: message.author.id,
     language: sourceLang
   });
 
-   const roleMap = {
-   ES: "Spanish",
-   DE: "German",
-   IT: "Italian",
-   KO: "Korean",
-   RU: "Russian"
+  // ================= ROLE ASSIGN =================
+  const roleMap = {
+    ES: "Spanish",
+    DE: "German",
+    IT: "Italian",
+    KO: "Korean",
+    RU: "Russian"
   };
 
   const roleName = roleMap[sourceLang];
@@ -92,9 +95,12 @@ client.on("messageCreate", async (message) => {
       if (role && !member.roles.cache.has(role.id)) {
         await member.roles.add(role);
       }
-    } catch {}
+    } catch (err) {
+      console.log("ROLE ERROR:", err.message);
+    }
   }
 
+  // ================= TRANSLATION =================
   try {
     for (const [channelId, targetLang] of Object.entries(channelMap)) {
       if (channelId === message.channel.id) continue;
@@ -108,7 +114,7 @@ client.on("messageCreate", async (message) => {
       await channel.send(`🌍 ${translated}`);
     }
   } catch (err) {
-    console.log("❌ TRANSLATION ERROR:", err.message);
+    console.log("TRANSLATION ERROR:", err.message);
   }
 });
 
