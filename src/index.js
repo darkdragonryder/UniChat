@@ -17,7 +17,7 @@ const client = new Client({
 console.log("🚨 UNI CHAT SYSTEM STARTING 🚨");
 
 client.once("ready", () => {
-  console.log('🚀 UniChat is ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat is ONLINE: ${client.user.tag}`);
 });
 
 // ================= LANGUAGE GUESS =================
