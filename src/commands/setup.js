@@ -2,7 +2,8 @@ import {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ChannelType,
-  EmbedBuilder
+  EmbedBuilder,
+  PermissionsBitField
 } from "discord.js";
 
 const LANGUAGES = {
@@ -21,7 +22,7 @@ export default async function setupCommand(message) {
 
   const statusMsg = await message.reply("⚙️ Starting UniChat setup...");
 
-  // ================= CHANNEL SELECT =================
+  // ================= DROPDOWN =================
   const channels = guild.channels.cache
     .filter(c => c.type === ChannelType.GuildText)
     .map(c => ({
@@ -37,7 +38,7 @@ export default async function setupCommand(message) {
 
   const row = new ActionRowBuilder().addComponents(menu);
 
-  await message.channel.send({
+  const menuMsg = await message.channel.send({
     content: "📌 Select your DEFAULT English channel:",
     components: [row]
   });
@@ -54,21 +55,23 @@ export default async function setupCommand(message) {
     });
   }
 
-  // 🔥 MOVE CATEGORY NEAR TOP
   await category.setPosition(1);
 
   // ================= ROLES =================
   await statusMsg.edit("🔧 Creating roles...");
 
+  const roleMap = {};
+
   for (const lang of Object.values(LANGUAGES)) {
     let role = guild.roles.cache.find(r => r.name === lang.name);
 
     if (!role) {
-      await guild.roles.create({
-        name: lang.name,
-        reason: "UniChat setup"
+      role = await guild.roles.create({
+        name: lang.name
       });
     }
+
+    roleMap[lang.name] = role;
   }
 
   // ================= CHANNELS =================
@@ -78,22 +81,33 @@ export default async function setupCommand(message) {
 
   for (const [code, lang] of Object.entries(LANGUAGES)) {
     const name = `general-${lang.flag}`;
+    const role = roleMap[lang.name];
 
     let channel = guild.channels.cache.find(c => c.name === name);
 
     if (!channel) {
-      // create new
       channel = await guild.channels.create({
         name,
         type: ChannelType.GuildText,
         parent: category.id
       });
     } else {
-      // 🔥 MOVE EXISTING CHANNEL INTO CATEGORY
       if (channel.parentId !== category.id) {
         await channel.setParent(category.id);
       }
     }
+
+    // 🔒 PERMISSIONS (ONLY ROLE CAN SEE)
+    await channel.permissionOverwrites.set([
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: role.id,
+        allow: [PermissionsBitField.Flags.ViewChannel]
+      }
+    ]);
 
     enabled_channels[code] = channel.id;
   }
@@ -106,10 +120,18 @@ export default async function setupCommand(message) {
     enabled_channels
   });
 
+  // ================= CLEANUP =================
+  setTimeout(async () => {
+    try {
+      await message.delete();
+      await menuMsg.delete();
+    } catch {}
+  }, 5000);
+
   // ================= FINAL =================
   const embed = new EmbedBuilder()
     .setTitle("✅ UniChat Setup Complete")
-    .setDescription("Channels organised and system active.")
+    .setDescription("Channels locked + system active.")
     .setColor("Green");
 
   await statusMsg.edit({ content: "", embeds: [embed] });
