@@ -3,46 +3,26 @@ export default async function desetupCommand(message, supabase) {
     return message.reply("❌ Admin only");
   }
 
-  const guild = message.guild;
-
-  // Get settings
   const { data } = await supabase
     .from("guild_settings")
     .select("*")
-    .eq("guild_id", guild.id)
+    .eq("guild_id", message.guild.id)
     .single();
 
-  if (!data) {
-    return message.reply("⚠️ No setup found");
+  if (!data) return message.reply("⚠️ Nothing to remove");
+
+  const channels = data.enabled_channels || {};
+
+  // DELETE CHANNELS
+  for (const id of Object.values(channels)) {
+    const ch = message.guild.channels.cache.get(id);
+    if (ch) await ch.delete().catch(() => {});
   }
 
-  const languageChannels = data.language_channels || {};
-  const languages = data.languages || [];
-
-  // ===== DELETE CHANNELS =====
-  for (const lang of Object.keys(languageChannels)) {
-    const channelId = languageChannels[lang];
-    const channel = guild.channels.cache.get(channelId);
-
-    if (channel) {
-      await channel.delete().catch(() => {});
-    }
-  }
-
-  // ===== DELETE ROLES =====
-  for (const lang of languages) {
-    const role = guild.roles.cache.find(r => r.name === lang);
-
-    if (role) {
-      await role.delete().catch(() => {});
-    }
-  }
-
-  // ===== REMOVE FROM DATABASE =====
   await supabase
     .from("guild_settings")
     .delete()
-    .eq("guild_id", guild.id);
+    .eq("guild_id", message.guild.id);
 
-  message.reply("🗑️ UniChat removed and cleaned up.");
+  message.reply("🗑️ Cleaned up successfully");
 }
