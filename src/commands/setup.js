@@ -1,77 +1,57 @@
 import { supabase } from "../services/supabase.js";
-import { PermissionsBitField } from "discord.js";
+
+const languages = {
+  ES: "🇪🇸",
+  DE: "🇩🇪",
+  IT: "🇮🇹",
+  KO: "🇰🇷",
+  RU: "🇷🇺"
+};
 
 export default async function setupCommand(interaction) {
 
-  const { data: existing } = await supabase
-    .from("guild_settings")
-    .select("*")
-    .eq("guild_id", interaction.guild.id)
-    .single();
+  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
 
-  if (existing) {
-    return interaction.reply({
-      content: "⚠️ UniChat already installed. Run `/uninstall` first.",
-      ephemeral: true
-    });
-  }
+  const guild = interaction.guild;
 
-  await interaction.reply({
-    content: "🌍 Setting up UniChat...",
-    ephemeral: true
-  });
-
-  const base = interaction.channel;
-
-  const languageMap = {
-    ES: { emoji: "🇪🇸", name: "Spanish" },
-    DE: { emoji: "🇩🇪", name: "German" },
-    IT: { emoji: "🇮🇹", name: "Italian" },
-    KO: { emoji: "🇰🇷", name: "Korean" },
-    RU: { emoji: "🇷🇺", name: "Russian" }
-  };
-
-  const category = await interaction.guild.channels.create({
+  // ================= CREATE CATEGORY =================
+  const category = await guild.channels.create({
     name: "🌍 UniChat",
     type: 4
   });
 
+  // ================= POSITION UNDER GENERAL =================
+  const general = guild.channels.cache.find(
+    c => c.name === "general" && c.type === 0
+  );
+
+  if (general) {
+    await category.setPosition(general.position + 1).catch(() => {});
+  }
+
+  // ================= CREATE LANGUAGE CHANNELS =================
   const enabled_channels = {};
 
-  for (const [lang, data] of Object.entries(languageMap)) {
+  for (const [lang, emoji] of Object.entries(languages)) {
 
-    const role = await interaction.guild.roles.create({
-      name: data.name,
-      reason: "UniChat role"
-    });
-
-    const channel = await interaction.guild.channels.create({
-      name: `general-${data.emoji}`,
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
       type: 0,
-      parent: category.id,
-      permissionOverwrites: [
-        {
-          id: interaction.guild.roles.everyone,
-          deny: [PermissionsBitField.Flags.ViewChannel]
-        },
-        {
-          id: role.id,
-          allow: [PermissionsBitField.Flags.ViewChannel]
-        }
-      ]
+      parent: category.id
     });
 
     enabled_channels[lang] = channel.id;
   }
 
+  // ================= SAVE TO DB =================
   await supabase.from("guild_settings").upsert({
-    guild_id: interaction.guild.id,
-    default_channel: base.id,
+    guild_id: guild.id,
+    default_channel: general?.id ?? null,
     enabled_channels
   });
 
   return interaction.followUp({
-    content: "✅ UniChat setup complete.",
+    content: "✅ UniChat setup complete",
     ephemeral: true
   });
 }
