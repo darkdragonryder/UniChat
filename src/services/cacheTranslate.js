@@ -2,14 +2,36 @@ import { supabase } from "./supabase.js";
 
 const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
 
-// DeepL uses EN, ES, DE, IT, JA, KO, RU (you’re good)
+// ================= SMART FILTER =================
+function shouldSkip(text) {
+  if (!text) return true;
+
+  const t = text.trim().toLowerCase();
+
+  // too short
+  if (t.length <= 2) return true;
+
+  // common junk
+  const junk = ["ok", "okay", "lol", "lmao", "brb", "gg"];
+  if (junk.includes(t)) return true;
+
+  // only emojis / symbols
+  if (/^[^\p{L}\p{N}]+$/u.test(t)) return true;
+
+  // links
+  if (t.startsWith("http")) return true;
+
+  return false;
+}
+
+// ================= MAIN =================
 export async function translateCached(text, targetLang) {
 
-  if (!text || text.length < 1) return text;
+  if (shouldSkip(text)) return text;
 
   const hash = `${text.toLowerCase()}::${targetLang}`;
 
-  // ================= CACHE CHECK =================
+  // ================= CACHE =================
   const { data } = await supabase
     .from("translation_cache")
     .select("translated_text")
@@ -20,7 +42,6 @@ export async function translateCached(text, targetLang) {
     return data.translated_text;
   }
 
-  // ================= CALL DEEPL =================
   let translated = text;
 
   try {
@@ -38,7 +59,8 @@ export async function translateCached(text, targetLang) {
 
     const result = await res.json();
 
-    if (result?.translations?.[0]?.text) {
+    // ================= SAFE PARSE =================
+    if (result?.translations?.length) {
       translated = result.translations[0].text;
     } else {
       console.log("DEEPL BAD RESPONSE:", result);
@@ -46,20 +68,16 @@ export async function translateCached(text, targetLang) {
 
   } catch (err) {
     console.log("DEEPL ERROR:", err.message);
-    translated = text; // fallback
+    translated = text;
   }
 
-  // ================= SAVE CACHE =================
-  const { error } = await supabase
+  // ================= CACHE SAVE =================
+  await supabase
     .from("translation_cache")
     .upsert({
       hash,
       translated_text: translated
     });
-
-  if (error) {
-    console.log("CACHE SAVE ERROR:", error.message);
-  }
 
   return translated;
 }
