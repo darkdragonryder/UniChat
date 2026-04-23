@@ -16,6 +16,10 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
+    if (!process.env.CLIENT_ID) {
+      throw new Error("CLIENT_ID missing in environment");
+    }
+
     console.log("🚀 Deploying slash commands...");
 
     await rest.put(
