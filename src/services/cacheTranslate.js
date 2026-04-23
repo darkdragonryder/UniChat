@@ -1,25 +1,58 @@
-import { supabase } from "./supabase.js";
+import { supabase } from "../services/supabase.js";
 
-export async function translateCached(text, targetLang) {
+const languages = {
+  ES: "🇪🇸",
+  DE: "🇩🇪",
+  IT: "🇮🇹",
+  KO: "🇰🇷",
+  RU: "🇷🇺",
+  JA: "🇯🇵"
+};
 
-  const hash = `${text.toLowerCase()}::${targetLang}`;
+export default async function setupCommand(interaction) {
 
-  const { data } = await supabase
-    .from("translation_cache")
-    .select("translated_text")
-    .eq("hash", hash)
-    .maybeSingle();
+  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
 
-  if (data?.translated_text) {
-    return data.translated_text;
-  }
+  const guild = interaction.guild;
 
-  const translated = `[${targetLang}] ${text}`;
-
-  await supabase.from("translation_cache").upsert({
-    hash,
-    translated_text: translated
+  // ================= CREATE CATEGORY =================
+  const category = await guild.channels.create({
+    name: "🌍 UniChat",
+    type: 4
   });
 
-  return translated;
+  // ================= POSITION UNDER GENERAL =================
+  const general = guild.channels.cache.find(
+    c => c.name === "general" && c.type === 0
+  );
+
+  if (general) {
+    await category.setPosition(general.position + 1).catch(() => {});
+  }
+
+  // ================= CREATE LANGUAGE CHANNELS =================
+  const enabled_channels = {};
+
+  for (const [lang, emoji] of Object.entries(languages)) {
+
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
+      type: 0,
+      parent: category.id
+    });
+
+    enabled_channels[lang] = channel.id;
+  }
+
+  // ================= SAVE TO DB =================
+  await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    default_channel: general?.id ?? null,
+    enabled_channels
+  });
+
+  return interaction.followUp({
+    content: "✅ UniChat setup complete",
+    ephemeral: true
+  });
 }
