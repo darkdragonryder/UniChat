@@ -1,53 +1,45 @@
 import { supabase } from "../services/supabase.js";
 
-export default async function dashboardCommand(interaction) {
-  await interaction.reply({
-    embeds: [
-      {
-        title: "🌍 UniChat Dashboard",
-        description:
-          "Manage your language system from here.\n\n" +
-          "⚙️ Status: Active\n" +
-          "🔁 Auto translation: ON\n" +
-          "👥 Role system: ENABLED",
-        color: 0x00bfff,
-        fields: [
-          {
-            name: "Commands",
-            value:
-              "🟢 Setup system\n" +
-              "🧹 Uninstall system\n" +
-              "🌐 Set language\n" +
-              "🔄 Sync roles"
-          }
-        ]
-      }
-    ],
-    components: [
-      {
-        type: 1,
-        components: [
-          {
-            type: 2,
-            label: "Run Setup",
-            style: 1,
-            custom_id: "dash_setup"
-          },
-          {
-            type: 2,
-            label: "Sync Roles",
-            style: 2,
-            custom_id: "dash_sync"
-          },
-          {
-            type: 2,
-            label: "Uninstall",
-            style: 4,
-            custom_id: "dash_uninstall"
-          }
-        ]
-      }
-    ],
+const languages = {
+  ES: "🇪🇸",
+  DE: "🇩🇪",
+  IT: "🇮🇹",
+  KO: "🇰🇷",
+  RU: "🇷🇺",
+  JA: "🇯🇵"
+};
+
+export default async function setupCommand(interaction) {
+
+  await interaction.reply({ content: "⚙️ Setting up...", ephemeral: true });
+
+  const guild = interaction.guild;
+
+  const category = await guild.channels.create({
+    name: "🌍 UniChat",
+    type: 4
+  });
+
+  const enabled_channels = {};
+
+  for (const [lang, emoji] of Object.entries(languages)) {
+
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
+      type: 0,
+      parent: category.id
+    });
+
+    enabled_channels[lang] = channel.id;
+  }
+
+  await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    enabled_channels
+  });
+
+  await interaction.followUp({
+    content: "✅ Setup complete",
     ephemeral: true
   });
 }
