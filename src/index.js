@@ -19,17 +19,15 @@ const client = new Client({
 
 console.log("🚀 UniChat BOT STARTING");
 
-// ================= READY EVENT =================
+// ================= READY =================
 client.once("ready", () => {
   console.log(`🚀 UniChat BOT ONLINE: ${client.user.tag}`);
-
   console.log("AUTO_DEPLOY =", process.env.AUTO_DEPLOY);
 
   if (process.env.AUTO_DEPLOY === "true") {
     try {
       console.log("🔁 Auto deploying slash commands...");
-      execSync("node src/deployCommands.js", { stdio: "inherit" });
-      console.log("✅ Slash commands deployed");
+      execSync("node ./src/deployCommands.js", { stdio: "inherit" });
     } catch (err) {
       console.log("❌ Auto deploy failed:", err.message);
     }
@@ -48,7 +46,7 @@ function guessLanguage(text) {
 
 const processed = new Set();
 
-// ================= MESSAGE ENGINE =================
+// ================= MESSAGE SYSTEM =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -90,6 +88,7 @@ client.on("messageCreate", async (message) => {
 
     const translated = await translateCached(content, lang);
     const channel = message.guild.channels.cache.get(channelId);
+
     if (channel) {
       await channel.send(`🌍 ${translated}`);
     }
@@ -98,46 +97,14 @@ client.on("messageCreate", async (message) => {
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "setup") return setupCommand(interaction);
-    if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
+  if (interaction.commandName === "setup") {
+    return setupCommand(interaction);
   }
 
-  if (interaction.isButton()) {
-    if (interaction.customId === "setup_use_current") {
-      const { supabase } = await import("./services/supabase.js");
-
-      await supabase.from("guild_settings").upsert({
-        guild_id: interaction.guild.id,
-        default_channel: interaction.channel.id
-      });
-
-      return interaction.reply({
-        content: "✅ Default channel set",
-        ephemeral: true
-      });
-    }
-
-    if (interaction.customId === "dismiss_uninstall") {
-      return interaction.message.delete().catch(() => {});
-    }
-  }
-
-  if (interaction.isStringSelectMenu()) {
-    if (interaction.customId !== "select_default_channel") return;
-
-    const channelId = interaction.values[0];
-
-    await supabase.from("guild_settings").upsert({
-      guild_id: interaction.guild.id,
-      default_channel: channelId
-    });
-
-    return interaction.reply({
-      content: `✅ Default channel set to <#${channelId}>`,
-      ephemeral: true
-    });
+  if (interaction.commandName === "uninstall") {
+    return uninstallCommand(interaction);
   }
 });
 
