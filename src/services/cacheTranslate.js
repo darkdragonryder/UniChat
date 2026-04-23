@@ -2,25 +2,39 @@ import { supabase } from "./supabase.js";
 
 export async function translateCached(text, targetLang) {
 
-  const key = `${text.toLowerCase()}::${targetLang}`;
+  const hash = `${text.toLowerCase()}::${targetLang}`;
 
+  // ================= CHECK CACHE =================
   const { data } = await supabase
     .from("translation_cache")
-    .select("translated")
-    .eq("cache_key", key)
+    .select("translated_text")
+    .eq("hash", hash)
     .maybeSingle();
 
-  if (data?.translated) {
-    return data.translated;
+  if (data?.translated_text) {
+    return data.translated_text;
   }
 
-  // call real translation API here
-  const translated = await realTranslate(text, targetLang);
+  // ================= TRANSLATE =================
+  let translated;
+  try {
+    translated = await realTranslate(text, targetLang);
+  } catch (err) {
+    console.log("TRANSLATION ERROR:", err.message);
+    translated = text;
+  }
 
-  await supabase.from("translation_cache").upsert({
-    cache_key: key,
-    translated
-  });
+  // ================= SAVE CACHE =================
+  const { error } = await supabase
+    .from("translation_cache")
+    .upsert({
+      hash,
+      translated_text: translated
+    });
+
+  if (error) {
+    console.log("CACHE WRITE ERROR:", error.message);
+  }
 
   return translated;
 }
