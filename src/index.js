@@ -7,6 +7,7 @@ import { translateCached } from "./services/cacheTranslate.js";
 
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
+import setLanguageCommand from "./commands/setlanguage.js";
 
 const client = new Client({
   intents: [
@@ -19,19 +20,21 @@ const client = new Client({
 
 console.log("🚀 UniChat BOT STARTING");
 
+// ================= READY =================
 client.once("ready", () => {
   console.log(`🚀 UniChat BOT ONLINE: ${client.user.tag}`);
 
   if (process.env.AUTO_DEPLOY === "true") {
     try {
+      console.log("🔁 Auto deploying slash commands...");
       execSync("node ./src/deployCommands.js", { stdio: "inherit" });
-    } catch {
-      console.log("⚠️ deploy skipped");
+    } catch (err) {
+      console.log("⚠️ Auto deploy failed:", err.message);
     }
   }
 });
 
-// ================= LANGUAGE =================
+// ================= LANGUAGE DETECTION =================
 function guessLanguage(text) {
   if (/[а-яё]/i.test(text)) return "RU";
   if (/[\u3131-\uD79D]/.test(text)) return "KO";
@@ -43,6 +46,7 @@ function guessLanguage(text) {
 
 // ================= ROLE MAP =================
 const roleMap = {
+  EN: "English",
   ES: "Spanish",
   DE: "German",
   IT: "Italian",
@@ -52,7 +56,7 @@ const roleMap = {
 
 const processed = new Set();
 
-// ================= MESSAGE =================
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (message.interaction) return;
@@ -87,7 +91,7 @@ client.on("messageCreate", async (message) => {
 
   const member = await message.guild.members.fetch(message.author.id);
 
-  // ================= ROLE ONLY (NO PERMISSION EDITS) =================
+  // ================= ROLE SYSTEM =================
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
@@ -96,6 +100,7 @@ client.on("messageCreate", async (message) => {
     if (role) {
       const allRoles = Object.values(roleMap);
 
+      // remove old language roles
       for (const r of member.roles.cache.values()) {
         if (allRoles.includes(r.name)) {
           await member.roles.remove(r);
@@ -106,7 +111,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ================= TRANSLATION =================
+  // ================= TRANSLATION ENGINE =================
   for (const [channelId, targetLang] of Object.entries(channelMap)) {
     if (channelId === message.channel.id) continue;
     if (targetLang === sourceLang) continue;
@@ -114,17 +119,19 @@ client.on("messageCreate", async (message) => {
     const translated = await translateCached(content, targetLang);
     const channel = message.guild.channels.cache.get(channelId);
 
-    if (channel) {
-      await channel.send(`🌍 ${translated}`);
-    }
+    if (!channel) continue;
+
+    await channel.send(`🌍 ${translated}`);
   }
 });
 
-// ================= COMMANDS =================
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
+
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === "setup") return setupCommand(interaction);
     if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
+    if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
   }
 
   if (interaction.isButton()) {
