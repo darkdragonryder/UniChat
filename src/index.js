@@ -5,6 +5,7 @@ import { translateCached } from "./services/cacheTranslate.js";
 
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
+import { sendLanguagePrompt } from "./utils/languagePrompt.js";
 
 const client = new Client({
   intents: [
@@ -21,30 +22,27 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-// ================= DEEPL LANGUAGE DETECTION =================
-async function detectLanguage(text) {
+
+// ================= USER JOIN =================
+client.on("guildMemberAdd", async (member) => {
   try {
-    const res = await fetch("https://api-free.deepl.com/v2/translate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`
-      },
-      body: JSON.stringify({
-        text: [text],
-        target_lang: "EN"
-      })
-    });
+    const { data } = await supabase
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", member.id)
+      .maybeSingle();
 
-    const result = await res.json();
-
-    return result?.translations?.[0]?.detected_source_language || "EN";
-
+    if (!data) {
+      const channel = member.guild.systemChannel;
+      if (channel) {
+        await sendLanguagePrompt(channel, member.id);
+      }
+    }
   } catch (err) {
-    console.log("DETECT ERROR:", err.message);
-    return "EN";
+    console.log("JOIN ERROR:", err.message);
   }
-}
+});
+
 
 // ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
@@ -54,7 +52,19 @@ client.on("messageCreate", async (message) => {
     const content = message.content.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= GET GUILD DATA =================
+    // ================= CHECK USER LANGUAGE =================
+    const { data: user } = await supabase
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", message.author.id)
+      .maybeSingle();
+
+    if (!user) {
+      await sendLanguagePrompt(message.channel, message.author.id);
+      return;
+    }
+
+    // ================= GET GUILD CONFIG =================
     const { data } = await supabase
       .from("guild_settings")
       .select("*")
@@ -66,10 +76,9 @@ client.on("messageCreate", async (message) => {
     const enabled = data.enabled_channels ?? {};
     const defaultChannel = data.default_channel;
 
-    // ================= ALWAYS FETCH CHANNELS =================
+    // ================= FETCH CHANNELS =================
     const channels = await message.guild.channels.fetch();
 
-    // ================= BUILD CHANNEL MAP =================
     const channelMap = new Map();
 
     if (defaultChannel && channels.get(defaultChannel)) {
@@ -82,19 +91,11 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    if (channelMap.size === 0) {
-      console.log("⚠️ No channels configured");
-      return;
-    }
+    if (channelMap.size === 0) return;
 
-    // ================= DETECT SOURCE LANGUAGE =================
-    const sourceLang =
-      channelMap.get(message.channel.id) ||
-      await detectLanguage(content);
+    const sourceLang = user.language || "EN";
 
-    console.log("SOURCE:", sourceLang);
-
-    // ================= TRANSLATION LOOP =================
+    // ================= TRANSLATE =================
     for (const [channelId, targetLang] of channelMap.entries()) {
 
       if (channelId === message.channel.id) continue;
@@ -118,9 +119,54 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ================= SLASH COMMANDS =================
+
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
+
+    // ================= LANGUAGE SELECT =================
+    if (interaction.isStringSelectMenu()) {
+
+      if (interaction.customId !== "select_language") return;
+
+      const lang = interaction.values[0];
+      const guild = interaction.guild;
+
+      // SAVE USER LANGUAGE
+      await supabase.from("user_settings").upsert({
+        user_id: interaction.user.id,
+        language: lang
+      });
+
+      // ROLE NAME MAP
+      const roleNames = {
+        EN: "English",
+        ES: "Spanish",
+        DE: "German",
+        IT: "Italian",
+        KO: "Korean",
+        RU: "Russian",
+        JA: "Japanese"
+      };
+
+      const role = guild.roles.cache.find(
+        r => r.name === roleNames[lang]
+      );
+
+      if (role) {
+        const member = await guild.members.fetch(interaction.user.id);
+        await member.roles.add(role).catch(() => {});
+      }
+
+      await interaction.reply({
+        content: "✅ Language set! You now have access to your channel.",
+        ephemeral: true
+      });
+
+      return;
+    }
+
+    // ================= SLASH COMMANDS =================
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === "setup") {
@@ -132,7 +178,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
   } catch (err) {
-    console.log("COMMAND ERROR:", err.message);
+    console.log("INTERACTION ERROR:", err.message);
   }
 });
 
