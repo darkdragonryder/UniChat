@@ -73,27 +73,29 @@ client.on("messageCreate", async (message) => {
     .eq("guild_id", message.guild.id)
     .single();
 
-  if (!guildData || !guildData.enabled_channels) return;
+  if (!guildData) return;
 
-  const enabled = guildData.enabled_channels;
+  const enabled = guildData.enabled_channels || {};
   const defaultChannel = guildData.default_channel;
 
-  const channelMap = {};
+  // ================= BUILD CHANNEL MAP (FIXED) =================
+  const channelMap = new Map();
 
   if (defaultChannel) {
-    channelMap[defaultChannel] = "EN";
+    channelMap.set(defaultChannel, "EN");
   }
 
   for (const [lang, id] of Object.entries(enabled)) {
-    channelMap[id] = lang.toUpperCase();
+    channelMap.set(id, lang.toUpperCase());
   }
 
+  // ================= SOURCE LANGUAGE =================
   const sourceLang =
-    channelMap[message.channel.id] || guessLanguage(content);
+    channelMap.get(message.channel.id) || guessLanguage(content);
 
   const member = await message.guild.members.fetch(message.author.id);
 
-  // ================= ROLE SYNC =================
+  // ================= ROLE SYSTEM =================
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
@@ -112,16 +114,20 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ================= TRANSLATION =================
-  for (const [channelId, targetLang] of Object.entries(channelMap)) {
+  // ================= TRANSLATION LOOP (FIXED) =================
+  for (const [channelId, targetLang] of channelMap.entries()) {
+
     if (channelId === message.channel.id) continue;
     if (targetLang === sourceLang) continue;
 
-    const translated = await translateCached(content, targetLang);
     const channel = message.guild.channels.cache.get(channelId);
+    if (!channel) continue;
 
-    if (channel) {
+    try {
+      const translated = await translateCached(content, targetLang);
       await channel.send(`🌍 ${translated}`);
+    } catch (err) {
+      console.log("TRANSLATION ERROR:", err.message);
     }
   }
 });
@@ -130,13 +136,26 @@ client.on("messageCreate", async (message) => {
 client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "setup") return setupCommand(interaction);
-    if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
-    if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
-    if (interaction.commandName === "dashboard") return dashboardCommand(interaction);
+
+    if (interaction.commandName === "setup") {
+      return setupCommand(interaction);
+    }
+
+    if (interaction.commandName === "uninstall") {
+      return uninstallCommand(interaction);
+    }
+
+    if (interaction.commandName === "setlanguage") {
+      return setLanguageCommand(interaction);
+    }
+
+    if (interaction.commandName === "dashboard") {
+      return dashboardCommand(interaction);
+    }
   }
 
   if (interaction.isButton()) {
+
     if (interaction.customId === "dash_setup") {
       const m = await import("./commands/setup.js");
       return m.default(interaction);
