@@ -1,10 +1,10 @@
 import { supabase } from "../services/supabase.js";
 
-const roleNames = ["English", "Spanish", "German", "Italian", "Korean", "Russian"];
+const roles = ["English", "Spanish", "German", "Italian", "Korean", "Russian"];
 
 export default async function uninstallCommand(interaction) {
   await interaction.reply({
-    content: "🧹 Uninstalling UniChat system...",
+    content: "🧹 Uninstalling UniChat...",
     ephemeral: true
   });
 
@@ -16,38 +16,28 @@ export default async function uninstallCommand(interaction) {
     .eq("guild_id", guild.id)
     .single();
 
-  // ================= DELETE CHANNELS =================
   if (data?.enabled_channels) {
-    for (const channelId of Object.values(data.enabled_channels)) {
-      const channel = guild.channels.cache.get(channelId);
-      if (channel) {
-        await channel.delete().catch(() => {});
-      }
+    for (const id of Object.values(data.enabled_channels)) {
+      const ch = guild.channels.cache.get(id);
+      if (ch) await ch.delete().catch(() => {});
     }
   }
 
-  // ================= DELETE CATEGORY =================
   const category = guild.channels.cache.find(c => c.name === "🌍 UniChat");
-  if (category) {
-    await category.delete().catch(() => {});
+  if (category) await category.delete().catch(() => {});
+
+  for (const name of roles) {
+    const r = guild.roles.cache.find(x => x.name === name);
+    if (r) await r.delete().catch(() => {});
   }
 
-  // ================= DELETE ROLES =================
-  for (const roleName of roleNames) {
-    const role = guild.roles.cache.find(r => r.name === roleName);
-    if (role) {
-      await role.delete().catch(() => {});
-    }
-  }
-
-  // ================= CLEAR DB =================
   await supabase
     .from("guild_settings")
     .delete()
     .eq("guild_id", guild.id);
 
   return interaction.followUp({
-    content: "✅ UniChat fully removed from this server.",
+    content: "✅ UniChat removed completely.",
     ephemeral: true
   });
 }
