@@ -19,7 +19,6 @@ const client = new Client({
 
 console.log("🚀 UniChat BOT STARTING");
 
-// ================= READY =================
 client.once("ready", () => {
   console.log(`🚀 UniChat BOT ONLINE: ${client.user.tag}`);
 
@@ -27,12 +26,12 @@ client.once("ready", () => {
     try {
       execSync("node ./src/deployCommands.js", { stdio: "inherit" });
     } catch {
-      console.log("⚠️ Auto deploy skipped");
+      console.log("⚠️ deploy skipped");
     }
   }
 });
 
-// ================= LANGUAGE DETECTION =================
+// ================= LANGUAGE =================
 function guessLanguage(text) {
   if (/[а-яё]/i.test(text)) return "RU";
   if (/[\u3131-\uD79D]/.test(text)) return "KO";
@@ -53,7 +52,7 @@ const roleMap = {
 
 const processed = new Set();
 
-// ================= MESSAGE HANDLER =================
+// ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (message.interaction) return;
@@ -88,7 +87,7 @@ client.on("messageCreate", async (message) => {
 
   const member = await message.guild.members.fetch(message.author.id);
 
-  // ================= ROLE ASSIGN =================
+  // ================= ROLE ONLY (NO PERMISSION EDITS) =================
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
@@ -97,7 +96,6 @@ client.on("messageCreate", async (message) => {
     if (role) {
       const allRoles = Object.values(roleMap);
 
-      // remove old language roles
       for (const r of member.roles.cache.values()) {
         if (allRoles.includes(r.name)) {
           await member.roles.remove(r);
@@ -105,37 +103,6 @@ client.on("messageCreate", async (message) => {
       }
 
       await member.roles.add(role);
-    }
-
-    // ================= CHANNEL SWITCH =================
-    const generalId = defaultChannel;
-    const targetId = channels[sourceLang];
-
-    const general = message.guild.channels.cache.get(generalId);
-    const target = message.guild.channels.cache.get(targetId);
-
-    // NON-ENGLISH USERS
-    if (sourceLang !== "EN") {
-      if (general) {
-        await general.permissionOverwrites.edit(member.id, {
-          ViewChannel: false
-        });
-      }
-
-      if (target) {
-        await target.permissionOverwrites.edit(member.id, {
-          ViewChannel: true
-        });
-      }
-    }
-
-    // ENGLISH USERS
-    if (sourceLang === "EN") {
-      if (general) {
-        await general.permissionOverwrites.edit(member.id, {
-          ViewChannel: true
-        });
-      }
     }
   }
 
