@@ -14,7 +14,6 @@ export async function translateCached(text, targetLang) {
     return data.translated_text;
   }
 
-  // TEMP translation (replace with API later)
   const translated = `[${targetLang}] ${text}`;
 
   await supabase.from("translation_cache").upsert({
