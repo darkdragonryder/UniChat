@@ -23,6 +23,7 @@ client.once("ready", () => {
 
 // ================= LANGUAGE DETECTION =================
 function guessLanguage(text) {
+  if (/[あ-んア-ン一-龯]/.test(text)) return "JA"; // Japanese
   if (/[а-яё]/i.test(text)) return "RU";
   if (/[\u3131-\uD79D]/.test(text)) return "KO";
   if (/[ñ¿¡]/.test(text)) return "ES";
