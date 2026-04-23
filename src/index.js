@@ -23,7 +23,7 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-// ================= JOIN EVENT =================
+// ================= JOIN =================
 client.on("guildMemberAdd", async (member) => {
   try {
     const { data } = await supabase
@@ -32,18 +32,15 @@ client.on("guildMemberAdd", async (member) => {
       .eq("user_id", member.id)
       .maybeSingle();
 
-    if (!data) {
-      const channel = member.guild.systemChannel;
-      if (channel) {
-        await sendLanguagePrompt(channel, member.id);
-      }
+    if (!data && member.guild.systemChannel) {
+      await sendLanguagePrompt(member.guild.systemChannel, member.id);
     }
   } catch (err) {
     console.log("JOIN ERROR:", err.message);
   }
 });
 
-// ================= MESSAGE HANDLER =================
+// ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot || !message.guild) return;
@@ -51,7 +48,6 @@ client.on("messageCreate", async (message) => {
     const content = message.content.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= CHECK USER =================
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -59,11 +55,16 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     if (!user) {
-      await sendLanguagePrompt(message.channel, message.author.id);
+      const sent = await sendLanguagePrompt(message.channel, message.author.id);
+
+      // remove spam prompt after 30s
+      setTimeout(() => {
+        if (sent?.delete) sent.delete().catch(() => {});
+      }, 30000);
+
       return;
     }
 
-    // ================= GUILD CONFIG =================
     const { data } = await supabase
       .from("guild_settings")
       .select("*")
@@ -89,11 +90,8 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    if (!channelMap.size) return;
-
     const sourceLang = user.language || "EN";
 
-    // ================= TRANSLATE =================
     for (const [channelId, targetLang] of channelMap.entries()) {
 
       if (channelId === message.channel.id) continue;
@@ -118,7 +116,7 @@ client.on("messageCreate", async (message) => {
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= LANGUAGE MENU =================
+    // ================= LANGUAGE SELECT =================
     if (interaction.isStringSelectMenu()) {
 
       if (interaction.customId !== "select_language") return;
@@ -141,22 +139,31 @@ client.on("interactionCreate", async (interaction) => {
         JA: "Japanese"
       };
 
-      const role = guild.roles.cache.find(r =>
-        r.name === roleMap[lang]
+      const member = await guild.members.fetch(interaction.user.id);
+
+      // remove old roles first (clean UX)
+      for (const r of Object.values(roleMap)) {
+        const role = guild.roles.cache.find(x => x.name === r);
+        if (role && member.roles.cache.has(role.id)) {
+          await member.roles.remove(role).catch(() => {});
+        }
+      }
+
+      const newRole = guild.roles.cache.find(
+        r => r.name === roleMap[lang]
       );
 
-      if (role) {
-        const member = await guild.members.fetch(interaction.user.id);
-        await member.roles.add(role).catch(() => {});
+      if (newRole) {
+        await member.roles.add(newRole).catch(() => {});
       }
 
       return interaction.reply({
-        content: "✅ Language set!",
+        content: "✅ Language set successfully!",
         ephemeral: true
       });
     }
 
-    // ================= SLASH COMMANDS =================
+    // ================= COMMANDS =================
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === "setup") {
