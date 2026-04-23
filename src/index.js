@@ -6,6 +6,7 @@ import { translateCached } from "./services/cacheTranslate.js";
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import { sendLanguagePrompt } from "./utils/languagePrompt.js";
+import { commandData as setLanguageData } from "./commands/setlanguage.js";
 
 const client = new Client({
   intents: [
