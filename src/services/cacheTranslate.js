@@ -15,14 +15,8 @@ export async function translateCached(text, targetLang) {
     return data.translated_text;
   }
 
-  // ================= TRANSLATE =================
-  let translated;
-  try {
-    translated = await realTranslate(text, targetLang);
-  } catch (err) {
-    console.log("TRANSLATION ERROR:", err.message);
-    translated = text;
-  }
+  // ================= FAKE TRANSLATION PLACEHOLDER =================
+  let translated = `[${targetLang}] ${text}`;
 
   // ================= SAVE CACHE =================
   const { error } = await supabase
@@ -33,7 +27,7 @@ export async function translateCached(text, targetLang) {
     });
 
   if (error) {
-    console.log("CACHE WRITE ERROR:", error.message);
+    console.log("CACHE ERROR:", error.message);
   }
 
   return translated;
