@@ -1,11 +1,7 @@
 import "dotenv/config";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
+import { commandData as setLanguageData } from "./commands/setlanguage.js";
 
-import setupCommand from "./commands/setup.js";
-import uninstallCommand from "./commands/uninstall.js";
-import setLanguageCommand, { commandData as setLanguageData } from "./commands/setlanguage.js";
-
-// ================= COMMANDS =================
 const commands = [
   new SlashCommandBuilder()
     .setName("setup")
@@ -18,20 +14,19 @@ const commands = [
   setLanguageData
 ].map(cmd => cmd.toJSON());
 
-// ================= DEPLOY =================
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log("🚀 Deploying slash commands...");
+    console.log("🚀 Deploying commands...");
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
 
-    console.log("✅ Slash commands deployed successfully");
+    console.log("✅ Commands deployed");
   } catch (err) {
-    console.log("❌ Deploy failed:", err);
+    console.log("❌ Deploy error:", err);
   }
 })();
