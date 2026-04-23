@@ -28,8 +28,8 @@ client.once("ready", () => {
     try {
       console.log("🔁 Auto deploying slash commands...");
       execSync("node ./src/deployCommands.js", { stdio: "inherit" });
-    } catch (err) {
-      console.log("❌ Auto deploy failed:", err.message);
+    } catch {
+      console.log("⚠️ Deploy skipped or failed");
     }
   }
 });
@@ -49,6 +49,7 @@ const processed = new Set();
 // ================= MESSAGE SYSTEM =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
+  if (message.interaction) return;
 
   const content = message.content.trim();
   if (!content || content.startsWith("/")) return;
@@ -75,18 +76,19 @@ client.on("messageCreate", async (message) => {
     }, {})
   };
 
-  const sourceLang = channelMap[message.channel.id] || guessLanguage(content);
+  const sourceLang =
+    channelMap[message.channel.id] || guessLanguage(content);
 
   await supabase.from("user_settings").upsert({
     user_id: message.author.id,
     language: sourceLang
   });
 
-  for (const [channelId, lang] of Object.entries(channelMap)) {
+  for (const [channelId, targetLang] of Object.entries(channelMap)) {
     if (channelId === message.channel.id) continue;
-    if (lang === sourceLang) continue;
+    if (targetLang === sourceLang) continue;
 
-    const translated = await translateCached(content, lang);
+    const translated = await translateCached(content, targetLang);
     const channel = message.guild.channels.cache.get(channelId);
 
     if (channel) {
@@ -97,15 +99,18 @@ client.on("messageCreate", async (message) => {
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === "setup") {
-    return setupCommand(interaction);
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "setup") return setupCommand(interaction);
+    if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
   }
 
-  if (interaction.commandName === "uninstall") {
-    return uninstallCommand(interaction);
+  if (interaction.isButton()) {
+    if (interaction.customId === "dismiss") {
+      return interaction.message.delete().catch(() => {});
+    }
   }
+
 });
 
 client.login(process.env.DISCORD_TOKEN);
