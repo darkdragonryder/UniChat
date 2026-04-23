@@ -1,7 +1,5 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
-import { execSync } from "child_process";
-
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
@@ -19,20 +17,11 @@ const client = new Client({
   ]
 });
 
-console.log("🚀 UniChat BOT STARTING");
+console.log("🚀 UniChat STARTING");
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat BOT ONLINE: ${client.user.tag}`);
-
-  if (process.env.AUTO_DEPLOY === "true") {
-    try {
-      console.log("🔁 Auto deploying slash commands...");
-      execSync("node ./src/deployCommands.js", { stdio: "inherit" });
-    } catch (err) {
-      console.log("⚠️ Auto deploy failed:", err.message);
-    }
-  }
+  console.log(`🚀 ONLINE: ${client.user.tag}`);
 });
 
 // ================= LANGUAGE DETECTION =================
@@ -54,31 +43,25 @@ const roleMap = {
   RU: "Russian"
 };
 
-const processed = new Set();
-
-// ================= MESSAGE ENGINE =================
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
-  if (message.interaction) return;
 
   const content = message.content.trim();
   if (!content || content.startsWith("/")) return;
-
-  if (processed.has(message.id)) return;
-  processed.add(message.id);
 
   const { data: guildData } = await supabase
     .from("guild_settings")
     .select("*")
     .eq("guild_id", message.guild.id)
-    .single();
+    .maybeSingle();
 
   if (!guildData) return;
 
-  const enabled = guildData.enabled_channels || {};
+  const enabled = guildData.enabled_channels ?? {};
   const defaultChannel = guildData.default_channel;
 
-  // ================= BUILD CHANNEL MAP (FIXED) =================
+  // ================= CHANNEL MAP =================
   const channelMap = new Map();
 
   if (defaultChannel) {
@@ -89,23 +72,23 @@ client.on("messageCreate", async (message) => {
     channelMap.set(id, lang.toUpperCase());
   }
 
-  // ================= SOURCE LANGUAGE =================
+  console.log("MAP:", [...channelMap.entries()]);
+
   const sourceLang =
     channelMap.get(message.channel.id) || guessLanguage(content);
 
-  const member = await message.guild.members.fetch(message.author.id);
+  console.log("SOURCE:", sourceLang);
 
-  // ================= ROLE SYSTEM =================
+  // ================= ROLE ASSIGN =================
+  const member = await message.guild.members.fetch(message.author.id);
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
     const role = message.guild.roles.cache.find(r => r.name === roleName);
 
     if (role) {
-      const allRoles = Object.values(roleMap);
-
       for (const r of member.roles.cache.values()) {
-        if (allRoles.includes(r.name)) {
+        if (Object.values(roleMap).includes(r.name)) {
           await member.roles.remove(r).catch(() => {});
         }
       }
@@ -114,64 +97,45 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ================= TRANSLATION LOOP (FIXED) =================
+  // ================= TRANSLATION =================
   for (const [channelId, targetLang] of channelMap.entries()) {
 
     if (channelId === message.channel.id) continue;
+    if (!targetLang) continue;
     if (targetLang === sourceLang) continue;
 
-    const channel = message.guild.channels.cache.get(channelId);
+    const channel = await message.guild.channels.fetch(channelId).catch(() => null);
     if (!channel) continue;
 
-    try {
-      const translated = await translateCached(content, targetLang);
-      await channel.send(`🌍 ${translated}`);
-    } catch (err) {
-      console.log("TRANSLATION ERROR:", err.message);
-    }
+    const translated = await translateCached(content, targetLang);
+
+    if (!translated) continue;
+
+    await channel.send(`🌍 ${translated}`).catch(err => {
+      console.log("SEND FAIL:", err.message);
+    });
   }
 });
 
-// ================= INTERACTIONS =================
+// ================= COMMANDS =================
 client.on("interactionCreate", async (interaction) => {
 
-  if (interaction.isChatInputCommand()) {
+  if (!interaction.isChatInputCommand()) return;
 
-    if (interaction.commandName === "setup") {
-      return setupCommand(interaction);
-    }
-
-    if (interaction.commandName === "uninstall") {
-      return uninstallCommand(interaction);
-    }
-
-    if (interaction.commandName === "setlanguage") {
-      return setLanguageCommand(interaction);
-    }
-
-    if (interaction.commandName === "dashboard") {
-      return dashboardCommand(interaction);
-    }
+  if (interaction.commandName === "setup") {
+    return setupCommand(interaction);
   }
 
-  if (interaction.isButton()) {
+  if (interaction.commandName === "uninstall") {
+    return uninstallCommand(interaction);
+  }
 
-    if (interaction.customId === "dash_setup") {
-      const m = await import("./commands/setup.js");
-      return m.default(interaction);
-    }
+  if (interaction.commandName === "setlanguage") {
+    return setLanguageCommand(interaction);
+  }
 
-    if (interaction.customId === "dash_uninstall") {
-      const m = await import("./commands/uninstall.js");
-      return m.default(interaction);
-    }
-
-    if (interaction.customId === "dash_sync") {
-      return interaction.reply({
-        content: "🔄 Syncing roles...",
-        ephemeral: true
-      });
-    }
+  if (interaction.commandName === "dashboard") {
+    return dashboardCommand(interaction);
   }
 });
 
