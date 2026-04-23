@@ -57,7 +57,7 @@ const roleMap = {
 
 const processed = new Set();
 
-// ================= MESSAGE SYSTEM =================
+// ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (message.interaction) return;
@@ -92,7 +92,7 @@ client.on("messageCreate", async (message) => {
 
   const member = await message.guild.members.fetch(message.author.id);
 
-  // ================= ROLE ASSIGN =================
+  // ================= ROLE SYSTEM =================
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
@@ -103,11 +103,11 @@ client.on("messageCreate", async (message) => {
 
       for (const r of member.roles.cache.values()) {
         if (allRoles.includes(r.name)) {
-          await member.roles.remove(r);
+          await member.roles.remove(r).catch(() => {});
         }
       }
 
-      await member.roles.add(role);
+      await member.roles.add(role).catch(() => {});
     }
   }
 
@@ -128,7 +128,7 @@ client.on("messageCreate", async (message) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // ================= SLASH COMMAND ROUTING =================
+  // ================= SLASH COMMANDS =================
   if (interaction.isChatInputCommand()) {
 
     if (interaction.commandName === "setup") {
@@ -148,7 +148,7 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // ================= DASHBOARD BUTTONS =================
+  // ================= BUTTONS (ONLY DASHBOARD NOW) =================
   if (interaction.isButton()) {
 
     if (interaction.customId === "dash_setup") {
@@ -167,12 +167,9 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true
       });
     }
-
-    // legacy dismiss support (if still used anywhere)
-    if (interaction.customId === "dismiss") {
-      return interaction.message.delete().catch(() => {});
-    }
   }
+
+  // ❌ NO DISMISS BUTTON HANDLING ANYMORE
 });
 
 client.login(process.env.DISCORD_TOKEN);
