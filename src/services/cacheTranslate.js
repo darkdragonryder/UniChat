@@ -1,44 +1,26 @@
 import { supabase } from "./supabase.js";
-import { translateText as deeplTranslate } from "./deepl.js";
-import crypto from "crypto";
 
-// ================= HASH =================
-function makeHash(text, lang) {
-  return crypto
-    .createHash("sha256")
-    .update(text + "|" + lang)
-    .digest("hex");
-}
+export async function translateCached(text, targetLang) {
 
-// ================= GET CACHE =================
-async function getCache(hash) {
+  const key = `${text.toLowerCase()}::${targetLang}`;
+
   const { data } = await supabase
     .from("translation_cache")
-    .select("translated_text")
-    .eq("hash", hash)
-    .single();
+    .select("translated")
+    .eq("cache_key", key)
+    .maybeSingle();
 
-  return data?.translated_text || null;
-}
+  if (data?.translated) {
+    return data.translated;
+  }
 
-// ================= SET CACHE =================
-async function setCache(hash, text) {
+  // call real translation API here
+  const translated = await realTranslate(text, targetLang);
+
   await supabase.from("translation_cache").upsert({
-    hash,
-    translated_text: text
+    cache_key: key,
+    translated
   });
-}
-
-// ================= MAIN WRAPPER =================
-export async function translateCached(text, targetLang) {
-  const hash = makeHash(text, targetLang);
-
-  const cached = await getCache(hash);
-  if (cached) return cached;
-
-  const translated = await deeplTranslate(text, targetLang);
-
-  await setCache(hash, translated);
 
   return translated;
 }
