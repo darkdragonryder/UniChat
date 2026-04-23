@@ -4,7 +4,6 @@ export async function translateCached(text, targetLang) {
 
   const hash = `${text.toLowerCase()}::${targetLang}`;
 
-  // ================= CHECK CACHE =================
   const { data } = await supabase
     .from("translation_cache")
     .select("translated_text")
@@ -15,20 +14,13 @@ export async function translateCached(text, targetLang) {
     return data.translated_text;
   }
 
-  // ================= FAKE TRANSLATION PLACEHOLDER =================
-  let translated = `[${targetLang}] ${text}`;
+  // TEMP translation (replace with API later)
+  const translated = `[${targetLang}] ${text}`;
 
-  // ================= SAVE CACHE =================
-  const { error } = await supabase
-    .from("translation_cache")
-    .upsert({
-      hash,
-      translated_text: translated
-    });
-
-  if (error) {
-    console.log("CACHE ERROR:", error.message);
-  }
+  await supabase.from("translation_cache").upsert({
+    hash,
+    translated_text: translated
+  });
 
   return translated;
 }
