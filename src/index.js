@@ -8,6 +8,7 @@ import { translateCached } from "./services/cacheTranslate.js";
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
+import dashboardCommand from "./commands/dashboard.js";
 
 const client = new Client({
   intents: [
@@ -56,7 +57,7 @@ const roleMap = {
 
 const processed = new Set();
 
-// ================= MESSAGE HANDLER =================
+// ================= MESSAGE SYSTEM =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (message.interaction) return;
@@ -91,7 +92,7 @@ client.on("messageCreate", async (message) => {
 
   const member = await message.guild.members.fetch(message.author.id);
 
-  // ================= ROLE SYSTEM =================
+  // ================= ROLE ASSIGN =================
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
@@ -100,7 +101,6 @@ client.on("messageCreate", async (message) => {
     if (role) {
       const allRoles = Object.values(roleMap);
 
-      // remove old language roles
       for (const r of member.roles.cache.values()) {
         if (allRoles.includes(r.name)) {
           await member.roles.remove(r);
@@ -111,7 +111,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ================= TRANSLATION ENGINE =================
+  // ================= TRANSLATION =================
   for (const [channelId, targetLang] of Object.entries(channelMap)) {
     if (channelId === message.channel.id) continue;
     if (targetLang === sourceLang) continue;
@@ -119,22 +119,56 @@ client.on("messageCreate", async (message) => {
     const translated = await translateCached(content, targetLang);
     const channel = message.guild.channels.cache.get(channelId);
 
-    if (!channel) continue;
-
-    await channel.send(`🌍 ${translated}`);
+    if (channel) {
+      await channel.send(`🌍 ${translated}`);
+    }
   }
 });
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
+  // ================= SLASH COMMAND ROUTING =================
   if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "setup") return setupCommand(interaction);
-    if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
-    if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
+
+    if (interaction.commandName === "setup") {
+      return setupCommand(interaction);
+    }
+
+    if (interaction.commandName === "uninstall") {
+      return uninstallCommand(interaction);
+    }
+
+    if (interaction.commandName === "setlanguage") {
+      return setLanguageCommand(interaction);
+    }
+
+    if (interaction.commandName === "dashboard") {
+      return dashboardCommand(interaction);
+    }
   }
 
+  // ================= DASHBOARD BUTTONS =================
   if (interaction.isButton()) {
+
+    if (interaction.customId === "dash_setup") {
+      const setup = await import("./commands/setup.js");
+      return setup.default(interaction);
+    }
+
+    if (interaction.customId === "dash_uninstall") {
+      const uninstall = await import("./commands/uninstall.js");
+      return uninstall.default(interaction);
+    }
+
+    if (interaction.customId === "dash_sync") {
+      return interaction.reply({
+        content: "🔄 Syncing UniChat roles...",
+        ephemeral: true
+      });
+    }
+
+    // legacy dismiss support (if still used anywhere)
     if (interaction.customId === "dismiss") {
       return interaction.message.delete().catch(() => {});
     }
