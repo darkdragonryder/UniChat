@@ -1,4 +1,4 @@
-import { ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } from "discord.js";
+import { ActionRowBuilder, StringSelectMenuBuilder } from "discord.js";
 
 export function buildLanguageMenu() {
   return new ActionRowBuilder().addComponents(
@@ -18,15 +18,8 @@ export function buildLanguageMenu() {
 }
 
 export async function sendLanguagePrompt(channel, userId) {
-
-  const embed = new EmbedBuilder()
-    .setTitle("🌍 Welcome to UniChat")
-    .setDescription("Select your language to continue.\nThis unlocks your chat channels automatically.")
-    .setColor(0x00aaff);
-
   return await channel.send({
-    content: `<@${userId}>`,
-    embeds: [embed],
+    content: `<@${userId}> 🌍 Choose your language`,
     components: [buildLanguageMenu()]
   });
 }
