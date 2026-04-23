@@ -1,44 +1,54 @@
-import { ChannelType, EmbedBuilder } from "discord.js";
-
-const LANGUAGES = {
-  es: { name: "Spanish", flag: "🇪🇸" },
-  de: { name: "German", flag: "🇩🇪" },
-  it: { name: "Italian", flag: "🇮🇹" },
-  ko: { name: "Korean", flag: "🇰🇷" },
-  ru: { name: "Russian", flag: "🇷🇺" }
-};
+import { supabase } from "../services/supabase.js";
 
 export default async function uninstallCommand(interaction) {
-  if (!interaction.member.permissions.has("Administrator")) {
-    return interaction.reply({ content: "❌ Admin only", ephemeral: true });
-  }
 
   await interaction.reply({
     content: "🧹 Removing UniChat...",
     ephemeral: true
   });
 
-  const guild = interaction.guild;
+  const { data } = await supabase
+    .from("guild_settings")
+    .select("*")
+    .eq("guild_id", interaction.guild.id)
+    .single();
 
-  const category = guild.channels.cache.find(
-    c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
+  if (data) {
+    const channels = data.enabled_channels || {};
+
+    for (const id of Object.values(channels)) {
+      const ch = interaction.guild.channels.cache.get(id);
+      if (ch) await ch.delete().catch(() => {});
+    }
+  }
+
+  // delete UniChat category
+  const category = interaction.guild.channels.cache.find(
+    c => c.name === "UniChat"
   );
 
   if (category) await category.delete().catch(() => {});
 
-  const { supabase } = await import("../services/supabase.js");
-
   await supabase
     .from("guild_settings")
     .delete()
-    .eq("guild_id", guild.id);
+    .eq("guild_id", interaction.guild.id);
 
   await interaction.followUp({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("✅ UniChat Removed")
-        .setColor("Red")
-    ],
-    ephemeral: true
+    content: "✅ UniChat removed",
+    ephemeral: true,
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            label: "Dismiss",
+            style: 4,
+            custom_id: "dismiss"
+          }
+        ]
+      }
+    ]
   });
 }
