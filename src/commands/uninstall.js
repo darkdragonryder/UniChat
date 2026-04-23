@@ -10,7 +10,6 @@ export default async function uninstallCommand(interaction) {
   const guild = interaction.guild;
   const channels = await guild.channels.fetch();
 
-  // ================= DELETE CATEGORY + CHILDREN =================
   const category = channels.find(c => c.name === "🌍 UniChat");
 
   if (category) {
@@ -22,14 +21,12 @@ export default async function uninstallCommand(interaction) {
     await category.delete().catch(() => {});
   }
 
-  // ================= FALLBACK CLEAN =================
   for (const ch of channels.values()) {
     if (ch.name?.startsWith("general-")) {
       await ch.delete().catch(() => {});
     }
   }
 
-  // ================= CLEAR DB =================
   await supabase
     .from("guild_settings")
     .delete()
