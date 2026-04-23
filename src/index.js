@@ -45,7 +45,6 @@ function guessLanguage(text) {
   return "EN";
 }
 
-// ================= ROLE MAP =================
 const roleMap = {
   EN: "English",
   ES: "Spanish",
@@ -74,25 +73,27 @@ client.on("messageCreate", async (message) => {
     .eq("guild_id", message.guild.id)
     .single();
 
-  if (!guildData) return;
+  if (!guildData || !guildData.enabled_channels) return;
 
-  const channels = guildData.enabled_channels || {};
+  const enabled = guildData.enabled_channels;
   const defaultChannel = guildData.default_channel;
 
-  const channelMap = {
-    [defaultChannel]: "EN",
-    ...Object.entries(channels).reduce((acc, [lang, id]) => {
-      acc[id] = lang;
-      return acc;
-    }, {})
-  };
+  const channelMap = {};
+
+  if (defaultChannel) {
+    channelMap[defaultChannel] = "EN";
+  }
+
+  for (const [lang, id] of Object.entries(enabled)) {
+    channelMap[id] = lang.toUpperCase();
+  }
 
   const sourceLang =
     channelMap[message.channel.id] || guessLanguage(content);
 
   const member = await message.guild.members.fetch(message.author.id);
 
-  // ================= ROLE SYSTEM =================
+  // ================= ROLE SYNC =================
   const roleName = roleMap[sourceLang];
 
   if (roleName) {
@@ -128,48 +129,31 @@ client.on("messageCreate", async (message) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // ================= SLASH COMMANDS =================
   if (interaction.isChatInputCommand()) {
-
-    if (interaction.commandName === "setup") {
-      return setupCommand(interaction);
-    }
-
-    if (interaction.commandName === "uninstall") {
-      return uninstallCommand(interaction);
-    }
-
-    if (interaction.commandName === "setlanguage") {
-      return setLanguageCommand(interaction);
-    }
-
-    if (interaction.commandName === "dashboard") {
-      return dashboardCommand(interaction);
-    }
+    if (interaction.commandName === "setup") return setupCommand(interaction);
+    if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
+    if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
+    if (interaction.commandName === "dashboard") return dashboardCommand(interaction);
   }
 
-  // ================= BUTTONS (ONLY DASHBOARD NOW) =================
   if (interaction.isButton()) {
-
     if (interaction.customId === "dash_setup") {
-      const setup = await import("./commands/setup.js");
-      return setup.default(interaction);
+      const m = await import("./commands/setup.js");
+      return m.default(interaction);
     }
 
     if (interaction.customId === "dash_uninstall") {
-      const uninstall = await import("./commands/uninstall.js");
-      return uninstall.default(interaction);
+      const m = await import("./commands/uninstall.js");
+      return m.default(interaction);
     }
 
     if (interaction.customId === "dash_sync") {
       return interaction.reply({
-        content: "🔄 Syncing UniChat roles...",
+        content: "🔄 Syncing roles...",
         ephemeral: true
       });
     }
   }
-
-  // ❌ NO DISMISS BUTTON HANDLING ANYMORE
 });
 
 client.login(process.env.DISCORD_TOKEN);
