@@ -2,64 +2,35 @@ import { supabase } from "../services/supabase.js";
 
 export default async function uninstallCommand(interaction) {
 
-  await interaction.reply({
-    content: "🧹 Uninstalling UniChat...",
-    ephemeral: true
-  });
+  await interaction.reply({ content: "🧹 Uninstalling...", ephemeral: true });
 
   const guild = interaction.guild;
   const channels = await guild.channels.fetch();
 
-  // ================= DELETE CATEGORY + CHILDREN =================
+  // DELETE LANGUAGE CHANNELS
   for (const ch of channels.values()) {
-    if (ch.name?.startsWith("general-") || ch.name === "general") continue;
-
-    if (ch.parent?.name === "🌍 UniChat") {
+    if (ch.name?.startsWith("general-")) {
       await ch.delete().catch(() => {});
     }
   }
 
+  // DELETE CATEGORY
   const category = channels.find(c => c.name === "🌍 UniChat");
+  if (category) await category.delete().catch(() => {});
 
-  if (category) {
-    for (const ch of channels.values()) {
-      if (ch.parentId === category.id) {
-        await ch.delete().catch(() => {});
-      }
-    }
-    await category.delete().catch(() => {});
-  }
+  // DELETE ROLES
+  const roles = ["English","Spanish","German","Italian","Korean","Russian","Japanese"];
 
-  // ================= DELETE ROLES =================
-  const roleNames = [
-    "English",
-    "Spanish",
-    "German",
-    "Italian",
-    "Korean",
-    "Russian",
-    "Japanese"
-  ];
-
-  for (const roleName of roleNames) {
-    const role = guild.roles.cache.find(r => r.name === roleName);
+  for (const name of roles) {
+    const role = guild.roles.cache.find(r => r.name === name);
     if (role) await role.delete().catch(() => {});
   }
 
-  // ================= CLEAR DB =================
-  await supabase
-    .from("guild_settings")
-    .delete()
-    .eq("guild_id", guild.id);
+  // DB CLEAN
+  await supabase.from("guild_settings").delete().eq("guild_id", guild.id);
 
-  await supabase
-    .from("user_settings")
-    .delete()
-    .in("user_id", (await guild.members.fetch()).map(m => m.id))
-    .catch(() => {});
-
-  return interaction.followUp({
-    content: "✅ Fully removed (channels, roles, DB)",
+  await interaction.followUp({
+    content: "✅ Fully removed",
     ephemeral: true
   });
 }
