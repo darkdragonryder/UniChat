@@ -1,58 +1,65 @@
-import { supabase } from "../services/supabase.js";
+import { supabase } from "./supabase.js";
 
-const languages = {
-  ES: "🇪🇸",
-  DE: "🇩🇪",
-  IT: "🇮🇹",
-  KO: "🇰🇷",
-  RU: "🇷🇺",
-  JA: "🇯🇵"
-};
+const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
 
-export default async function setupCommand(interaction) {
+// DeepL uses EN, ES, DE, IT, JA, KO, RU (you’re good)
+export async function translateCached(text, targetLang) {
 
-  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
+  if (!text || text.length < 1) return text;
 
-  const guild = interaction.guild;
+  const hash = `${text.toLowerCase()}::${targetLang}`;
 
-  // ================= CREATE CATEGORY =================
-  const category = await guild.channels.create({
-    name: "🌍 UniChat",
-    type: 4
-  });
+  // ================= CACHE CHECK =================
+  const { data } = await supabase
+    .from("translation_cache")
+    .select("translated_text")
+    .eq("hash", hash)
+    .maybeSingle();
 
-  // ================= POSITION UNDER GENERAL =================
-  const general = guild.channels.cache.find(
-    c => c.name === "general" && c.type === 0
-  );
-
-  if (general) {
-    await category.setPosition(general.position + 1).catch(() => {});
+  if (data?.translated_text) {
+    return data.translated_text;
   }
 
-  // ================= CREATE LANGUAGE CHANNELS =================
-  const enabled_channels = {};
+  // ================= CALL DEEPL =================
+  let translated = text;
 
-  for (const [lang, emoji] of Object.entries(languages)) {
-
-    const channel = await guild.channels.create({
-      name: `general-${emoji}`,
-      type: 0,
-      parent: category.id
+  try {
+    const res = await fetch(DEEPL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`
+      },
+      body: JSON.stringify({
+        text: [text],
+        target_lang: targetLang
+      })
     });
 
-    enabled_channels[lang] = channel.id;
+    const result = await res.json();
+
+    if (result?.translations?.[0]?.text) {
+      translated = result.translations[0].text;
+    } else {
+      console.log("DEEPL BAD RESPONSE:", result);
+    }
+
+  } catch (err) {
+    console.log("DEEPL ERROR:", err.message);
+    translated = text; // fallback
   }
 
-  // ================= SAVE TO DB =================
-  await supabase.from("guild_settings").upsert({
-    guild_id: guild.id,
-    default_channel: general?.id ?? null,
-    enabled_channels
-  });
+  // ================= SAVE CACHE =================
+  const { error } = await supabase
+    .from("translation_cache")
+    .upsert({
+      hash,
+      translated_text: translated
+    });
 
-  return interaction.followUp({
-    content: "✅ UniChat setup complete",
-    ephemeral: true
-  });
+  if (error) {
+    console.log("CACHE SAVE ERROR:", error.message);
+  }
+
+  return translated;
 }
