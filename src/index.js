@@ -5,8 +5,8 @@ import { translateCached } from "./services/cacheTranslate.js";
 
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
-import { sendLanguagePrompt } from "./utils/languagePrompt.js";
 import setLanguageCommand from "./commands/setlanguage.js";
+import { sendLanguagePrompt } from "./utils/languagePrompt.js";
 
 const client = new Client({
   intents: [
@@ -23,8 +23,7 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-
-// ================= USER JOIN =================
+// ================= JOIN EVENT =================
 client.on("guildMemberAdd", async (member) => {
   try {
     const { data } = await supabase
@@ -44,7 +43,6 @@ client.on("guildMemberAdd", async (member) => {
   }
 });
 
-
 // ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
   try {
@@ -53,7 +51,7 @@ client.on("messageCreate", async (message) => {
     const content = message.content.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= CHECK USER LANGUAGE =================
+    // ================= CHECK USER =================
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -65,7 +63,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // ================= GET GUILD CONFIG =================
+    // ================= GUILD CONFIG =================
     const { data } = await supabase
       .from("guild_settings")
       .select("*")
@@ -77,7 +75,6 @@ client.on("messageCreate", async (message) => {
     const enabled = data.enabled_channels ?? {};
     const defaultChannel = data.default_channel;
 
-    // ================= FETCH CHANNELS =================
     const channels = await message.guild.channels.fetch();
 
     const channelMap = new Map();
@@ -92,7 +89,7 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    if (channelMap.size === 0) return;
+    if (!channelMap.size) return;
 
     const sourceLang = user.language || "EN";
 
@@ -100,7 +97,6 @@ client.on("messageCreate", async (message) => {
     for (const [channelId, targetLang] of channelMap.entries()) {
 
       if (channelId === message.channel.id) continue;
-      if (!targetLang) continue;
       if (targetLang === sourceLang) continue;
 
       const channel = channels.get(channelId);
@@ -110,9 +106,7 @@ client.on("messageCreate", async (message) => {
 
       if (!translated || translated === content) continue;
 
-      await channel.send(`🌍 ${translated}`).catch(err => {
-        console.log("SEND ERROR:", err.message);
-      });
+      await channel.send(`🌍 ${translated}`).catch(() => {});
     }
 
   } catch (err) {
@@ -120,12 +114,11 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= LANGUAGE SELECT =================
+    // ================= LANGUAGE MENU =================
     if (interaction.isStringSelectMenu()) {
 
       if (interaction.customId !== "select_language") return;
@@ -133,14 +126,12 @@ client.on("interactionCreate", async (interaction) => {
       const lang = interaction.values[0];
       const guild = interaction.guild;
 
-      // SAVE USER LANGUAGE
       await supabase.from("user_settings").upsert({
         user_id: interaction.user.id,
         language: lang
       });
 
-      // ROLE NAME MAP
-      const roleNames = {
+      const roleMap = {
         EN: "English",
         ES: "Spanish",
         DE: "German",
@@ -150,8 +141,8 @@ client.on("interactionCreate", async (interaction) => {
         JA: "Japanese"
       };
 
-      const role = guild.roles.cache.find(
-        r => r.name === roleNames[lang]
+      const role = guild.roles.cache.find(r =>
+        r.name === roleMap[lang]
       );
 
       if (role) {
@@ -159,12 +150,10 @@ client.on("interactionCreate", async (interaction) => {
         await member.roles.add(role).catch(() => {});
       }
 
-      await interaction.reply({
-        content: "✅ Language set! You now have access to your channel.",
+      return interaction.reply({
+        content: "✅ Language set!",
         ephemeral: true
       });
-
-      return;
     }
 
     // ================= SLASH COMMANDS =================
@@ -176,6 +165,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.commandName === "uninstall") {
       return uninstallCommand(interaction);
+    }
+
+    if (interaction.commandName === "setlanguage") {
+      return setLanguageCommand(interaction);
     }
 
   } catch (err) {
