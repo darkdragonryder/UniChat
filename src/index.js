@@ -17,169 +17,136 @@ const client = new Client({
   ]
 });
 
-console.log("🚀 UniChat STARTING");
-
 client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
 // ================= JOIN =================
 client.on("guildMemberAdd", async (member) => {
-  try {
-    const { data } = await supabase
-      .from("user_settings")
-      .select("*")
-      .eq("user_id", member.id)
-      .maybeSingle();
+  const { data } = await supabase
+    .from("user_settings")
+    .select("*")
+    .eq("user_id", member.id)
+    .maybeSingle();
 
-    if (!data && member.guild.systemChannel) {
-      await sendLanguagePrompt(member.guild.systemChannel, member.id);
-    }
-  } catch (err) {
-    console.log("JOIN ERROR:", err.message);
+  if (!data && member.guild.systemChannel) {
+    await sendLanguagePrompt(member.guild.systemChannel, member.id);
   }
 });
 
 // ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
-  try {
-    if (message.author.bot || !message.guild) return;
+  if (message.author.bot || !message.guild) return;
 
-    const content = message.content.trim();
-    if (!content || content.startsWith("/")) return;
+  const content = message.content.trim();
+  if (!content || content.startsWith("/")) return;
 
-    const { data: user } = await supabase
-      .from("user_settings")
-      .select("*")
-      .eq("user_id", message.author.id)
-      .maybeSingle();
+  // USER
+  const { data: user } = await supabase
+    .from("user_settings")
+    .select("*")
+    .eq("user_id", message.author.id)
+    .maybeSingle();
 
-    if (!user) {
-      const sent = await sendLanguagePrompt(message.channel, message.author.id);
+  if (!user) {
+    await sendLanguagePrompt(message.channel, message.author.id);
+    return;
+  }
 
-      // remove spam prompt after 30s
-      setTimeout(() => {
-        if (sent?.delete) sent.delete().catch(() => {});
-      }, 30000);
+  // GUILD SETTINGS
+  const { data } = await supabase
+    .from("guild_settings")
+    .select("*")
+    .eq("guild_id", message.guild.id)
+    .maybeSingle();
 
-      return;
-    }
+  if (!data) return;
 
-    const { data } = await supabase
-      .from("guild_settings")
-      .select("*")
-      .eq("guild_id", message.guild.id)
-      .maybeSingle();
+  const enabled = data.enabled_channels ?? {};
+  const channels = await message.guild.channels.fetch();
 
-    if (!data) return;
+  const sourceLang = (user.language || "EN").toUpperCase();
 
-    const enabled = data.enabled_channels ?? {};
-    const defaultChannel = data.default_channel;
+  for (const [targetLang, channelId] of Object.entries(enabled)) {
 
-    const channels = await message.guild.channels.fetch();
+    if (targetLang.toUpperCase() === sourceLang) continue;
 
-    const channelMap = new Map();
+    const channel = channels.get(channelId);
+    if (!channel) continue;
 
-    if (defaultChannel && channels.get(defaultChannel)) {
-      channelMap.set(defaultChannel, "EN");
-    }
+    const translated = await translateCached(content, targetLang);
 
-    for (const [lang, id] of Object.entries(enabled)) {
-      if (channels.get(id)) {
-        channelMap.set(id, lang.toUpperCase());
-      }
-    }
+    if (!translated || translated === content) continue;
 
-    const sourceLang = user.language || "EN";
-
-    for (const [channelId, targetLang] of channelMap.entries()) {
-
-      if (channelId === message.channel.id) continue;
-      if (targetLang === sourceLang) continue;
-
-      const channel = channels.get(channelId);
-      if (!channel) continue;
-
-      const translated = await translateCached(content, targetLang);
-
-      if (!translated || translated === content) continue;
-
-      await channel.send(`🌍 ${translated}`).catch(() => {});
-    }
-
-  } catch (err) {
-    console.log("MESSAGE ERROR:", err.message);
+    await channel.send(`🌍 ${translated}`).catch(() => {});
   }
 });
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
-  try {
 
-    // ================= LANGUAGE SELECT =================
-    if (interaction.isStringSelectMenu()) {
+  // LANGUAGE SELECT
+  if (interaction.isStringSelectMenu()) {
 
-      if (interaction.customId !== "select_language") return;
+    if (interaction.customId !== "select_language") return;
 
-      const lang = interaction.values[0];
-      const guild = interaction.guild;
+    const lang = interaction.values[0];
+    const guild = interaction.guild;
 
-      await supabase.from("user_settings").upsert({
-        user_id: interaction.user.id,
-        language: lang
-      });
+    await supabase.from("user_settings").upsert({
+      user_id: interaction.user.id,
+      language: lang
+    });
 
-      const roleMap = {
-        EN: "English",
-        ES: "Spanish",
-        DE: "German",
-        IT: "Italian",
-        KO: "Korean",
-        RU: "Russian",
-        JA: "Japanese"
-      };
+    const roleMap = {
+      EN: "English",
+      ES: "Spanish",
+      DE: "German",
+      IT: "Italian",
+      KO: "Korean",
+      RU: "Russian",
+      JA: "Japanese"
+    };
 
-      const member = await guild.members.fetch(interaction.user.id);
+    const member = await guild.members.fetch(interaction.user.id);
 
-      // remove old roles first (clean UX)
-      for (const r of Object.values(roleMap)) {
-        const role = guild.roles.cache.find(x => x.name === r);
-        if (role && member.roles.cache.has(role.id)) {
-          await member.roles.remove(role).catch(() => {});
-        }
+    // REMOVE OLD ROLES
+    for (const name of Object.values(roleMap)) {
+      const role = guild.roles.cache.find(r => r.name === name);
+      if (role && member.roles.cache.has(role.id)) {
+        await member.roles.remove(role).catch(() => {});
       }
-
-      const newRole = guild.roles.cache.find(
-        r => r.name === roleMap[lang]
-      );
-
-      if (newRole) {
-        await member.roles.add(newRole).catch(() => {});
-      }
-
-      return interaction.reply({
-        content: "✅ Language set successfully!",
-        ephemeral: true
-      });
     }
 
-    // ================= COMMANDS =================
-    if (!interaction.isChatInputCommand()) return;
+    // ADD NEW ROLE
+    const newRole = guild.roles.cache.find(
+      r => r.name === roleMap[lang]
+    );
 
-    if (interaction.commandName === "setup") {
-      return setupCommand(interaction);
+    if (newRole) {
+      await member.roles.add(newRole).catch(() => {});
     }
 
-    if (interaction.commandName === "uninstall") {
-      return uninstallCommand(interaction);
-    }
+    return interaction.update({
+      content: "✅ Language set!",
+      components: [],
+      embeds: []
+    });
+  }
 
-    if (interaction.commandName === "setlanguage") {
-      return setLanguageCommand(interaction);
-    }
+  // COMMANDS
+  if (!interaction.isChatInputCommand()) return;
 
-  } catch (err) {
-    console.log("INTERACTION ERROR:", err.message);
+  if (interaction.commandName === "setup") {
+    return setupCommand(interaction);
+  }
+
+  if (interaction.commandName === "uninstall") {
+    return uninstallCommand(interaction);
+  }
+
+  if (interaction.commandName === "setlanguage") {
+    return setLanguageCommand(interaction);
   }
 });
 
