@@ -3,7 +3,7 @@ import { PermissionsBitField } from "discord.js";
 
 export default async function setupCommand(interaction) {
   await interaction.reply({
-    content: "⚙️ Setting up UniChat...",
+    content: "⚙️ Setting up 🌍 UniChat...",
     ephemeral: true
   });
 
@@ -18,25 +18,37 @@ export default async function setupCommand(interaction) {
     RU: { emoji: "🇷🇺", name: "Russian" }
   };
 
-  // ================= CATEGORY =================
+  // ================= CATEGORY CREATION =================
   const category = await interaction.guild.channels.create({
-    name: "UniChat",
-    type: 4,
-    position: 1
+    name: "🌍 UniChat",
+    type: 4
   });
+
+  // Force category near #general (best-effort)
+  try {
+    const generalChannel = interaction.guild.channels.cache.find(
+      c => c.name === "general"
+    );
+
+    if (generalChannel) {
+      await category.setPosition(generalChannel.position + 1);
+    }
+  } catch (err) {
+    console.log("⚠️ Category position not adjusted:", err.message);
+  }
 
   const enabled_channels = {};
 
-  // ================= ROLE + CHANNEL SETUP =================
+  // ================= ROLES + CHANNELS =================
   for (const [lang, data] of Object.entries(languageMap)) {
 
-    // Create role (used for visibility only)
+    // Create role
     const role = await interaction.guild.roles.create({
       name: data.name,
       reason: "UniChat language role"
     });
 
-    // Create locked channel (ROLE-BASED ONLY)
+    // Create locked channel (role-based visibility only)
     const channel = await interaction.guild.channels.create({
       name: `${base.name}-${data.emoji}`,
       type: 0,
@@ -63,9 +75,11 @@ export default async function setupCommand(interaction) {
     enabled_channels
   });
 
-  // ================= CLEAN RESPONSE =================
+  // ================= RESPONSE =================
   await interaction.followUp({
-    content: "✅ UniChat setup complete\n\nUsers will now only see #general + their language channel.",
+    content:
+      "✅ 🌍 UniChat setup complete\n\n" +
+      "Category created near #general and language channels are ready.",
     ephemeral: true,
     components: [
       {
