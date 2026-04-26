@@ -2,11 +2,25 @@ import { supabase } from "./supabase.js";
 
 const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
 
-// ================= IN-MEMORY BATCH CACHE =================
-// key: messageHash::lang -> translation
-const runtimeCache = new Map();
+// ================= MEMORY CACHE =================
+// key: guild-safe shared cache
+const memoryCache = new Map();
 
-// ================= FILTER =================
+// ================= NORMALISE TEXT =================
+function normalise(text) {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .trim();
+}
+
+// ================= KEY =================
+function makeKey(text, lang) {
+  return `${lang}::${normalise(text)}`;
+}
+
+// ================= SKIP RULES =================
 function shouldSkip(text) {
   if (!text) return true;
 
@@ -24,20 +38,15 @@ function shouldSkip(text) {
   return false;
 }
 
-// ================= HASH =================
-function makeKey(text, lang) {
-  return `${lang}::${text.toLowerCase().trim()}`;
-}
-
 // ================= MAIN =================
 export async function translateCached(text, targetLang) {
   if (shouldSkip(text)) return text;
 
   const key = makeKey(text, targetLang);
 
-  // ================= 1. RUNTIME CACHE =================
-  if (runtimeCache.has(key)) {
-    return runtimeCache.get(key);
+  // ================= 1. MEMORY CACHE =================
+  if (memoryCache.has(key)) {
+    return memoryCache.get(key);
   }
 
   // ================= 2. DATABASE CACHE =================
@@ -48,7 +57,7 @@ export async function translateCached(text, targetLang) {
     .maybeSingle();
 
   if (data?.translated_text) {
-    runtimeCache.set(key, data.translated_text);
+    memoryCache.set(key, data.translated_text);
     return data.translated_text;
   }
 
@@ -78,18 +87,18 @@ export async function translateCached(text, targetLang) {
     console.log("DEEPL ERROR:", err.message);
   }
 
-  // ================= 4. SAVE CACHE =================
+  // ================= 4. SAVE =================
   await supabase.from("translation_cache").upsert({
     hash: key,
     translated_text: translated
   });
 
-  runtimeCache.set(key, translated);
+  memoryCache.set(key, translated);
 
   return translated;
 }
 
-// ================= OPTIONAL: CLEAN CACHE PERIODICALLY =================
+// ================= MEMORY CLEANUP =================
 setInterval(() => {
-  runtimeCache.clear();
-}, 1000 * 60 * 10); // every 10 minutes
+  memoryCache.clear();
+}, 1000 * 60 * 15); // 15 min cleanup
