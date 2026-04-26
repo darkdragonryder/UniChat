@@ -1,5 +1,4 @@
 import { supabase } from "../services/supabase.js";
-import { applyChannelLocks } from "../utils/applyChannelLocks.js";
 
 const languages = {
   ES: "🇪🇸",
@@ -22,23 +21,21 @@ const roleNames = {
 export default async function setupCommand(interaction) {
   const guild = interaction.guild;
 
-  await interaction.reply({ content: "⚙️ Starting setup...", ephemeral: true });
+  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
 
   try {
-
     await guild.channels.fetch();
 
-    // ================= 1. CREATE CATEGORY =================
+    // ================= CATEGORY =================
     const category = await guild.channels.create({
       name: "🌍 UniChat",
       type: 4
     });
 
-    // ================= 2. CREATE CHANNELS =================
+    // ================= LANGUAGE CHANNELS =================
     const enabled_channels = {};
 
     for (const [lang, emoji] of Object.entries(languages)) {
-
       const channel = await guild.channels.create({
         name: `general-${emoji}`,
         type: 0,
@@ -48,42 +45,32 @@ export default async function setupCommand(interaction) {
       enabled_channels[lang] = channel.id;
     }
 
-    // ================= 3. SAVE DATABASE (ONLY AFTER CHANNELS EXIST) =================
-    const defaultChannel = guild.channels.cache.find(
-      c => c.name === "general" && c.type === 0
-    );
+    // ================= ENGLISH SOURCE CHANNEL =================
+    const default_channel = interaction.channel.id;
 
+    // ================= SAVE DB =================
     await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
-      default_channel: defaultChannel?.id || null,
+      default_channel,
       enabled_channels
     });
 
-    // ================= 4. CREATE ROLES =================
-    for (const lang of Object.keys(roleNames)) {
-      let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
+    // ================= ROLES =================
+    for (const name of Object.values(roleNames)) {
+      const exists = guild.roles.cache.find(r => r.name === name);
 
-      if (!role) {
+      if (!exists) {
         await guild.roles.create({
-          name: roleNames[lang],
+          name,
           mentionable: false
         });
       }
     }
 
-    // ================= 5. APPLY LOCKS =================
-    await applyChannelLocks(guild, { enabled_channels });
-
-    // ================= 6. MOVE CATEGORY =================
-    if (defaultChannel) {
-      await category.setPosition(defaultChannel.position + 1);
-    }
-
-    // ================= DONE =================
     return interaction.editReply("✅ Setup complete");
 
   } catch (err) {
-    console.log("Setup error:", err);
-    return interaction.editReply(`❌ Setup failed: ${err.message}`);
+    console.log(err);
+    return interaction.editReply("❌ Setup failed");
   }
 }
