@@ -55,7 +55,7 @@ export default async function setupCommand(interaction) {
       enabled_channels
     });
 
-    // ================= CREATE ROLES (LANGUAGES) =================
+    // ================= CREATE LANGUAGE ROLES =================
     for (const name of Object.values(roleNames)) {
       const exists = guild.roles.cache.find(r => r.name === name);
 
@@ -67,9 +67,8 @@ export default async function setupCommand(interaction) {
       }
     }
 
-    // ================= 🔥 NEW: SYSTEM ROLES =================
+    // ================= SYSTEM ROLES =================
 
-    // 🤖 UniChat Bot role
     let botRole = guild.roles.cache.find(r => r.name === "🤖 UniChat Bot");
 
     if (!botRole) {
@@ -81,7 +80,6 @@ export default async function setupCommand(interaction) {
       });
     }
 
-    // 🌏 UniChat Owner role
     let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
 
     if (!ownerRole) {
@@ -104,7 +102,44 @@ export default async function setupCommand(interaction) {
       console.log("⚠️ Bot role assignment failed:", err.message);
     }
 
-    // ================= 🔥 DELAYED CATEGORY MOVE =================
+    // ================= 🔥 ROLE SORTING (NEW) =================
+
+    await guild.roles.fetch();
+
+    const botMember = await guild.members.fetch(interaction.client.user.id);
+    const botHighest = botMember.roles.highest.position;
+
+    let position = botHighest - 1;
+
+    // Move owner role
+    if (ownerRole) {
+      await ownerRole.setPosition(position--).catch(() => {});
+    }
+
+    // Move bot role
+    if (botRole) {
+      await botRole.setPosition(position--).catch(() => {});
+    }
+
+    // Move language roles below system roles
+    const languageOrder = [
+      "Spanish",
+      "German",
+      "Italian",
+      "Korean",
+      "Russian",
+      "Japanese"
+    ];
+
+    for (const name of languageOrder) {
+      const role = guild.roles.cache.find(r => r.name === name);
+
+      if (role) {
+        await role.setPosition(position--).catch(() => {});
+      }
+    }
+
+    // ================= DELAYED CATEGORY MOVE =================
     setTimeout(async () => {
       try {
         await guild.channels.fetch();
