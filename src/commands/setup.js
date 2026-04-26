@@ -23,7 +23,7 @@ export default async function setupCommand(interaction) {
   const guild = interaction.guild;
 
   await interaction.reply({
-    content: "⚙️ Starting UniChat setup...",
+    content: "⚙️ Setting up UniChat...",
     ephemeral: true
   });
 
@@ -74,48 +74,38 @@ export default async function setupCommand(interaction) {
       enabled_channels[lang] = channel.id;
     }
 
-    // ================= SAVE DB =================
+    // SAVE DB FIRST (IMPORTANT)
     await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
       default_channel: defaultChannel.id,
       enabled_channels
     });
 
-    // ================= DELAYED LOCK SYSTEM (CRITICAL FIX) =================
+    // DELAYED LOCK (DO NOT BREAK SETUP)
     setTimeout(() => {
-      applyChannelLocks(guild, { enabled_channels })
-        .catch(err => console.log("Lock error:", err.message));
+      applyChannelLocks(guild, { enabled_channels }).catch(() => {});
     }, 5000);
 
-    // ================= CATEGORY POSITION FIX =================
+    // CATEGORY POSITION FIX
     setTimeout(async () => {
-      try {
-        await guild.channels.fetch();
+      await guild.channels.fetch();
 
-        const general = guild.channels.cache.find(
-          c => c.name === "general" && c.type === 0
-        );
+      const general = guild.channels.cache.find(
+        c => c.name === "general" && c.type === 0
+      );
 
-        const uniChat = guild.channels.cache.find(
-          c => c.name === "🌍 UniChat" && c.type === 4
-        );
+      const uniChat = guild.channels.cache.find(
+        c => c.name === "🌍 UniChat" && c.type === 4
+      );
 
-        if (general && uniChat) {
-          await uniChat.setPosition(general.position + 1);
-        }
-
-      } catch (err) {
-        console.log("Category move error:", err.message);
+      if (general && uniChat) {
+        await uniChat.setPosition(general.position + 1);
       }
     }, 6000);
 
     return interaction.editReply("✅ UniChat setup complete");
 
   } catch (err) {
-    console.log("Setup error:", err);
-
-    return interaction.editReply(
-      `❌ Setup failed:\n\`\`\`${err?.message || err}\`\`\``
-    );
+    return interaction.editReply(`❌ Setup failed: ${err.message}`);
   }
 }
