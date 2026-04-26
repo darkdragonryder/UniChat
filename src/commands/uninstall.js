@@ -15,30 +15,25 @@ export default async function uninstallCommand(interaction) {
 
   const enabled = data?.enabled_channels || {};
 
-  // ================= 1. DELETE CHANNELS =================
+  // ================= DELETE CHANNELS =================
   for (const id of Object.values(enabled)) {
     const ch = guild.channels.cache.get(id);
     if (ch) await ch.delete().catch(() => {});
   }
 
-  // also orphan cleanup
+  // ================= DELETE CATEGORY =================
   const category = guild.channels.cache.find(
     c => c.name === "🌍 UniChat" && c.type === 4
   );
 
   if (category) {
-    const children = guild.channels.cache.filter(c => c.parentId === category.id);
-    for (const ch of children.values()) {
+    for (const ch of category.children.cache.values()) {
       await ch.delete().catch(() => {});
     }
-  }
-
-  // ================= 2. DELETE CATEGORY =================
-  if (category) {
     await category.delete().catch(() => {});
   }
 
-  // ================= 3. DELETE ROLES =================
+  // ================= DELETE ROLES =================
   const roles = ["Spanish", "German", "Italian", "Korean", "Russian", "Japanese"];
 
   for (const name of roles) {
@@ -46,7 +41,7 @@ export default async function uninstallCommand(interaction) {
     if (role) await role.delete().catch(() => {});
   }
 
-  // ================= 4. DELETE DATABASE =================
+  // ================= DELETE DB =================
   await supabase
     .from("guild_settings")
     .delete()
