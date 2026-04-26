@@ -42,19 +42,17 @@ client.on("messageCreate", async (message) => {
     const content = message.content.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ===== USER =====
+    // ================= USER =================
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
       .eq("user_id", message.author.id)
       .maybeSingle();
 
-    if (!user) {
-      await sendLanguagePrompt(message.channel, message.author.id);
-      return;
-    }
+    // HYBRID FALLBACK SYSTEM
+    const sourceLang = (user?.language || "EN").toUpperCase();
 
-    // ===== GUILD SETTINGS =====
+    // ================= GUILD SETTINGS =================
     const { data } = await supabase
       .from("guild_settings")
       .select("*")
@@ -67,10 +65,10 @@ client.on("messageCreate", async (message) => {
 
     const channels = await message.guild.channels.fetch();
 
-    // ===== BUILD CHANNEL MAP =====
+    // ================= CHANNEL MAP =================
     const channelMap = new Map();
 
-    // English (default)
+    // English (default #general)
     if (default_channel && channels.get(default_channel)) {
       channelMap.set(default_channel, "EN");
     }
@@ -84,20 +82,14 @@ client.on("messageCreate", async (message) => {
 
     if (!channelMap.size) return;
 
-    // ===== SOURCE LANGUAGE (USER BASED) =====
-    const sourceLang = (user.language || "EN").toUpperCase();
-
-    // ===== TRANSLATE TO ALL OTHER CHANNELS =====
+    // ================= TRANSLATION LOOP =================
     for (const [channelId, targetLang] of channelMap.entries()) {
-
-      // skip same channel
-      if (channelId === message.channel.id) continue;
-
-      // skip same language
-      if (targetLang.toUpperCase() === sourceLang) continue;
 
       const channel = channels.get(channelId);
       if (!channel) continue;
+
+      // SKIP ONLY SAME LANGUAGE CHANNEL
+      if (targetLang.toUpperCase() === sourceLang) continue;
 
       const translated = await translateCached(content, targetLang);
 
@@ -114,7 +106,6 @@ client.on("messageCreate", async (message) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // ===== LANGUAGE SELECT =====
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId !== "select_language") return;
@@ -147,25 +138,21 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ADD NEW ROLE (except EN if you don’t use it)
+    // ADD ROLE (skip EN role if not used)
     if (lang !== "EN") {
-      const newRole = guild.roles.cache.find(
-        r => r.name === roleMap[lang]
-      );
-
+      const newRole = guild.roles.cache.find(r => r.name === roleMap[lang]);
       if (newRole) {
         await member.roles.add(newRole).catch(() => {});
       }
     }
 
     return interaction.update({
-      content: "✅ Language set!",
+      content: "✅ Language set successfully!",
       components: [],
       embeds: []
     });
   }
 
-  // ===== COMMANDS =====
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "setup") {
