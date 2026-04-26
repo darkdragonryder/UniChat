@@ -17,8 +17,8 @@ export default async function uninstallCommand(interaction) {
 
   if (data?.enabled_channels) {
     for (const id of Object.values(data.enabled_channels)) {
-      const channel = guild.channels.cache.get(id);
-      if (channel) await channel.delete().catch(() => {});
+      const ch = guild.channels.cache.get(id);
+      if (ch) await ch.delete().catch(() => {});
     }
   }
 
