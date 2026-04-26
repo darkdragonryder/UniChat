@@ -21,17 +21,22 @@ client.once("ready", () => {
 });
 
 // ================= HELPERS =================
-function isEmojiOnly(text) {
+function isOnlyEmoji(text) {
   if (!text) return false;
   return /^[\p{Extended_Pictographic}\p{Emoji}\s]+$/u.test(text.trim());
 }
 
-function shouldIgnore(content) {
-  if (!content) return true;
+function containsEmoji(text) {
+  if (!text) return false;
+  return /[\p{Extended_Pictographic}]/u.test(text);
+}
 
-  const t = content.trim();
+function shouldIgnore(text) {
+  if (!text) return true;
 
-  if (t.length <= 2) return true;
+  const t = text.trim();
+
+  if (t.length <= 1) return true;
   if (t.startsWith("/")) return true;
 
   const junk = ["ok", "okay", "lol", "lmao", "brb", "gg"];
@@ -42,7 +47,7 @@ function shouldIgnore(content) {
   return false;
 }
 
-// ================= WEBHOOK SENDER =================
+// ================= WEBHOOK =================
 async function sendAsUser(channel, user, content) {
   const webhooks = await channel.fetchWebhooks();
 
@@ -79,7 +84,7 @@ client.on("messageCreate", async (message) => {
 
     if (!user?.language) return;
 
-    // ===== GUILD SETTINGS =====
+    // ===== GUILD =====
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -105,8 +110,8 @@ client.on("messageCreate", async (message) => {
     const currentLang = channelMap.get(message.channel.id);
     if (!currentLang) return;
 
-    // ================= EMOJI HANDLING =================
-    const emojiOnly = isEmojiOnly(content);
+    // ================= EMOJI LOGIC =================
+    const onlyEmoji = isOnlyEmoji(content);
 
     for (const [channelId, targetLang] of channelMap.entries()) {
       if (channelId === message.channel.id) continue;
@@ -115,17 +120,22 @@ client.on("messageCreate", async (message) => {
       const channel = channels.get(channelId);
       if (!channel) continue;
 
-      // 👉 EMOJIS: NO TRANSLATION
-      if (emojiOnly) {
+      // 🟢 PURE EMOJIS → NO TRANSLATION
+      if (onlyEmoji) {
         await sendAsUser(channel, message.author, content);
         continue;
       }
 
-      // 👉 TEXT: TRANSLATE
-      const translated = await translateCached(content, targetLang);
-      if (!translated || translated === content) continue;
+      // 🟡 MIXED OR TEXT → TRANSLATE TEXT ONLY
+      let finalText = content;
 
-      await sendAsUser(channel, message.author, `🌍 ${translated}`);
+      if (!onlyEmoji) {
+        finalText = await translateCached(content, targetLang);
+      }
+
+      if (!finalText) continue;
+
+      await sendAsUser(channel, message.author, `🌍 ${finalText}`);
     }
 
   } catch (err) {
