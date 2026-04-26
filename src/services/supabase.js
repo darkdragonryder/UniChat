@@ -1,52 +1,75 @@
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "./supabase.js";
 
-export const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
 
-// ================= GUILD SETTINGS =================
-export async function getGuildSettings(guildId) {
-  const { data } = await supabase
-    .from("guild_settings")
-    .select("*")
-    .eq("guild_id", guildId)
-    .maybeSingle();
+// ================= SKIP RULES =================
+function shouldSkip(text) {
+  if (!text) return true;
 
-  if (data) return data;
+  const t = text.trim();
 
-  const { data: created } = await supabase
-    .from("guild_settings")
-    .insert({
-      guild_id: guildId,
-      auto_translate: true,
-      default_language: "EN",
-      enabled_channels: {}   // ✅ FIXED (WAS [])
-    })
-    .select()
-    .single();
+  if (t.length <= 2) return true;
 
-  return created;
+  const junk = ["ok", "okay", "lol", "lmao", "brb", "gg"];
+  if (junk.includes(t.toLowerCase())) return true;
+
+  if (/^[^\p{L}\p{N}]+$/u.test(t)) return true;
+
+  if (t.startsWith("http")) return true;
+
+  return false;
 }
 
-// ================= USER SETTINGS =================
-export async function getUserSettings(userId) {
+// ================= MAIN TRANSLATION =================
+export async function translateCached(text, targetLang) {
+  if (shouldSkip(text)) return text;
+
+  const hash = `${text}::${targetLang}`;
+
+  // ================= CACHE CHECK =================
   const { data } = await supabase
-    .from("user_settings")
-    .select("*")
-    .eq("user_id", userId)
+    .from("translation_cache")
+    .select("translated_text")
+    .eq("hash", hash)
     .maybeSingle();
 
-  if (data) return data;
+  if (data?.translated_text) {
+    return data.translated_text;
+  }
 
-  const { data: created } = await supabase
-    .from("user_settings")
-    .insert({
-      user_id: userId,
-      language: null
-    })
-    .select()
-    .single();
+  let translated = text;
 
-  return created;
+  try {
+    const params = new URLSearchParams();
+    params.append("text", text);
+    params.append("target_lang", targetLang);
+
+    const res = await fetch(DEEPL_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params
+    });
+
+    const result = await res.json();
+
+    if (result?.translations?.[0]?.text) {
+      translated = result.translations[0].text;
+    } else {
+      console.log("DEEPL ERROR RESPONSE:", result);
+    }
+
+  } catch (err) {
+    console.log("DEEPL ERROR:", err.message);
+  }
+
+  // ================= CACHE SAVE =================
+  await supabase.from("translation_cache").upsert({
+    hash,
+    translated_text: translated
+  });
+
+  return translated;
 }
