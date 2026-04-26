@@ -23,54 +23,38 @@ export default async function setupCommand(interaction) {
 
   await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
 
-  try {
-    await guild.channels.fetch();
+  await guild.channels.fetch();
 
-    // ================= CATEGORY =================
-    const category = await guild.channels.create({
-      name: "🌍 UniChat",
-      type: 4
+  const category = await guild.channels.create({
+    name: "🌍 UniChat",
+    type: 4
+  });
+
+  const enabled_channels = {};
+
+  for (const [lang, emoji] of Object.entries(languages)) {
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
+      type: 0,
+      parent: category.id
     });
 
-    // ================= LANGUAGE CHANNELS =================
-    const enabled_channels = {};
-
-    for (const [lang, emoji] of Object.entries(languages)) {
-      const channel = await guild.channels.create({
-        name: `general-${emoji}`,
-        type: 0,
-        parent: category.id
-      });
-
-      enabled_channels[lang] = channel.id;
-    }
-
-    // ================= ENGLISH SOURCE CHANNEL =================
-    const default_channel = interaction.channel.id;
-
-    // ================= SAVE DB =================
-    await supabase.from("guild_settings").upsert({
-      guild_id: guild.id,
-      default_channel,
-      enabled_channels
-    });
-
-    // ================= ROLES =================
-    for (const name of Object.values(roleNames)) {
-      const exists = guild.roles.cache.find(r => r.name === name);
-
-      if (!exists) {
-        await guild.roles.create({
-          name,
-          mentionable: false
-        });
-      }
-    }
-
-    return interaction.editReply("✅ Setup complete");
-
-  } catch (err) {
-    console.log(err);
-    return interaction.editReply("❌ Setup failed");
+    enabled_channels[lang] = channel.id;
   }
+
+  const default_channel = interaction.channel.id;
+
+  await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    default_channel,
+    enabled_channels
+  });
+
+  for (const name of Object.values(roleNames)) {
+    if (!guild.roles.cache.find(r => r.name === name)) {
+      await guild.roles.create({ name });
+    }
+  }
+
+  return interaction.editReply("✅ Setup complete");
 }
