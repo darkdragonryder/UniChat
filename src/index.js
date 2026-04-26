@@ -10,6 +10,9 @@ import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
 
+// Events
+import guildMemberAdd from "./events/guildMemberAdd.js";
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -24,10 +27,12 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
 });
 
+// ================= REGISTER EVENTS =================
+client.on("guildMemberAdd", guildMemberAdd(client));
+
 // ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
-    // SAFETY BLOCK
     if (!message.guild) return;
     if (message.author.bot) return;
 
@@ -45,7 +50,7 @@ client.on("messageCreate", async (message) => {
 
     const sourceLang = user.language.toUpperCase();
 
-    // ================= GUILD SETTINGS =================
+    // ================= GUILD =================
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -53,26 +58,23 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     const channelsData = settings?.enabled_channels || {};
-
     if (!Object.keys(channelsData).length) return;
 
     const channels = await message.guild.channels.fetch();
 
-    const entries = Object.entries(channelsData);
+    // ================= TRANSLATE =================
+    for (const [lang, channelId] of Object.entries(channelsData)) {
+      if (lang.toUpperCase() === sourceLang) continue;
 
-    // ================= TRANSLATION ROUTING =================
-    for (const [lang, channelId] of entries) {
       const channel = channels.get(channelId);
       if (!channel) continue;
-
-      if (lang.toUpperCase() === sourceLang) continue;
 
       const translated = await translateCached(content, lang);
       if (!translated) continue;
 
       await channel.send({
         content: `🌍 ${translated}`,
-        allowedMentions: { parse: [] } // 🔒 safety: prevents @everyone spam
+        allowedMentions: { parse: [] }
       }).catch(() => {});
     }
 
@@ -81,33 +83,76 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ================= COMMAND HANDLER =================
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
-    if (!interaction.isChatInputCommand()) return;
+    // ================= SLASH COMMANDS =================
+    if (interaction.isChatInputCommand()) {
 
-    if (interaction.commandName === "setup") {
-      return setupCommand(interaction);
+      if (interaction.commandName === "setup") {
+        return setupCommand(interaction);
+      }
+
+      if (interaction.commandName === "uninstall") {
+        return uninstallCommand(interaction);
+      }
+
+      if (interaction.commandName === "setlanguage") {
+        return setLanguageCommand(interaction);
+      }
+
+      if (interaction.commandName === "help") {
+        return helpCommand(interaction);
+      }
+
+      if (interaction.commandName === "info") {
+        return infoCommand(interaction);
+      }
     }
 
-    if (interaction.commandName === "uninstall") {
-      return uninstallCommand(interaction);
-    }
+    // ================= LANGUAGE SELECT =================
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "select_language") {
 
-    if (interaction.commandName === "setlanguage") {
-      return setLanguageCommand(interaction);
+        const lang = interaction.values[0];
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(interaction.user.id);
+
+        const roleNames = {
+          EN: "English",
+          ES: "Spanish",
+          DE: "German",
+          IT: "Italian",
+          KO: "Korean",
+          RU: "Russian",
+          JA: "Japanese"
+        };
+
+        // REMOVE OLD ROLES
+        for (const name of Object.values(roleNames)) {
+          const role = guild.roles.cache.find(r => r.name === name);
+          if (role) await member.roles.remove(role).catch(() => {});
+        }
+
+        // ADD NEW ROLE
+        const newRole = guild.roles.cache.find(r => r.name === roleNames[lang]);
+        if (newRole) await member.roles.add(newRole).catch(() => {});
+
+        // SAVE TO DB
+        await supabase.from("user_settings").upsert({
+          user_id: interaction.user.id,
+          language: lang
+        });
+
+        await interaction.reply({
+          content: `🌍 Language set to ${roleNames[lang]}`,
+          ephemeral: true
+        });
+      }
     }
 
   } catch (err) {
     console.log("INTERACTION ERROR:", err.message);
-  }
-
-    if (interaction.commandName === "help") {
-    return helpCommand(interaction);
-  }
-
-    if (interaction.commandName === "info") {
-    return infoCommand(interaction);
   }
 });
 
