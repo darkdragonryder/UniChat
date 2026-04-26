@@ -2,46 +2,70 @@ import { supabase } from "./supabase.js";
 
 const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
 
+// ================= IN-MEMORY SHORT CACHE =================
+// prevents repeated calls inside runtime window
+const memoryCache = new Map();
+
+// ================= CLEAN KEY =================
+function makeKey(text, targetLang) {
+  return `${targetLang}::${text.toLowerCase().trim()}`;
+}
+
+// ================= FILTER =================
 function shouldSkip(text) {
   if (!text) return true;
-  if (text.trim().length <= 2) return true;
+
+  const t = text.trim().toLowerCase();
+
+  if (t.length <= 2) return true;
 
   const junk = ["ok", "okay", "lol", "lmao", "brb", "gg"];
-  if (junk.includes(text.toLowerCase())) return true;
+  if (junk.includes(t)) return true;
 
-  if (/^[^\p{L}\p{N}]+$/u.test(text)) return true;
-  if (text.startsWith("http")) return true;
+  if (/^[^\p{L}\p{N}]+$/u.test(t)) return true;
+
+  if (t.startsWith("http")) return true;
 
   return false;
 }
 
+// ================= MAIN =================
 export async function translateCached(text, targetLang) {
   if (shouldSkip(text)) return text;
 
-  const hash = `${text}::${targetLang}`;
+  const key = makeKey(text, targetLang);
 
+  // ================= 1. MEMORY CACHE (FASTEST) =================
+  if (memoryCache.has(key)) {
+    return memoryCache.get(key);
+  }
+
+  // ================= 2. DB CACHE =================
   const { data } = await supabase
     .from("translation_cache")
     .select("translated_text")
-    .eq("hash", hash)
+    .eq("hash", key)
     .maybeSingle();
 
-  if (data?.translated_text) return data.translated_text;
+  if (data?.translated_text) {
+    memoryCache.set(key, data.translated_text);
+    return data.translated_text;
+  }
 
+  // ================= 3. CALL DEEPL =================
   let translated = text;
 
   try {
-    const params = new URLSearchParams();
-    params.append("text", text);
-    params.append("target_lang", targetLang);
-
     const res = await fetch(DEEPL_URL, {
       method: "POST",
       headers: {
-        Authorization: `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`
       },
-      body: params
+      body: new URLSearchParams({
+        text,
+        target_lang: targetLang
+      })
     });
 
     const result = await res.json();
@@ -54,10 +78,13 @@ export async function translateCached(text, targetLang) {
     console.log("DEEPL ERROR:", err.message);
   }
 
+  // ================= 4. SAVE CACHE =================
   await supabase.from("translation_cache").upsert({
-    hash,
+    hash: key,
     translated_text: translated
   });
+
+  memoryCache.set(key, translated);
 
   return translated;
 }
