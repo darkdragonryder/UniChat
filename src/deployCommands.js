@@ -3,6 +3,8 @@ import { REST, Routes, SlashCommandBuilder } from "discord.js";
 import { commandData as setLanguageData } from "./commands/setlanguage.js";
 
 const commands = [
+  new SlashCommandBuilder().setName("info").setDescription("Show bot information"),
+  new SlashCommandBuilder().setName("help").setDescription("Show help information"),
   new SlashCommandBuilder().setName("setup").setDescription("Setup UniChat"),
   new SlashCommandBuilder().setName("uninstall").setDescription("Remove UniChat"),
   setLanguageData
