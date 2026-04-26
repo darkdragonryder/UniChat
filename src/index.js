@@ -9,6 +9,7 @@ import setLanguageCommand from "./commands/setlanguage.js";
 
 import { detectLang } from "./utils/detectLang.js";
 import { languageSuggestion } from "./utils/languageSuggestion.js";
+import { applyChannelLocks } from "./utils/applyChannelLocks.js";
 
 const client = new Client({
   intents: [
@@ -23,7 +24,8 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-// ================= MESSAGE HANDLER =================
+
+// ================= MESSAGE SYSTEM =================
 client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot || !message.guild) return;
@@ -31,21 +33,21 @@ client.on("messageCreate", async (message) => {
     const content = message.content.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= USER =================
+    // ================= USER DATA =================
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
       .eq("user_id", message.author.id)
       .maybeSingle();
 
-    // ================= SMART DETECTION ON FIRST USE =================
+    // ================= ONBOARDING DETECTION =================
     if (!user?.language) {
 
       const detected = detectLang(content);
 
       if (detected && detected !== "EN") {
 
-        const sent = await message.reply({
+        const prompt = await message.reply({
           content: `🌍 We think you're speaking **${detected}**. Set this as your language?`,
           components: languageSuggestion(detected)
         });
@@ -53,7 +55,7 @@ client.on("messageCreate", async (message) => {
         await supabase.from("language_suggestions").upsert({
           user_id: message.author.id,
           suggested: detected,
-          message_id: sent.id
+          message_id: prompt.id
         });
       }
 
@@ -63,15 +65,15 @@ client.on("messageCreate", async (message) => {
     const sourceLang = (user.language || "EN").toUpperCase();
 
     // ================= GUILD SETTINGS =================
-    const { data } = await supabase
+    const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    if (!data) return;
+    if (!settings) return;
 
-    const { default_channel, enabled_channels } = data;
+    const { default_channel, enabled_channels } = settings;
 
     const channels = await message.guild.channels.fetch();
 
@@ -90,13 +92,13 @@ client.on("messageCreate", async (message) => {
 
     if (!channelMap.size) return;
 
-    // ================= TRANSLATION LOOP =================
+    // ================= TRANSLATION BROADCAST =================
     for (const [channelId, targetLang] of channelMap.entries()) {
 
       const channel = channels.get(channelId);
       if (!channel) continue;
 
-      if (targetLang.toUpperCase() === sourceLang) continue;
+      if (targetLang === sourceLang) continue;
 
       const translated = await translateCached(content, targetLang);
 
@@ -110,15 +112,16 @@ client.on("messageCreate", async (message) => {
   }
 });
 
+
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // ================= BUTTONS =================
+  // ================= BUTTON SYSTEM =================
   if (interaction.isButton()) {
 
     const member = await interaction.guild.members.fetch(interaction.user.id);
 
-    // ACCEPT DETECTED LANGUAGE
+    // ================= ACCEPT LANGUAGE =================
     if (interaction.customId.startsWith("lang_yes_")) {
 
       const lang = interaction.customId.split("_")[2];
@@ -138,17 +141,28 @@ client.on("interactionCreate", async (interaction) => {
       };
 
       const roleName = roleMap[lang];
-
       const role = interaction.guild.roles.cache.find(r => r.name === roleName);
+
       if (role) await member.roles.add(role).catch(() => {});
 
+      // 🔒 re-apply locks after role assignment
+      const { data: settings } = await supabase
+        .from("guild_settings")
+        .select("*")
+        .eq("guild_id", interaction.guild.id)
+        .maybeSingle();
+
+      if (settings) {
+        await applyChannelLocks(interaction.guild, settings);
+      }
+
       return interaction.update({
-        content: `✅ Language set to ${lang}`,
+        content: `✅ Language set to **${lang}**`,
         components: []
       });
     }
 
-    // DECLINE DETECTION
+    // ================= DECLINE =================
     if (interaction.customId === "lang_no") {
       return interaction.update({
         content: "👍 No problem — use /setlanguage anytime",
