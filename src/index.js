@@ -36,56 +36,85 @@ client.on("guildMemberAdd", async (member) => {
 
 // ================= MESSAGE =================
 client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
+  try {
+    if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim();
-  if (!content || content.startsWith("/")) return;
+    const content = message.content.trim();
+    if (!content || content.startsWith("/")) return;
 
-  // USER
-  const { data: user } = await supabase
-    .from("user_settings")
-    .select("*")
-    .eq("user_id", message.author.id)
-    .maybeSingle();
+    // ===== USER =====
+    const { data: user } = await supabase
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", message.author.id)
+      .maybeSingle();
 
-  if (!user) {
-    await sendLanguagePrompt(message.channel, message.author.id);
-    return;
-  }
+    if (!user) {
+      await sendLanguagePrompt(message.channel, message.author.id);
+      return;
+    }
 
-  // GUILD SETTINGS
-  const { data } = await supabase
-    .from("guild_settings")
-    .select("*")
-    .eq("guild_id", message.guild.id)
-    .maybeSingle();
+    // ===== GUILD SETTINGS =====
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("*")
+      .eq("guild_id", message.guild.id)
+      .maybeSingle();
 
-  if (!data) return;
+    if (!data) return;
 
-  const enabled = data.enabled_channels ?? {};
-  const channels = await message.guild.channels.fetch();
+    const { default_channel, enabled_channels } = data;
 
-  const sourceLang = (user.language || "EN").toUpperCase();
+    const channels = await message.guild.channels.fetch();
 
-  for (const [targetLang, channelId] of Object.entries(enabled)) {
+    // ===== BUILD CHANNEL MAP =====
+    const channelMap = new Map();
 
-    if (targetLang.toUpperCase() === sourceLang) continue;
+    // English (default)
+    if (default_channel && channels.get(default_channel)) {
+      channelMap.set(default_channel, "EN");
+    }
 
-    const channel = channels.get(channelId);
-    if (!channel) continue;
+    // Other languages
+    for (const [lang, id] of Object.entries(enabled_channels || {})) {
+      if (channels.get(id)) {
+        channelMap.set(id, lang.toUpperCase());
+      }
+    }
 
-    const translated = await translateCached(content, targetLang);
+    if (!channelMap.size) return;
 
-    if (!translated || translated === content) continue;
+    // ===== SOURCE LANGUAGE (USER BASED) =====
+    const sourceLang = (user.language || "EN").toUpperCase();
 
-    await channel.send(`🌍 ${translated}`).catch(() => {});
+    // ===== TRANSLATE TO ALL OTHER CHANNELS =====
+    for (const [channelId, targetLang] of channelMap.entries()) {
+
+      // skip same channel
+      if (channelId === message.channel.id) continue;
+
+      // skip same language
+      if (targetLang.toUpperCase() === sourceLang) continue;
+
+      const channel = channels.get(channelId);
+      if (!channel) continue;
+
+      const translated = await translateCached(content, targetLang);
+
+      if (!translated || translated === content) continue;
+
+      await channel.send(`🌍 ${translated}`).catch(() => {});
+    }
+
+  } catch (err) {
+    console.log("MESSAGE ERROR:", err.message);
   }
 });
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // LANGUAGE SELECT
+  // ===== LANGUAGE SELECT =====
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId !== "select_language") return;
@@ -118,13 +147,15 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ADD NEW ROLE
-    const newRole = guild.roles.cache.find(
-      r => r.name === roleMap[lang]
-    );
+    // ADD NEW ROLE (except EN if you don’t use it)
+    if (lang !== "EN") {
+      const newRole = guild.roles.cache.find(
+        r => r.name === roleMap[lang]
+      );
 
-    if (newRole) {
-      await member.roles.add(newRole).catch(() => {});
+      if (newRole) {
+        await member.roles.add(newRole).catch(() => {});
+      }
     }
 
     return interaction.update({
@@ -134,7 +165,7 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // COMMANDS
+  // ===== COMMANDS =====
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "setup") {
