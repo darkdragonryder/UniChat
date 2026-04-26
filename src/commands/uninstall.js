@@ -7,30 +7,40 @@ export default async function uninstallCommand(interaction) {
 
   await interaction.editReply("🧹 Uninstalling UniChat...");
 
+  // ================= GET DB DATA =================
   const { data } = await supabase
     .from("guild_settings")
     .select("*")
     .eq("guild_id", guild.id)
     .maybeSingle();
 
-  if (!data) {
-    return interaction.editReply("⚠️ No setup found");
+  // ================= SAFETY FETCH (IMPORTANT FIX) =================
+  await guild.channels.fetch();
+
+  // ================= DELETE BY DB IDS =================
+  if (data?.enabled_channels) {
+    for (const id of Object.values(data.enabled_channels)) {
+      const channel = guild.channels.cache.get(id);
+      if (channel) {
+        await channel.delete().catch(() => {});
+      }
+    }
   }
 
-  const { enabled_channels } = data;
-
-  // ================= DELETE CHANNELS =================
-  for (const id of Object.values(enabled_channels || {})) {
-    const channel = guild.channels.cache.get(id);
-    if (channel) await channel.delete().catch(() => {});
-  }
-
-  // ================= DELETE CATEGORY =================
+  // ================= FALLBACK: DELETE BY CATEGORY =================
   const category = guild.channels.cache.find(
     c => c.name === "🌍 UniChat" && c.type === 4
   );
 
   if (category) {
+    const children = guild.channels.cache.filter(
+      c => c.parentId === category.id
+    );
+
+    for (const channel of children.values()) {
+      await channel.delete().catch(() => {});
+    }
+
     await category.delete().catch(() => {});
   }
 
@@ -42,11 +52,11 @@ export default async function uninstallCommand(interaction) {
     if (role) await role.delete().catch(() => {});
   }
 
-  // ================= CLEAR DB =================
+  // ================= CLEAR DATABASE =================
   await supabase
     .from("guild_settings")
     .delete()
     .eq("guild_id", guild.id);
 
-  return interaction.editReply("✅ UniChat uninstalled cleanly");
+  return interaction.editReply("✅ UniChat fully uninstalled");
 }
