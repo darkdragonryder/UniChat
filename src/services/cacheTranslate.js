@@ -2,14 +2,9 @@ import { supabase } from "./supabase.js";
 
 const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
 
-// ================= IN-MEMORY SHORT CACHE =================
-// prevents repeated calls inside runtime window
-const memoryCache = new Map();
-
-// ================= CLEAN KEY =================
-function makeKey(text, targetLang) {
-  return `${targetLang}::${text.toLowerCase().trim()}`;
-}
+// ================= IN-MEMORY BATCH CACHE =================
+// key: messageHash::lang -> translation
+const runtimeCache = new Map();
 
 // ================= FILTER =================
 function shouldSkip(text) {
@@ -29,18 +24,23 @@ function shouldSkip(text) {
   return false;
 }
 
+// ================= HASH =================
+function makeKey(text, lang) {
+  return `${lang}::${text.toLowerCase().trim()}`;
+}
+
 // ================= MAIN =================
 export async function translateCached(text, targetLang) {
   if (shouldSkip(text)) return text;
 
   const key = makeKey(text, targetLang);
 
-  // ================= 1. MEMORY CACHE (FASTEST) =================
-  if (memoryCache.has(key)) {
-    return memoryCache.get(key);
+  // ================= 1. RUNTIME CACHE =================
+  if (runtimeCache.has(key)) {
+    return runtimeCache.get(key);
   }
 
-  // ================= 2. DB CACHE =================
+  // ================= 2. DATABASE CACHE =================
   const { data } = await supabase
     .from("translation_cache")
     .select("translated_text")
@@ -48,11 +48,11 @@ export async function translateCached(text, targetLang) {
     .maybeSingle();
 
   if (data?.translated_text) {
-    memoryCache.set(key, data.translated_text);
+    runtimeCache.set(key, data.translated_text);
     return data.translated_text;
   }
 
-  // ================= 3. CALL DEEPL =================
+  // ================= 3. DEEPL CALL =================
   let translated = text;
 
   try {
@@ -84,7 +84,12 @@ export async function translateCached(text, targetLang) {
     translated_text: translated
   });
 
-  memoryCache.set(key, translated);
+  runtimeCache.set(key, translated);
 
   return translated;
 }
+
+// ================= OPTIONAL: CLEAN CACHE PERIODICALLY =================
+setInterval(() => {
+  runtimeCache.clear();
+}, 1000 * 60 * 10); // every 10 minutes
