@@ -20,19 +20,13 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-// ================= SETTINGS =================
-// Toggle for “native feel mode”
-const NATIVE_MODE = true;
+// ================= SAFETY CONSTANT =================
+const BOT_ID = null; // will be set after login
 
 // ================= BUFFER =================
 const buffer = new Map();
 
 // ================= HELPERS =================
-function isOnlyEmoji(text) {
-  if (!text) return false;
-  return /^[\p{Extended_Pictographic}\p{Emoji}\s]+$/u.test(text.trim());
-}
-
 function shouldIgnore(text) {
   if (!text) return true;
 
@@ -48,8 +42,13 @@ function shouldIgnore(text) {
   return false;
 }
 
-// ================= WEBHOOK =================
-async function sendNative(channel, user, content, langTag) {
+function isOnlyEmoji(text) {
+  if (!text) return false;
+  return /^[\p{Extended_Pictographic}\p{Emoji}\s]+$/u.test(text.trim());
+}
+
+// ================= WEBHOOK SENDER =================
+async function sendAsUser(channel, user, content) {
   const webhooks = await channel.fetchWebhooks();
 
   let webhook = webhooks.find(w => w.owner?.id === client.user.id);
@@ -61,20 +60,18 @@ async function sendNative(channel, user, content, langTag) {
   }
 
   await webhook.send({
-    content: NATIVE_MODE ? content : `[${langTag}] ${content}`,
+    content,
     username: user.username,
     avatarURL: user.displayAvatarURL(),
-    allowedMentions: { parse: [] }
+    allowedMentions: { parse: [] } // 🔒 IMPORTANT SAFETY
   });
 }
 
-// ================= FLUSH =================
-async function flush(key, data, channelMap, message) {
+// ================= MESSAGE FLUSH =================
+async function flushBuffer(key, data, channelMap, message, isEmoji) {
   try {
     const text = data.messages.join("\n");
-
     const currentLang = data.lang;
-    const emojiOnly = isOnlyEmoji(text);
 
     for (const [channelId, targetLang] of channelMap.entries()) {
       if (channelId === message.channel.id) continue;
@@ -83,19 +80,19 @@ async function flush(key, data, channelMap, message) {
       const channel = message.guild.channels.cache.get(channelId);
       if (!channel) continue;
 
-      let finalText = text;
-
-      if (!emojiOnly) {
-        finalText = await translateCached(text, targetLang);
+      if (isEmoji) {
+        await sendAsUser(channel, message.author, text);
+        continue;
       }
 
-      if (!finalText) continue;
+      const translated = await translateCached(text, targetLang);
+      if (!translated) continue;
 
-      await sendNative(channel, message.author, finalText, targetLang);
+      await sendAsUser(channel, message.author, translated);
     }
 
   } catch (err) {
-    console.log("FLUSH ERROR:", err.message);
+    console.log("BUFFER ERROR:", err.message);
   } finally {
     buffer.delete(key);
   }
@@ -104,10 +101,16 @@ async function flush(key, data, channelMap, message) {
 // ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
-    if (!message.guild || message.author.bot) return;
+    // 🔒 SAFETY BLOCK (CRITICAL)
+    if (message.webhookId) return;      // prevent webhook loops
+    if (message.author.bot) return;     // prevent bot echo loops
+    if (!message.guild) return;
 
     const content = message.content?.trim();
     if (shouldIgnore(content)) return;
+
+    // 🔒 optional extra safety (self echo protection)
+    if (BOT_ID && message.author.id === BOT_ID) return;
 
     const { data: user } = await supabase
       .from("user_settings")
@@ -144,6 +147,8 @@ client.on("messageCreate", async (message) => {
 
     const key = `${message.guild.id}::${message.channel.id}::${currentLang}`;
 
+    const emojiOnly = isOnlyEmoji(content);
+
     if (!buffer.has(key)) {
       buffer.set(key, {
         messages: [],
@@ -151,8 +156,8 @@ client.on("messageCreate", async (message) => {
         timer: setTimeout(() => {
           const data = buffer.get(key);
           if (!data) return;
-          flush(key, data, channelMap, message);
-        }, 1800) // slightly smoother feel
+          flushBuffer(key, data, channelMap, message, emojiOnly);
+        }, 1800)
       });
     }
 
@@ -172,4 +177,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// ================= LOGIN =================
+client.login(process.env.DISCORD_TOKEN).then(() => {
+  BOT_ID = client.user.id;
+});
