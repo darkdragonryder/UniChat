@@ -28,7 +28,10 @@ export default async function setupCommand(interaction) {
     await guild.channels.fetch();
     await guild.roles.fetch();
 
-    // ================= CREATE CATEGORY =================
+    // ================= DEFAULT CHANNEL =================
+    const default_channel = interaction.channel.id;
+
+    // ================= CREATE CATEGORY (FIRST = CORRECT POSITION) =================
     const category = await guild.channels.create({
       name: "🌍 UniChat",
       type: 4
@@ -47,9 +50,6 @@ export default async function setupCommand(interaction) {
       enabled_channels[lang] = channel.id;
     }
 
-    // ================= DEFAULT CHANNEL =================
-    const default_channel = interaction.channel.id;
-
     // ================= SAVE DB =================
     await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
@@ -67,43 +67,6 @@ export default async function setupCommand(interaction) {
           mentionable: false
         });
       }
-    }
-
-    // ================= MOVE CATEGORY UNDER DEFAULT =================
-    try {
-      await guild.channels.fetch();
-
-      const referenceChannel = interaction.channel;
-
-      const allCategories = guild.channels.cache
-        .filter(c => c.type === 4)
-        .sort((a, b) => a.rawPosition - b.rawPosition)
-        .map(c => c.id);
-
-      const newOrder = [];
-
-      for (const id of allCategories) {
-        if (id === category.id) continue;
-
-        newOrder.push({ id });
-
-        const ch = guild.channels.cache.get(id);
-
-        if (ch && ch.rawPosition >= referenceChannel.rawPosition) {
-          newOrder.push({ id: category.id });
-          break;
-        }
-      }
-
-      // fallback if not inserted
-      if (!newOrder.find(c => c.id === category.id)) {
-        newOrder.push({ id: category.id });
-      }
-
-      await guild.channels.setPositions(newOrder);
-
-    } catch (err) {
-      console.log("CATEGORY MOVE FAILED:", err.message);
     }
 
     // ================= DONE =================
