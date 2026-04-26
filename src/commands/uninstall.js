@@ -9,19 +9,24 @@ export default async function uninstallCommand(interaction) {
 
   await guild.channels.fetch();
 
+  // ================= GET SETTINGS =================
   const { data } = await supabase
     .from("guild_settings")
     .select("*")
     .eq("guild_id", guild.id)
     .maybeSingle();
 
-  if (data?.enabled_channels) {
-    for (const id of Object.values(data.enabled_channels)) {
-      const ch = guild.channels.cache.get(id);
-      if (ch) await ch.delete().catch(() => {});
+  const enabled = data?.enabled_channels || {};
+
+  // ================= 1. DELETE CHANNELS FIRST (IMPORTANT) =================
+  for (const id of Object.values(enabled)) {
+    const channel = guild.channels.cache.get(id);
+    if (channel) {
+      await channel.delete().catch(() => {});
     }
   }
 
+  // ALSO CATCH ANY ORPHANS IN CATEGORY
   const category = guild.channels.cache.find(
     c => c.name === "🌍 UniChat" && c.type === 4
   );
@@ -34,17 +39,24 @@ export default async function uninstallCommand(interaction) {
     for (const ch of children.values()) {
       await ch.delete().catch(() => {});
     }
+  }
 
+  // ================= 2. DELETE CATEGORY SECOND =================
+  if (category) {
     await category.delete().catch(() => {});
   }
 
+  // ================= 3. DELETE ROLES THIRD =================
   const roles = ["Spanish", "German", "Italian", "Korean", "Russian", "Japanese"];
 
   for (const name of roles) {
     const role = guild.roles.cache.find(r => r.name === name);
-    if (role) await role.delete().catch(() => {});
+    if (role) {
+      await role.delete().catch(() => {});
+    }
   }
 
+  // ================= 4. DELETE DATABASE LAST =================
   await supabase
     .from("guild_settings")
     .delete()
