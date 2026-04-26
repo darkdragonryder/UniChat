@@ -7,6 +7,7 @@ const commands = [
   new SlashCommandBuilder().setName("help").setDescription("Show help information"),
   new SlashCommandBuilder().setName("setup").setDescription("Setup UniChat"),
   new SlashCommandBuilder().setName("uninstall").setDescription("Remove UniChat"),
+  new SlashCommandBuilder().setName("announce-owner").setDescription("Announce UniChat creator"),
   setLanguageData
 ].map(c => c.toJSON());
 
