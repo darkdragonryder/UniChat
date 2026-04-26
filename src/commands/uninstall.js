@@ -1,48 +1,52 @@
 import { supabase } from "../services/supabase.js";
 
 export default async function uninstallCommand(interaction) {
-
-  await interaction.reply({ content: "🧹 Uninstalling...", ephemeral: true });
-
   const guild = interaction.guild;
-  const channels = await guild.channels.fetch();
 
-  // ===== DELETE ALL LANGUAGE CHANNELS =====
-  for (const ch of channels.values()) {
-    if (ch.name && ch.name.startsWith("general-")) {
-      await ch.delete().catch(() => {});
-    }
+  await interaction.deferReply({ ephemeral: true });
+
+  await interaction.editReply("🧹 Uninstalling UniChat...");
+
+  const { data } = await supabase
+    .from("guild_settings")
+    .select("*")
+    .eq("guild_id", guild.id)
+    .maybeSingle();
+
+  if (!data) {
+    return interaction.editReply("⚠️ No setup found");
   }
 
-  // ===== DELETE CATEGORY =====
-  const category = channels.find(c => c.name === "🌍 UniChat");
+  const { enabled_channels } = data;
+
+  // ================= DELETE CHANNELS =================
+  for (const id of Object.values(enabled_channels || {})) {
+    const channel = guild.channels.cache.get(id);
+    if (channel) await channel.delete().catch(() => {});
+  }
+
+  // ================= DELETE CATEGORY =================
+  const category = guild.channels.cache.find(
+    c => c.name === "🌍 UniChat" && c.type === 4
+  );
+
   if (category) {
     await category.delete().catch(() => {});
   }
 
-  // ===== DELETE ROLES (NO ENGLISH) =====
-  const roles = [
-    "Spanish",
-    "German",
-    "Italian",
-    "Korean",
-    "Russian",
-    "Japanese"
-  ];
+  // ================= DELETE ROLES =================
+  const roleNames = ["Spanish", "German", "Italian", "Korean", "Russian", "Japanese"];
 
-  for (const name of roles) {
+  for (const name of roleNames) {
     const role = guild.roles.cache.find(r => r.name === name);
     if (role) await role.delete().catch(() => {});
   }
 
-  // ===== CLEAN DATABASE =====
+  // ================= CLEAR DB =================
   await supabase
     .from("guild_settings")
     .delete()
     .eq("guild_id", guild.id);
 
-  await interaction.followUp({
-    content: "✅ Fully removed",
-    ephemeral: true
-  });
+  return interaction.editReply("✅ UniChat uninstalled cleanly");
 }
