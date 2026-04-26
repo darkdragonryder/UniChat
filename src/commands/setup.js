@@ -22,7 +22,6 @@ const roleNames = {
 export default async function setupCommand(interaction) {
   const guild = interaction.guild;
 
-  // ================= SAFE ACK FIRST =================
   await interaction.reply({
     content: "⚙️ Starting UniChat setup...",
     ephemeral: true
@@ -30,7 +29,6 @@ export default async function setupCommand(interaction) {
 
   try {
 
-    // ================= FIND GENERAL =================
     const defaultChannel = guild.channels.cache.find(
       c => c.name === "general" && c.type === 0
     );
@@ -39,7 +37,6 @@ export default async function setupCommand(interaction) {
       return interaction.editReply("❌ #general not found");
     }
 
-    // ================= CREATE CATEGORY =================
     const category = await guild.channels.create({
       name: "🌍 UniChat",
       type: 4
@@ -47,7 +44,6 @@ export default async function setupCommand(interaction) {
 
     const enabled_channels = {};
 
-    // ================= CREATE ROLES + CHANNELS =================
     for (const [lang, emoji] of Object.entries(languages)) {
 
       let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
@@ -85,10 +81,13 @@ export default async function setupCommand(interaction) {
       enabled_channels
     });
 
-    // ================= APPLY LOCKS =================
-    await applyChannelLocks(guild, { enabled_channels });
+    // ================= DELAYED LOCK SYSTEM (CRITICAL FIX) =================
+    setTimeout(() => {
+      applyChannelLocks(guild, { enabled_channels })
+        .catch(err => console.log("Lock error:", err.message));
+    }, 5000);
 
-    // ================= FORCE CATEGORY POSITION (FIXED) =================
+    // ================= CATEGORY POSITION FIX =================
     setTimeout(async () => {
       try {
         await guild.channels.fetch();
@@ -108,13 +107,15 @@ export default async function setupCommand(interaction) {
       } catch (err) {
         console.log("Category move error:", err.message);
       }
-    }, 5000);
+    }, 6000);
 
-    // ================= FINAL MESSAGE (ALWAYS WORKS) =================
     return interaction.editReply("✅ UniChat setup complete");
 
   } catch (err) {
     console.log("Setup error:", err);
-    return interaction.editReply("❌ Setup failed (check logs)");
+
+    return interaction.editReply(
+      `❌ Setup failed:\n\`\`\`${err?.message || err}\`\`\``
+    );
   }
 }
