@@ -22,90 +22,68 @@ const roleNames = {
 export default async function setupCommand(interaction) {
   const guild = interaction.guild;
 
-  await interaction.reply({
-    content: "⚙️ Setting up UniChat...",
-    ephemeral: true
-  });
+  await interaction.reply({ content: "⚙️ Starting setup...", ephemeral: true });
 
   try {
 
-    const defaultChannel = guild.channels.cache.find(
-      c => c.name === "general" && c.type === 0
-    );
+    await guild.channels.fetch();
 
-    if (!defaultChannel) {
-      return interaction.editReply("❌ #general not found");
-    }
-
+    // ================= 1. CREATE CATEGORY =================
     const category = await guild.channels.create({
       name: "🌍 UniChat",
       type: 4
     });
 
+    // ================= 2. CREATE CHANNELS =================
     const enabled_channels = {};
 
     for (const [lang, emoji] of Object.entries(languages)) {
 
-      let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
-
-      if (!role) {
-        role = await guild.roles.create({
-          name: roleNames[lang],
-          mentionable: false
-        });
-      }
-
       const channel = await guild.channels.create({
         name: `general-${emoji}`,
         type: 0,
-        parent: category.id,
-        permissionOverwrites: [
-          {
-            id: guild.roles.everyone.id,
-            deny: ["ViewChannel"]
-          },
-          {
-            id: role.id,
-            allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
-          }
-        ]
+        parent: category.id
       });
 
       enabled_channels[lang] = channel.id;
     }
 
-    // SAVE DB FIRST (IMPORTANT)
+    // ================= 3. SAVE DATABASE (ONLY AFTER CHANNELS EXIST) =================
+    const defaultChannel = guild.channels.cache.find(
+      c => c.name === "general" && c.type === 0
+    );
+
     await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
-      default_channel: defaultChannel.id,
+      default_channel: defaultChannel?.id || null,
       enabled_channels
     });
 
-    // DELAYED LOCK (DO NOT BREAK SETUP)
-    setTimeout(() => {
-      applyChannelLocks(guild, { enabled_channels }).catch(() => {});
-    }, 5000);
+    // ================= 4. CREATE ROLES =================
+    for (const lang of Object.keys(roleNames)) {
+      let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
 
-    // CATEGORY POSITION FIX
-    setTimeout(async () => {
-      await guild.channels.fetch();
-
-      const general = guild.channels.cache.find(
-        c => c.name === "general" && c.type === 0
-      );
-
-      const uniChat = guild.channels.cache.find(
-        c => c.name === "🌍 UniChat" && c.type === 4
-      );
-
-      if (general && uniChat) {
-        await uniChat.setPosition(general.position + 1);
+      if (!role) {
+        await guild.roles.create({
+          name: roleNames[lang],
+          mentionable: false
+        });
       }
-    }, 6000);
+    }
 
-    return interaction.editReply("✅ UniChat setup complete");
+    // ================= 5. APPLY LOCKS =================
+    await applyChannelLocks(guild, { enabled_channels });
+
+    // ================= 6. MOVE CATEGORY =================
+    if (defaultChannel) {
+      await category.setPosition(defaultChannel.position + 1);
+    }
+
+    // ================= DONE =================
+    return interaction.editReply("✅ Setup complete");
 
   } catch (err) {
+    console.log("Setup error:", err);
     return interaction.editReply(`❌ Setup failed: ${err.message}`);
   }
 }
