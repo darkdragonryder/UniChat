@@ -16,24 +16,41 @@ const client = new Client({
   ]
 });
 
+// ================= READY =================
 client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
+// ================= WEBHOOK SENDER =================
+async function sendAsUser(channel, user, content) {
+  const webhooks = await channel.fetchWebhooks();
+
+  let webhook = webhooks.find(w => w.owner?.id === client.user.id);
+
+  if (!webhook) {
+    webhook = await channel.createWebhook({
+      name: "UniChat Relay"
+    });
+  }
+
+  await webhook.send({
+    content,
+    username: user.username,
+    avatarURL: user.displayAvatarURL(),
+    allowedMentions: { parse: [] }
+  });
+}
 
 // ================= MESSAGE TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
-    // ===== BASIC GUARDS =====
+    // ===== GUARDS =====
     if (!message.guild || message.author.bot) return;
 
     const content = message.content?.trim();
     if (!content || content.startsWith("/")) return;
 
-    // 🔥 LOOP PROTECTION (CRITICAL)
-    if (content.startsWith("[UC]")) return;
-
-    // ===== GET USER =====
+    // ===== USER =====
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -44,7 +61,7 @@ client.on("messageCreate", async (message) => {
 
     const sourceLang = user.language.toUpperCase();
 
-    // ===== GET GUILD SETTINGS =====
+    // ===== GUILD SETTINGS =====
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -55,15 +72,13 @@ client.on("messageCreate", async (message) => {
 
     const channels = await message.guild.channels.fetch();
 
-    // ===== BUILD CHANNEL MAP =====
+    // ===== CHANNEL MAP =====
     const channelMap = new Map();
 
-    // default English channel
     if (settings.default_channel && channels.get(settings.default_channel)) {
       channelMap.set(settings.default_channel, "EN");
     }
 
-    // language channels
     for (const [lang, id] of Object.entries(settings.enabled_channels)) {
       if (channels.get(id)) {
         channelMap.set(id, lang.toUpperCase());
@@ -72,13 +87,11 @@ client.on("messageCreate", async (message) => {
 
     if (!channelMap.size) return;
 
-    // ===== DETERMINE SOURCE CHANNEL LANGUAGE =====
     const currentLang = channelMap.get(message.channel.id);
     if (!currentLang) return;
 
-    // ===== TRANSLATE TO OTHER CHANNELS =====
+    // ===== TRANSLATE =====
     for (const [channelId, targetLang] of channelMap.entries()) {
-
       if (channelId === message.channel.id) continue;
       if (targetLang === currentLang) continue;
 
@@ -86,10 +99,9 @@ client.on("messageCreate", async (message) => {
       if (!channel) continue;
 
       const translated = await translateCached(content, targetLang);
-
       if (!translated || translated === content) continue;
 
-      await channel.send(`🌍 [UC] ${translated}`).catch(() => {});
+      await sendAsUser(channel, message.author, `🌍 ${translated}`);
     }
 
   } catch (err) {
@@ -97,10 +109,8 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-
-// ================= COMMAND HANDLER =================
+// ================= COMMANDS =================
 client.on("interactionCreate", async (interaction) => {
-
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "setup") return setupCommand(interaction);
