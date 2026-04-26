@@ -1,4 +1,5 @@
 import { supabase } from "../services/supabase.js";
+import { applyChannelLocks } from "../utils/applyChannelLocks.js";
 
 const languages = {
   ES: "🇪🇸",
@@ -24,51 +25,26 @@ export default async function setupCommand(interaction) {
 
   const guild = interaction.guild;
 
-  // ================= FIND GENERAL =================
   const defaultChannel = guild.channels.cache.find(
     c => c.name === "general" && c.type === 0
   );
 
   if (!defaultChannel) {
     return interaction.followUp({
-      content: "❌ #general channel not found",
+      content: "❌ #general not found",
       ephemeral: true
     });
   }
 
-  // ================= CREATE CATEGORY =================
   const category = await guild.channels.create({
     name: "🌍 UniChat",
     type: 4
   });
 
-  // ================= FIX CATEGORY POSITION =================
-  setTimeout(async () => {
-    try {
-      const fresh = await guild.channels.fetch();
-
-      const general = fresh.find(
-        c => c.name === "general" && c.type === 0
-      );
-
-      const uniChat = fresh.find(
-        c => c.name === "🌍 UniChat"
-      );
-
-      if (general && uniChat) {
-        await uniChat.setPosition(general.position + 1);
-      }
-    } catch (err) {
-      console.log("Category position error:", err.message);
-    }
-  }, 2000);
-
   const enabled_channels = {};
 
-  // ================= CREATE ROLES + CHANNELS =================
   for (const [lang, emoji] of Object.entries(languages)) {
 
-    // ---- ROLE ----
     let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
 
     if (!role) {
@@ -78,7 +54,6 @@ export default async function setupCommand(interaction) {
       });
     }
 
-    // ---- CHANNEL WITH LOCKED PERMISSIONS ----
     const channel = await guild.channels.create({
       name: `general-${emoji}`,
       type: 0,
@@ -98,15 +73,17 @@ export default async function setupCommand(interaction) {
     enabled_channels[lang] = channel.id;
   }
 
-  // ================= SAVE TO DATABASE =================
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
     default_channel: defaultChannel.id,
     enabled_channels
   });
 
+  // 🔒 APPLY FINAL LOCKS (ensures consistency)
+  await applyChannelLocks(guild, { enabled_channels });
+
   await interaction.followUp({
-    content: "✅ UniChat setup complete (locked channels enabled)",
+    content: "✅ UniChat setup complete + channels locked",
     ephemeral: true
   });
 }
