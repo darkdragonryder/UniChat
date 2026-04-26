@@ -10,33 +10,31 @@ export async function applyChannelLocks(guild, config) {
     JA: "Japanese"
   };
 
-  // ALWAYS FRESH FETCH (CRITICAL FIX)
   await guild.channels.fetch();
 
   for (const [lang, channelId] of Object.entries(enabled_channels || {})) {
-
-    const roleName = roleMap[lang];
-    if (!roleName) continue;
-
-    const role = guild.roles.cache.find(r => r.name === roleName);
-    const channel = guild.channels.cache.get(channelId);
-
-    if (!role || !channel) continue;
-
     try {
-      // SAFE OVERRIDES (no crash if missing access)
-      await channel.permissionOverwrites.edit(guild.roles.everyone, {
+      const roleName = roleMap[lang];
+      if (!roleName) continue;
+
+      const role = guild.roles.cache.find(r => r.name === roleName);
+      const channel = guild.channels.cache.get(channelId);
+
+      if (!role || !channel) continue;
+
+      // SAFE OVERWRITES (NO CRASH IF DISCORD IS NOT READY)
+      await channel.permissionOverwrites.create(guild.roles.everyone, {
         ViewChannel: false
       }).catch(() => {});
 
-      await channel.permissionOverwrites.edit(role, {
+      await channel.permissionOverwrites.create(role, {
         ViewChannel: true,
         SendMessages: true,
         ReadMessageHistory: true
       }).catch(() => {});
 
     } catch (err) {
-      console.log(`Lock failed for ${lang}:`, err.message);
+      console.log(`Lock error [${lang}]:`, err.message);
     }
   }
 }
