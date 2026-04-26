@@ -24,20 +24,18 @@ export default async function setupCommand(interaction) {
   await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
 
   try {
-    // ================= FETCH =================
     await guild.channels.fetch();
     await guild.roles.fetch();
 
-    // ================= DEFAULT CHANNEL =================
     const default_channel = interaction.channel.id;
 
-    // ================= CREATE CATEGORY (FIRST = CORRECT POSITION) =================
+    // ================= CREATE CATEGORY =================
     const category = await guild.channels.create({
       name: "🌍 UniChat",
       type: 4
     });
 
-    // ================= CREATE LANGUAGE CHANNELS =================
+    // ================= CREATE CHANNELS =================
     const enabled_channels = {};
 
     for (const [lang, emoji] of Object.entries(languages)) {
@@ -69,7 +67,22 @@ export default async function setupCommand(interaction) {
       }
     }
 
-    // ================= DONE =================
+    // ================= 🔥 DELAYED CATEGORY MOVE =================
+    setTimeout(async () => {
+      try {
+        await guild.channels.fetch();
+
+        const referenceChannel = interaction.channel;
+
+        await category.setPosition(referenceChannel.rawPosition + 1);
+
+        console.log("✅ Category moved successfully");
+
+      } catch (err) {
+        console.log("❌ Category move failed:", err.message);
+      }
+    }, 3000); // 🔥 3 second delay is KEY
+
     return interaction.editReply("✅ Setup complete");
 
   } catch (err) {
