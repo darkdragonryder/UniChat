@@ -101,6 +101,14 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     console.log("INTERACTION ERROR:", err.message);
   }
+
+    if (interaction.commandName === "help") {
+    return helpCommand(interaction);
+  }
+
+    if (interaction.commandName === "info") {
+    return infoCommand(interaction);
+  }
 });
 
 // ================= LOGIN =================
