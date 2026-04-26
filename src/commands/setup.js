@@ -55,7 +55,7 @@ export default async function setupCommand(interaction) {
       enabled_channels
     });
 
-    // ================= CREATE ROLES =================
+    // ================= CREATE ROLES (LANGUAGES) =================
     for (const name of Object.values(roleNames)) {
       const exists = guild.roles.cache.find(r => r.name === name);
 
@@ -65,6 +65,43 @@ export default async function setupCommand(interaction) {
           mentionable: false
         });
       }
+    }
+
+    // ================= 🔥 NEW: SYSTEM ROLES =================
+
+    // 🤖 UniChat Bot role
+    let botRole = guild.roles.cache.find(r => r.name === "🤖 UniChat Bot");
+
+    if (!botRole) {
+      botRole = await guild.roles.create({
+        name: "🤖 UniChat Bot",
+        color: 0x5865f2,
+        mentionable: false,
+        reason: "UniChat system bot role"
+      });
+    }
+
+    // 🌏 UniChat Owner role
+    let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
+
+    if (!ownerRole) {
+      ownerRole = await guild.roles.create({
+        name: "🌏 UniChat Owner",
+        color: 0x00bfff,
+        mentionable: false,
+        reason: "UniChat owner role"
+      });
+    }
+
+    // ================= ASSIGN BOT ROLE =================
+    try {
+      const botMember = await guild.members.fetch(interaction.client.user.id);
+
+      if (botRole && botMember) {
+        await botMember.roles.add(botRole).catch(() => {});
+      }
+    } catch (err) {
+      console.log("⚠️ Bot role assignment failed:", err.message);
     }
 
     // ================= 🔥 DELAYED CATEGORY MOVE =================
@@ -81,7 +118,7 @@ export default async function setupCommand(interaction) {
       } catch (err) {
         console.log("❌ Category move failed:", err.message);
       }
-    }, 3000); // 🔥 3 second delay is KEY
+    }, 3000);
 
     return interaction.editReply("✅ Setup complete");
 
