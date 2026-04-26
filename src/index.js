@@ -20,18 +20,20 @@ const client = new Client({
   ]
 });
 
+// ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀UniChat Bot is ONLINE: ${client.user.tag}`);
+  console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
 
-// ================= MESSAGE HANDLER =================
+// ================= MESSAGE PIPELINE =================
 client.on("messageCreate", async (message) => {
   try {
-    if (message.author.bot || !message.guild) return;
+    // ================= GUARDS =================
+    if (!message.guild || message.author.bot) return;
 
-    const content = message.content.trim();
-    if (!content || content.startsWith("/")) return;
+    const content = message.content?.trim();
+    if (!content) return;
 
     // ================= USER DATA =================
     const { data: user } = await supabase
@@ -42,11 +44,9 @@ client.on("messageCreate", async (message) => {
 
     // ================= ONBOARDING =================
     if (!user?.language) {
-
       const detected = detectLang(content);
 
       if (detected && detected !== "EN") {
-
         const prompt = await message.reply({
           content: `🌍 We think you're speaking **${detected}**. Set this as your language?`,
           components: languageSuggestion(detected)
@@ -64,7 +64,7 @@ client.on("messageCreate", async (message) => {
 
     const sourceLang = (user.language || "EN").toUpperCase();
 
-    // ================= GUILD SETTINGS =================
+    // ================= DB LOAD (SOURCE OF TRUTH) =================
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -75,44 +75,48 @@ client.on("messageCreate", async (message) => {
 
     const { default_channel, enabled_channels } = settings;
 
-    // ================= CRITICAL FIX: ALWAYS FRESH FETCH =================
-    await message.guild.channels.fetch();
+    // ================= ALWAYS FRESH STATE =================
+    const channels = await message.guild.channels.fetch();
 
-    // ================= STABLE ROUTING MAP =================
-    const channelMap = new Map();
+    // ================= BUILD ROUTING MAP =================
+    const targets = [];
 
-    // English source channel
-    if (default_channel) {
-      const ch = message.guild.channels.cache.get(default_channel);
-      if (ch) channelMap.set(default_channel, "EN");
+    // English channel
+    if (default_channel && channels.get(default_channel)) {
+      targets.push({
+        id: default_channel,
+        lang: "EN"
+      });
     }
 
     // Language channels
     for (const [lang, id] of Object.entries(enabled_channels || {})) {
-      const ch = message.guild.channels.cache.get(id);
-      if (ch) channelMap.set(id, lang.toUpperCase());
+      if (channels.get(id)) {
+        targets.push({
+          id,
+          lang: lang.toUpperCase()
+        });
+      }
     }
 
-    if (channelMap.size === 0) return;
+    if (targets.length === 0) return;
 
-    // ================= TRANSLATION LOOP (FIXED CORE) =================
-    for (const [channelId, targetLang] of channelMap.entries()) {
-
-      const channel = message.guild.channels.cache.get(channelId);
+    // ================= TRANSLATION SEND LOOP =================
+    for (const target of targets) {
+      const channel = channels.get(target.id);
       if (!channel) continue;
 
-      // only skip SAME language in SAME channel
-      if (targetLang === sourceLang && channelId === default_channel) continue;
+      // skip only same-language same-channel
+      if (target.lang === sourceLang && target.id === default_channel) continue;
 
       try {
-        const translated = await translateCached(content, targetLang);
-
+        const translated = await translateCached(content, target.lang);
         if (!translated) continue;
 
         await channel.send(`🌍 ${translated}`);
 
       } catch (err) {
-        console.log("Translate send error:", err.message);
+        console.log("Translate error:", err.message);
       }
     }
 
