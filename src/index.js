@@ -20,8 +20,7 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-
-// ================= MESSAGE TRANSLATION ENGINE =================
+// ================= ONLY TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
@@ -29,7 +28,6 @@ client.on("messageCreate", async (message) => {
     const content = message.content?.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= USER =================
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -40,7 +38,6 @@ client.on("messageCreate", async (message) => {
 
     const sourceLang = user.language.toUpperCase();
 
-    // ================= GUILD SETTINGS =================
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -51,9 +48,7 @@ client.on("messageCreate", async (message) => {
 
     const channels = await message.guild.channels.fetch();
 
-    const entries = Object.entries(settings.enabled_channels);
-
-    for (const [lang, channelId] of entries) {
+    for (const [lang, channelId] of Object.entries(settings.enabled_channels)) {
       const channel = channels.get(channelId);
       if (!channel) continue;
 
@@ -70,10 +65,8 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-
-// ================= COMMAND HANDLER =================
+// ================= COMMANDS =================
 client.on("interactionCreate", async (interaction) => {
-
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "setup") return setupCommand(interaction);
