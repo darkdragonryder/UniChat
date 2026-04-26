@@ -21,11 +21,11 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-  console.log(`✅ ONLINE: ${client.user.tag}`);
+  console.log(`🚀UniChat Bot is ONLINE: ${client.user.tag}`);
 });
 
 
-// ================= MESSAGE SYSTEM =================
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot || !message.guild) return;
@@ -40,7 +40,7 @@ client.on("messageCreate", async (message) => {
       .eq("user_id", message.author.id)
       .maybeSingle();
 
-    // ================= ONBOARDING DETECTION =================
+    // ================= ONBOARDING =================
     if (!user?.language) {
 
       const detected = detectLang(content);
@@ -75,36 +75,45 @@ client.on("messageCreate", async (message) => {
 
     const { default_channel, enabled_channels } = settings;
 
-    const channels = await message.guild.channels.fetch();
+    // ================= CRITICAL FIX: ALWAYS FRESH FETCH =================
+    await message.guild.channels.fetch();
 
-    // ================= CHANNEL MAP =================
+    // ================= STABLE ROUTING MAP =================
     const channelMap = new Map();
 
-    if (default_channel && channels.get(default_channel)) {
-      channelMap.set(default_channel, "EN");
+    // English source channel
+    if (default_channel) {
+      const ch = message.guild.channels.cache.get(default_channel);
+      if (ch) channelMap.set(default_channel, "EN");
     }
 
+    // Language channels
     for (const [lang, id] of Object.entries(enabled_channels || {})) {
-      if (channels.get(id)) {
-        channelMap.set(id, lang.toUpperCase());
-      }
+      const ch = message.guild.channels.cache.get(id);
+      if (ch) channelMap.set(id, lang.toUpperCase());
     }
 
-    if (!channelMap.size) return;
+    if (channelMap.size === 0) return;
 
-    // ================= TRANSLATION BROADCAST =================
+    // ================= TRANSLATION LOOP (FIXED CORE) =================
     for (const [channelId, targetLang] of channelMap.entries()) {
 
-      const channel = channels.get(channelId);
+      const channel = message.guild.channels.cache.get(channelId);
       if (!channel) continue;
 
-      if (targetLang === sourceLang) continue;
+      // only skip SAME language in SAME channel
+      if (targetLang === sourceLang && channelId === default_channel) continue;
 
-      const translated = await translateCached(content, targetLang);
+      try {
+        const translated = await translateCached(content, targetLang);
 
-      if (!translated || translated === content) continue;
+        if (!translated) continue;
 
-      await channel.send(`🌍 ${translated}`).catch(() => {});
+        await channel.send(`🌍 ${translated}`);
+
+      } catch (err) {
+        console.log("Translate send error:", err.message);
+      }
     }
 
   } catch (err) {
@@ -116,12 +125,10 @@ client.on("messageCreate", async (message) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // ================= BUTTON SYSTEM =================
   if (interaction.isButton()) {
 
     const member = await interaction.guild.members.fetch(interaction.user.id);
 
-    // ================= ACCEPT LANGUAGE =================
     if (interaction.customId.startsWith("lang_yes_")) {
 
       const lang = interaction.customId.split("_")[2];
@@ -140,12 +147,12 @@ client.on("interactionCreate", async (interaction) => {
         JA: "Japanese"
       };
 
-      const roleName = roleMap[lang];
-      const role = interaction.guild.roles.cache.find(r => r.name === roleName);
+      const role = interaction.guild.roles.cache.find(
+        r => r.name === roleMap[lang]
+      );
 
       if (role) await member.roles.add(role).catch(() => {});
 
-      // 🔒 re-apply locks after role assignment
       const { data: settings } = await supabase
         .from("guild_settings")
         .select("*")
@@ -153,7 +160,9 @@ client.on("interactionCreate", async (interaction) => {
         .maybeSingle();
 
       if (settings) {
-        await applyChannelLocks(interaction.guild, settings);
+        setTimeout(() => {
+          applyChannelLocks(interaction.guild, settings).catch(() => {});
+        }, 3000);
       }
 
       return interaction.update({
@@ -162,7 +171,6 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= DECLINE =================
     if (interaction.customId === "lang_no") {
       return interaction.update({
         content: "👍 No problem — use /setlanguage anytime",
@@ -171,7 +179,6 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // ================= SLASH COMMANDS =================
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "setup") {
