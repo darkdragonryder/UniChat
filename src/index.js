@@ -7,6 +7,8 @@ import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
 
+import { recoverGuild } from "./utils/recoverGuild.js";
+
 // ================= CLIENT =================
 const client = new Client({
   intents: [
@@ -17,52 +19,16 @@ const client = new Client({
   ]
 });
 
-// ================= SELF HEAL CACHE =================
-const healedGuilds = new Set();
-
-// ================= SELF HEAL FUNCTION =================
-async function selfHealGuild(guild) {
-  try {
-    const { data: settings } = await supabase
-      .from("guild_settings")
-      .select("*")
-      .eq("guild_id", guild.id)
-      .maybeSingle();
-
-    if (!settings) return;
-
-    const channels = await guild.channels.fetch();
-
-    let changed = false;
-    const fixed = { ...(settings.enabled_channels || {}) };
-
-    for (const [lang, channelId] of Object.entries(fixed)) {
-      if (!channels.get(channelId)) {
-        delete fixed[lang];
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      await supabase
-        .from("guild_settings")
-        .update({ enabled_channels: fixed })
-        .eq("guild_id", guild.id);
-
-      console.log(`🛠️ Self-healed guild: ${guild.name}`);
-    }
-
-  } catch (err) {
-    console.log("SELF HEAL ERROR:", err.message);
-  }
-}
+// ================= SELF-HEAL CACHE =================
+const recoveredGuilds = new Set();
 
 // ================= READY =================
 client.once("ready", async () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 
+  // FULL RECOVERY ON START
   for (const guild of client.guilds.cache.values()) {
-    await selfHealGuild(guild);
+    await recoverGuild(guild);
   }
 });
 
@@ -74,10 +40,10 @@ client.on("messageCreate", async (message) => {
     const content = message.content?.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= SELF HEAL (ONCE PER GUILD) =================
-    if (!healedGuilds.has(message.guild.id)) {
-      healedGuilds.add(message.guild.id);
-      await selfHealGuild(message.guild);
+    // ================= FULL RECOVERY (ONCE PER GUILD) =================
+    if (!recoveredGuilds.has(message.guild.id)) {
+      recoveredGuilds.add(message.guild.id);
+      await recoverGuild(message.guild);
     }
 
     // ================= USER SETTINGS =================
@@ -102,9 +68,7 @@ client.on("messageCreate", async (message) => {
 
     const channels = await message.guild.channels.fetch();
 
-    const entries = Object.entries(settings.enabled_channels);
-
-    for (const [lang, channelId] of entries) {
+    for (const [lang, channelId] of Object.entries(settings.enabled_channels)) {
       const channel = channels.get(channelId);
       if (!channel) continue;
 
