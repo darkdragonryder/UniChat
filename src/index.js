@@ -16,10 +16,27 @@ const client = new Client({
   ]
 });
 
-// ================= READY =================
 client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
+
+// ================= SIMPLE MESSAGE FILTER =================
+function shouldIgnore(content) {
+  if (!content) return true;
+
+  const t = content.trim();
+
+  if (t.length <= 2) return true; // too short
+  if (t.startsWith("/")) return true; // commands
+
+  const junk = ["ok", "okay", "lol", "lmao", "brb", "gg"];
+  if (junk.includes(t.toLowerCase())) return true;
+
+  if (/^[^\p{L}\p{N}]+$/u.test(t)) return true; // emojis only
+  if (t.startsWith("http")) return true;
+
+  return false;
+}
 
 // ================= WEBHOOK SENDER =================
 async function sendAsUser(channel, user, content) {
@@ -41,16 +58,15 @@ async function sendAsUser(channel, user, content) {
   });
 }
 
-// ================= MESSAGE TRANSLATION ENGINE =================
+// ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
-    // ===== GUARDS =====
     if (!message.guild || message.author.bot) return;
 
     const content = message.content?.trim();
-    if (!content || content.startsWith("/")) return;
+    if (shouldIgnore(content)) return;
 
-    // ===== USER =====
+    // ===== USER DATA =====
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -58,8 +74,6 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     if (!user?.language) return;
-
-    const sourceLang = user.language.toUpperCase();
 
     // ===== GUILD SETTINGS =====
     const { data: settings } = await supabase
@@ -84,8 +98,6 @@ client.on("messageCreate", async (message) => {
         channelMap.set(id, lang.toUpperCase());
       }
     }
-
-    if (!channelMap.size) return;
 
     const currentLang = channelMap.get(message.channel.id);
     if (!currentLang) return;
