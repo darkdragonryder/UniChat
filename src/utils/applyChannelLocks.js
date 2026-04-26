@@ -22,7 +22,6 @@ export async function applyChannelLocks(guild, config) {
 
       if (!role || !channel) continue;
 
-      // SAFE OVERWRITES (NO CRASH IF DISCORD IS NOT READY)
       await channel.permissionOverwrites.create(guild.roles.everyone, {
         ViewChannel: false
       }).catch(() => {});
