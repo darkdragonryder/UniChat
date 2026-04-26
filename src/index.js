@@ -20,6 +20,11 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
+// ================= BUFFER SYSTEM =================
+const messageBuffer = new Map();
+// key: guildId::channelId::langGroup
+// value: { messages: [], timeout }
+
 // ================= HELPERS =================
 function isOnlyEmoji(text) {
   if (!text) return false;
@@ -61,27 +66,36 @@ async function sendAsUser(channel, user, content) {
   });
 }
 
-// ================= BUILD SAFE ROUTING MAP =================
-async function buildChannelMap(guild, settings) {
-  const map = new Map();
+// ================= FLUSH BUFFER =================
+async function flushBuffer(key, buffer, channelMap, message, isEmoji) {
+  try {
+    const text = buffer.messages.join("\n");
 
-  // Always resolve fresh channels (no cache trust)
-  const channels = await guild.channels.fetch();
+    const currentLang = buffer.lang;
 
-  // Validate default channel (EN source)
-  if (settings.default_channel && channels.get(settings.default_channel)) {
-    map.set(settings.default_channel, "EN");
+    for (const [channelId, targetLang] of channelMap.entries()) {
+      if (channelId === message.channel.id) continue;
+      if (targetLang === currentLang) continue;
+
+      const channel = message.guild.channels.cache.get(channelId);
+      if (!channel) continue;
+
+      if (isEmoji) {
+        await sendAsUser(channel, message.author, text);
+        continue;
+      }
+
+      const translated = await translateCached(text, targetLang);
+      if (!translated) continue;
+
+      await sendAsUser(channel, message.author, `🌍 ${translated}`);
+    }
+
+  } catch (err) {
+    console.log("BUFFER ERROR:", err.message);
+  } finally {
+    messageBuffer.delete(key);
   }
-
-  // Validate language channels strictly from DB
-  for (const [lang, id] of Object.entries(settings.enabled_channels || {})) {
-    const ch = channels.get(id);
-    if (!ch) continue; // ignore deleted/orphan channels
-
-    map.set(id, lang.toUpperCase());
-  }
-
-  return map;
 }
 
 // ================= MESSAGE ENGINE =================
@@ -92,7 +106,6 @@ client.on("messageCreate", async (message) => {
     const content = message.content?.trim();
     if (shouldIgnore(content)) return;
 
-    // ===== USER =====
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -101,7 +114,6 @@ client.on("messageCreate", async (message) => {
 
     if (!user?.language) return;
 
-    // ===== SETTINGS (SOURCE OF TRUTH) =====
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -110,36 +122,42 @@ client.on("messageCreate", async (message) => {
 
     if (!settings?.enabled_channels) return;
 
-    // 🔒 STRICT MAP (NO CACHE RELIANCE)
-    const channelMap = await buildChannelMap(message.guild, settings);
+    const channels = await message.guild.channels.fetch();
 
-    if (!channelMap.size) return;
+    const channelMap = new Map();
+
+    if (settings.default_channel && channels.get(settings.default_channel)) {
+      channelMap.set(settings.default_channel, "EN");
+    }
+
+    for (const [lang, id] of Object.entries(settings.enabled_channels)) {
+      if (channels.get(id)) {
+        channelMap.set(id, lang.toUpperCase());
+      }
+    }
 
     const currentLang = channelMap.get(message.channel.id);
-    if (!currentLang) return; // ignore unmanaged channels
+    if (!currentLang) return;
 
-    const onlyEmoji = isOnlyEmoji(content);
+    // ================= BUFFER KEY =================
+    const key = `${message.guild.id}::${message.channel.id}::${currentLang}`;
 
-    // ================= ROUTING =================
-    for (const [channelId, targetLang] of channelMap.entries()) {
-      if (channelId === message.channel.id) continue;
-      if (targetLang === currentLang) continue;
+    const isEmoji = isOnlyEmoji(content);
 
-      const channel = message.guild.channels.cache.get(channelId);
-      if (!channel) continue;
-
-      // 🟢 EMOJIS: PASS THROUGH
-      if (onlyEmoji) {
-        await sendAsUser(channel, message.author, content);
-        continue;
-      }
-
-      // 🟡 TEXT: TRANSLATE
-      const translated = await translateCached(content, targetLang);
-      if (!translated) continue;
-
-      await sendAsUser(channel, message.author, `🌍 ${translated}`);
+    if (!messageBuffer.has(key)) {
+      messageBuffer.set(key, {
+        messages: [],
+        lang: currentLang,
+        timer: setTimeout(() => {
+          const buf = messageBuffer.get(key);
+          if (!buf) return;
+          flushBuffer(key, buf, channelMap, message, isEmoji);
+        }, 2000) // 2 second grouping window
+      });
     }
+
+    const buffer = messageBuffer.get(key);
+    buffer.messages.push(content);
 
   } catch (err) {
     console.log("MESSAGE ERROR:", err.message);
