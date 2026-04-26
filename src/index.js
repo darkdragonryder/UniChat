@@ -9,6 +9,7 @@ import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
+import announceOwner from "./commands/announceOwner.js";
 
 // Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
@@ -22,24 +23,20 @@ const client = new Client({
   ]
 });
 
-// ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
+  console.log(`🚀 UniChat Bot is ONLINE: ${client.user.tag}`);
 });
 
-// ================= REGISTER EVENTS =================
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 // ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
+    if (!message.guild || message.author.bot) return;
 
     const content = message.content?.trim();
     if (!content || content.startsWith("/")) return;
 
-    // ================= USER =================
     const { data: user } = await supabase
       .from("user_settings")
       .select("*")
@@ -50,7 +47,6 @@ client.on("messageCreate", async (message) => {
 
     const sourceLang = user.language.toUpperCase();
 
-    // ================= GUILD =================
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -62,7 +58,6 @@ client.on("messageCreate", async (message) => {
 
     const channels = await message.guild.channels.fetch();
 
-    // ================= TRANSLATE =================
     for (const [lang, channelId] of Object.entries(channelsData)) {
       if (lang.toUpperCase() === sourceLang) continue;
 
@@ -86,37 +81,21 @@ client.on("messageCreate", async (message) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
-    // ================= SLASH COMMANDS =================
     if (interaction.isChatInputCommand()) {
 
-      if (interaction.commandName === "setup") {
-        return setupCommand(interaction);
-      }
-
-      if (interaction.commandName === "uninstall") {
-        return uninstallCommand(interaction);
-      }
-
-      if (interaction.commandName === "setlanguage") {
-        return setLanguageCommand(interaction);
-      }
-
-      if (interaction.commandName === "help") {
-        return helpCommand(interaction);
-      }
-
-      if (interaction.commandName === "info") {
-        return infoCommand(interaction);
-      }
+      if (interaction.commandName === "setup") return setupCommand(interaction);
+      if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
+      if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
+      if (interaction.commandName === "help") return helpCommand(interaction);
+      if (interaction.commandName === "info") return infoCommand(interaction);
+      if (interaction.commandName === "announce-owner") return announceOwner(interaction);
     }
 
-    // ================= LANGUAGE SELECT =================
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "select_language") {
 
         const lang = interaction.values[0];
-        const guild = interaction.guild;
-        const member = await guild.members.fetch(interaction.user.id);
+        const member = await interaction.guild.members.fetch(interaction.user.id);
 
         const roleNames = {
           EN: "English",
@@ -128,17 +107,17 @@ client.on("interactionCreate", async (interaction) => {
           JA: "Japanese"
         };
 
-        // REMOVE OLD ROLES
         for (const name of Object.values(roleNames)) {
-          const role = guild.roles.cache.find(r => r.name === name);
+          const role = interaction.guild.roles.cache.find(r => r.name === name);
           if (role) await member.roles.remove(role).catch(() => {});
         }
 
-        // ADD NEW ROLE
-        const newRole = guild.roles.cache.find(r => r.name === roleNames[lang]);
+        const newRole = interaction.guild.roles.cache.find(
+          r => r.name === roleNames[lang]
+        );
+
         if (newRole) await member.roles.add(newRole).catch(() => {});
 
-        // SAVE TO DB
         await supabase.from("user_settings").upsert({
           user_id: interaction.user.id,
           language: lang
@@ -156,5 +135,4 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
