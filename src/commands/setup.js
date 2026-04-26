@@ -9,82 +9,49 @@ const languages = {
   JA: "🇯🇵"
 };
 
+const roleNames = {
+  ES: "Spanish",
+  DE: "German",
+  IT: "Italian",
+  KO: "Korean",
+  RU: "Russian",
+  JA: "Japanese"
+};
+
 export default async function setupCommand(interaction) {
 
-  await interaction.reply({ content: "⚙️ Setting up...", ephemeral: true });
+  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
 
   const guild = interaction.guild;
 
-  // ===== FIND EXISTING GENERAL CHANNEL =====
+  // ================= FIND GENERAL =================
   const defaultChannel = guild.channels.cache.find(
     c => c.name === "general" && c.type === 0
   );
 
   if (!defaultChannel) {
     return interaction.followUp({
-      content: "❌ Could not find #general channel",
+      content: "❌ #general channel not found",
       ephemeral: true
     });
   }
 
-  // ===== CREATE CATEGORY =====
+  // ================= CREATE CATEGORY =================
   const category = await guild.channels.create({
     name: "🌍 UniChat",
     type: 4
   });
 
-  const enabled_channels = {};
-
-  // ===== CREATE LANGUAGE CHANNELS =====
-  for (const [lang, emoji] of Object.entries(languages)) {
-
-    const channel = await guild.channels.create({
-      name: `general-${emoji}`,
-      type: 0,
-      parent: category.id
-    });
-
-    enabled_channels[lang] = channel.id;
-  }
-
-  // ===== CREATE ONLY NON-ENGLISH ROLES =====
-  const roleNames = [
-    "Spanish",
-    "German",
-    "Italian",
-    "Korean",
-    "Russian",
-    "Japanese"
-  ];
-
-  for (const name of roleNames) {
-    let role = guild.roles.cache.find(r => r.name === name);
-
-    if (!role) {
-      await guild.roles.create({
-        name,
-        mentionable: true
-      });
-    }
-  }
-
-  // ===== SAVE TO DB =====
-  await supabase.from("guild_settings").upsert({
-    guild_id: guild.id,
-    default_channel: defaultChannel.id,
-    enabled_channels
-  });
-
-  // ===== FORCE CATEGORY POSITION AFTER CREATION =====
+  // ================= FIX CATEGORY POSITION =================
   setTimeout(async () => {
     try {
-      const freshChannels = await guild.channels.fetch();
+      const fresh = await guild.channels.fetch();
 
-      const general = freshChannels.find(
+      const general = fresh.find(
         c => c.name === "general" && c.type === 0
       );
 
-      const uniChat = freshChannels.find(
+      const uniChat = fresh.find(
         c => c.name === "🌍 UniChat"
       );
 
@@ -92,12 +59,54 @@ export default async function setupCommand(interaction) {
         await uniChat.setPosition(general.position + 1);
       }
     } catch (err) {
-      console.log("POSITION FIX ERROR:", err.message);
+      console.log("Category position error:", err.message);
     }
   }, 2000);
 
+  const enabled_channels = {};
+
+  // ================= CREATE ROLES + CHANNELS =================
+  for (const [lang, emoji] of Object.entries(languages)) {
+
+    // ---- ROLE ----
+    let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
+
+    if (!role) {
+      role = await guild.roles.create({
+        name: roleNames[lang],
+        mentionable: false
+      });
+    }
+
+    // ---- CHANNEL WITH LOCKED PERMISSIONS ----
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
+      type: 0,
+      parent: category.id,
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone.id,
+          deny: ["ViewChannel"]
+        },
+        {
+          id: role.id,
+          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
+        }
+      ]
+    });
+
+    enabled_channels[lang] = channel.id;
+  }
+
+  // ================= SAVE TO DATABASE =================
+  await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    default_channel: defaultChannel.id,
+    enabled_channels
+  });
+
   await interaction.followUp({
-    content: "✅ Setup complete",
+    content: "✅ UniChat setup complete (locked channels enabled)",
     ephemeral: true
   });
 }
