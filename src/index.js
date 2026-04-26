@@ -6,7 +6,9 @@ import { translateCached } from "./services/cacheTranslate.js";
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
-import { sendLanguagePrompt } from "./utils/languagePrompt.js";
+
+import { detectLang } from "./utils/detectLang.js";
+import { languageSuggestion } from "./utils/languageSuggestion.js";
 
 const client = new Client({
   intents: [
@@ -21,20 +23,7 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-// ================= JOIN =================
-client.on("guildMemberAdd", async (member) => {
-  const { data } = await supabase
-    .from("user_settings")
-    .select("*")
-    .eq("user_id", member.id)
-    .maybeSingle();
-
-  if (!data && member.guild.systemChannel) {
-    await sendLanguagePrompt(member.guild.systemChannel, member.id);
-  }
-});
-
-// ================= MESSAGE =================
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (message) => {
   try {
     if (message.author.bot || !message.guild) return;
@@ -49,8 +38,29 @@ client.on("messageCreate", async (message) => {
       .eq("user_id", message.author.id)
       .maybeSingle();
 
-    // HYBRID FALLBACK SYSTEM
-    const sourceLang = (user?.language || "EN").toUpperCase();
+    // ================= SMART DETECTION ON FIRST USE =================
+    if (!user?.language) {
+
+      const detected = detectLang(content);
+
+      if (detected && detected !== "EN") {
+
+        const sent = await message.reply({
+          content: `🌍 We think you're speaking **${detected}**. Set this as your language?`,
+          components: languageSuggestion(detected)
+        });
+
+        await supabase.from("language_suggestions").upsert({
+          user_id: message.author.id,
+          suggested: detected,
+          message_id: sent.id
+        });
+      }
+
+      return;
+    }
+
+    const sourceLang = (user.language || "EN").toUpperCase();
 
     // ================= GUILD SETTINGS =================
     const { data } = await supabase
@@ -68,12 +78,10 @@ client.on("messageCreate", async (message) => {
     // ================= CHANNEL MAP =================
     const channelMap = new Map();
 
-    // English (default #general)
     if (default_channel && channels.get(default_channel)) {
       channelMap.set(default_channel, "EN");
     }
 
-    // Other languages
     for (const [lang, id] of Object.entries(enabled_channels || {})) {
       if (channels.get(id)) {
         channelMap.set(id, lang.toUpperCase());
@@ -88,7 +96,6 @@ client.on("messageCreate", async (message) => {
       const channel = channels.get(channelId);
       if (!channel) continue;
 
-      // SKIP ONLY SAME LANGUAGE CHANNEL
       if (targetLang.toUpperCase() === sourceLang) continue;
 
       const translated = await translateCached(content, targetLang);
@@ -106,53 +113,51 @@ client.on("messageCreate", async (message) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  if (interaction.isStringSelectMenu()) {
+  // ================= BUTTONS =================
+  if (interaction.isButton()) {
 
-    if (interaction.customId !== "select_language") return;
+    const member = await interaction.guild.members.fetch(interaction.user.id);
 
-    const lang = interaction.values[0];
-    const guild = interaction.guild;
+    // ACCEPT DETECTED LANGUAGE
+    if (interaction.customId.startsWith("lang_yes_")) {
 
-    await supabase.from("user_settings").upsert({
-      user_id: interaction.user.id,
-      language: lang
-    });
+      const lang = interaction.customId.split("_")[2];
 
-    const roleMap = {
-      EN: "English",
-      ES: "Spanish",
-      DE: "German",
-      IT: "Italian",
-      KO: "Korean",
-      RU: "Russian",
-      JA: "Japanese"
-    };
+      await supabase.from("user_settings").upsert({
+        user_id: interaction.user.id,
+        language: lang
+      });
 
-    const member = await guild.members.fetch(interaction.user.id);
+      const roleMap = {
+        ES: "Spanish",
+        DE: "German",
+        IT: "Italian",
+        KO: "Korean",
+        RU: "Russian",
+        JA: "Japanese"
+      };
 
-    // REMOVE OLD ROLES
-    for (const name of Object.values(roleMap)) {
-      const role = guild.roles.cache.find(r => r.name === name);
-      if (role && member.roles.cache.has(role.id)) {
-        await member.roles.remove(role).catch(() => {});
-      }
+      const roleName = roleMap[lang];
+
+      const role = interaction.guild.roles.cache.find(r => r.name === roleName);
+      if (role) await member.roles.add(role).catch(() => {});
+
+      return interaction.update({
+        content: `✅ Language set to ${lang}`,
+        components: []
+      });
     }
 
-    // ADD ROLE (skip EN role if not used)
-    if (lang !== "EN") {
-      const newRole = guild.roles.cache.find(r => r.name === roleMap[lang]);
-      if (newRole) {
-        await member.roles.add(newRole).catch(() => {});
-      }
+    // DECLINE DETECTION
+    if (interaction.customId === "lang_no") {
+      return interaction.update({
+        content: "👍 No problem — use /setlanguage anytime",
+        components: []
+      });
     }
-
-    return interaction.update({
-      content: "✅ Language set successfully!",
-      components: [],
-      embeds: []
-    });
   }
 
+  // ================= SLASH COMMANDS =================
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "setup") {
