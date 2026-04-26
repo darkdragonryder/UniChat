@@ -20,22 +20,23 @@ const roleNames = {
 };
 
 export default async function setupCommand(interaction) {
-
-  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
-
   const guild = interaction.guild;
 
+  // 🔥 IMPORTANT: prevents timeout + missing followup issues
+  await interaction.deferReply({ ephemeral: true });
+
+  await interaction.editReply("⚙️ Setting up UniChat system...");
+
+  // ================= FIND DEFAULT CHANNEL =================
   const defaultChannel = guild.channels.cache.find(
     c => c.name === "general" && c.type === 0
   );
 
   if (!defaultChannel) {
-    return interaction.followUp({
-      content: "❌ #general not found",
-      ephemeral: true
-    });
+    return interaction.editReply("❌ #general not found");
   }
 
+  // ================= CREATE CATEGORY =================
   const category = await guild.channels.create({
     name: "🌍 UniChat",
     type: 4
@@ -43,6 +44,7 @@ export default async function setupCommand(interaction) {
 
   const enabled_channels = {};
 
+  // ================= CREATE ROLES + CHANNELS =================
   for (const [lang, emoji] of Object.entries(languages)) {
 
     let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
@@ -73,17 +75,38 @@ export default async function setupCommand(interaction) {
     enabled_channels[lang] = channel.id;
   }
 
+  // ================= SAVE TO DATABASE =================
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
     default_channel: defaultChannel.id,
     enabled_channels
   });
 
-  // 🔒 APPLY FINAL LOCKS (ensures consistency)
+  // ================= APPLY FINAL LOCKS =================
   await applyChannelLocks(guild, { enabled_channels });
 
-  await interaction.followUp({
-    content: "✅ UniChat setup complete + channels locked",
-    ephemeral: true
-  });
+  // ================= CATEGORY POSITION FIX =================
+  setTimeout(async () => {
+    try {
+      const channels = await guild.channels.fetch();
+
+      const general = channels.find(
+        c => c.name === "general" && c.type === 0
+      );
+
+      const uniChat = channels.find(
+        c => c.name === "🌍 UniChat" && c.type === 4
+      );
+
+      if (general && uniChat) {
+        await uniChat.setPosition(general.position + 1);
+      }
+
+    } catch (err) {
+      console.log("Category move error:", err.message);
+    }
+  }, 3000);
+
+  // ================= FINAL MESSAGE =================
+  return interaction.editReply("✅ UniChat setup complete");
 }
