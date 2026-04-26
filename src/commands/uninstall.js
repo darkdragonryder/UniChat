@@ -7,7 +7,7 @@ export default async function uninstallCommand(interaction) {
   const guild = interaction.guild;
   const channels = await guild.channels.fetch();
 
-  // ===== DELETE LANGUAGE CHANNELS =====
+  // ===== DELETE ALL LANGUAGE CHANNELS =====
   for (const ch of channels.values()) {
     if (ch.name && ch.name.startsWith("general-")) {
       await ch.delete().catch(() => {});
@@ -20,9 +20,8 @@ export default async function uninstallCommand(interaction) {
     await category.delete().catch(() => {});
   }
 
-  // ===== DELETE ROLES =====
+  // ===== DELETE ROLES (NO ENGLISH) =====
   const roles = [
-    "English",
     "Spanish",
     "German",
     "Italian",
@@ -36,14 +35,14 @@ export default async function uninstallCommand(interaction) {
     if (role) await role.delete().catch(() => {});
   }
 
-  // ===== CLEAN DB =====
+  // ===== CLEAN DATABASE =====
   await supabase
     .from("guild_settings")
     .delete()
     .eq("guild_id", guild.id);
 
   await interaction.followUp({
-    content: "✅ Fully removed (channels included)",
+    content: "✅ Fully removed",
     ephemeral: true
   });
 }
