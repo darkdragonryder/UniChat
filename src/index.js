@@ -26,16 +26,10 @@ function isOnlyEmoji(text) {
   return /^[\p{Extended_Pictographic}\p{Emoji}\s]+$/u.test(text.trim());
 }
 
-function containsEmoji(text) {
-  if (!text) return false;
-  return /[\p{Extended_Pictographic}]/u.test(text);
-}
-
 function shouldIgnore(text) {
   if (!text) return true;
 
   const t = text.trim();
-
   if (t.length <= 1) return true;
   if (t.startsWith("/")) return true;
 
@@ -67,6 +61,29 @@ async function sendAsUser(channel, user, content) {
   });
 }
 
+// ================= BUILD SAFE ROUTING MAP =================
+async function buildChannelMap(guild, settings) {
+  const map = new Map();
+
+  // Always resolve fresh channels (no cache trust)
+  const channels = await guild.channels.fetch();
+
+  // Validate default channel (EN source)
+  if (settings.default_channel && channels.get(settings.default_channel)) {
+    map.set(settings.default_channel, "EN");
+  }
+
+  // Validate language channels strictly from DB
+  for (const [lang, id] of Object.entries(settings.enabled_channels || {})) {
+    const ch = channels.get(id);
+    if (!ch) continue; // ignore deleted/orphan channels
+
+    map.set(id, lang.toUpperCase());
+  }
+
+  return map;
+}
+
 // ================= MESSAGE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
@@ -84,7 +101,7 @@ client.on("messageCreate", async (message) => {
 
     if (!user?.language) return;
 
-    // ===== GUILD =====
+    // ===== SETTINGS (SOURCE OF TRUTH) =====
     const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
@@ -93,49 +110,35 @@ client.on("messageCreate", async (message) => {
 
     if (!settings?.enabled_channels) return;
 
-    const channels = await message.guild.channels.fetch();
+    // 🔒 STRICT MAP (NO CACHE RELIANCE)
+    const channelMap = await buildChannelMap(message.guild, settings);
 
-    const channelMap = new Map();
-
-    if (settings.default_channel && channels.get(settings.default_channel)) {
-      channelMap.set(settings.default_channel, "EN");
-    }
-
-    for (const [lang, id] of Object.entries(settings.enabled_channels)) {
-      if (channels.get(id)) {
-        channelMap.set(id, lang.toUpperCase());
-      }
-    }
+    if (!channelMap.size) return;
 
     const currentLang = channelMap.get(message.channel.id);
-    if (!currentLang) return;
+    if (!currentLang) return; // ignore unmanaged channels
 
-    // ================= EMOJI LOGIC =================
     const onlyEmoji = isOnlyEmoji(content);
 
+    // ================= ROUTING =================
     for (const [channelId, targetLang] of channelMap.entries()) {
       if (channelId === message.channel.id) continue;
       if (targetLang === currentLang) continue;
 
-      const channel = channels.get(channelId);
+      const channel = message.guild.channels.cache.get(channelId);
       if (!channel) continue;
 
-      // 🟢 PURE EMOJIS → NO TRANSLATION
+      // 🟢 EMOJIS: PASS THROUGH
       if (onlyEmoji) {
         await sendAsUser(channel, message.author, content);
         continue;
       }
 
-      // 🟡 MIXED OR TEXT → TRANSLATE TEXT ONLY
-      let finalText = content;
+      // 🟡 TEXT: TRANSLATE
+      const translated = await translateCached(content, targetLang);
+      if (!translated) continue;
 
-      if (!onlyEmoji) {
-        finalText = await translateCached(content, targetLang);
-      }
-
-      if (!finalText) continue;
-
-      await sendAsUser(channel, message.author, `🌍 ${finalText}`);
+      await sendAsUser(channel, message.author, `🌍 ${translated}`);
     }
 
   } catch (err) {
