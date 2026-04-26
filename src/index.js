@@ -20,10 +20,12 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag}`);
 });
 
-// ================= BUFFER SYSTEM =================
-const messageBuffer = new Map();
-// key: guildId::channelId::langGroup
-// value: { messages: [], timeout }
+// ================= SETTINGS =================
+// Toggle for “native feel mode”
+const NATIVE_MODE = true;
+
+// ================= BUFFER =================
+const buffer = new Map();
 
 // ================= HELPERS =================
 function isOnlyEmoji(text) {
@@ -47,31 +49,32 @@ function shouldIgnore(text) {
 }
 
 // ================= WEBHOOK =================
-async function sendAsUser(channel, user, content) {
+async function sendNative(channel, user, content, langTag) {
   const webhooks = await channel.fetchWebhooks();
 
   let webhook = webhooks.find(w => w.owner?.id === client.user.id);
 
   if (!webhook) {
     webhook = await channel.createWebhook({
-      name: "UniChat Relay"
+      name: "Global Chat"
     });
   }
 
   await webhook.send({
-    content,
+    content: NATIVE_MODE ? content : `[${langTag}] ${content}`,
     username: user.username,
     avatarURL: user.displayAvatarURL(),
     allowedMentions: { parse: [] }
   });
 }
 
-// ================= FLUSH BUFFER =================
-async function flushBuffer(key, buffer, channelMap, message, isEmoji) {
+// ================= FLUSH =================
+async function flush(key, data, channelMap, message) {
   try {
-    const text = buffer.messages.join("\n");
+    const text = data.messages.join("\n");
 
-    const currentLang = buffer.lang;
+    const currentLang = data.lang;
+    const emojiOnly = isOnlyEmoji(text);
 
     for (const [channelId, targetLang] of channelMap.entries()) {
       if (channelId === message.channel.id) continue;
@@ -80,21 +83,21 @@ async function flushBuffer(key, buffer, channelMap, message, isEmoji) {
       const channel = message.guild.channels.cache.get(channelId);
       if (!channel) continue;
 
-      if (isEmoji) {
-        await sendAsUser(channel, message.author, text);
-        continue;
+      let finalText = text;
+
+      if (!emojiOnly) {
+        finalText = await translateCached(text, targetLang);
       }
 
-      const translated = await translateCached(text, targetLang);
-      if (!translated) continue;
+      if (!finalText) continue;
 
-      await sendAsUser(channel, message.author, `🌍 ${translated}`);
+      await sendNative(channel, message.author, finalText, targetLang);
     }
 
   } catch (err) {
-    console.log("BUFFER ERROR:", err.message);
+    console.log("FLUSH ERROR:", err.message);
   } finally {
-    messageBuffer.delete(key);
+    buffer.delete(key);
   }
 }
 
@@ -139,25 +142,21 @@ client.on("messageCreate", async (message) => {
     const currentLang = channelMap.get(message.channel.id);
     if (!currentLang) return;
 
-    // ================= BUFFER KEY =================
     const key = `${message.guild.id}::${message.channel.id}::${currentLang}`;
 
-    const isEmoji = isOnlyEmoji(content);
-
-    if (!messageBuffer.has(key)) {
-      messageBuffer.set(key, {
+    if (!buffer.has(key)) {
+      buffer.set(key, {
         messages: [],
         lang: currentLang,
         timer: setTimeout(() => {
-          const buf = messageBuffer.get(key);
-          if (!buf) return;
-          flushBuffer(key, buf, channelMap, message, isEmoji);
-        }, 2000) // 2 second grouping window
+          const data = buffer.get(key);
+          if (!data) return;
+          flush(key, data, channelMap, message);
+        }, 1800) // slightly smoother feel
       });
     }
 
-    const buffer = messageBuffer.get(key);
-    buffer.messages.push(content);
+    buffer.get(key).messages.push(content);
 
   } catch (err) {
     console.log("MESSAGE ERROR:", err.message);
