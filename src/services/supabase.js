@@ -5,63 +5,48 @@ export const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// 🏢 GET OR CREATE GUILD SETTINGS
+// ================= GUILD SETTINGS =================
 export async function getGuildSettings(guildId) {
-  let { data } = await supabase
+  const { data } = await supabase
     .from("guild_settings")
     .select("*")
     .eq("guild_id", guildId)
+    .maybeSingle();
+
+  if (data) return data;
+
+  const { data: created } = await supabase
+    .from("guild_settings")
+    .insert({
+      guild_id: guildId,
+      auto_translate: true,
+      default_language: "EN",
+      enabled_channels: {}   // ✅ FIXED (WAS [])
+    })
+    .select()
     .single();
 
-  // AUTO CREATE IF MISSING
-  if (!data) {
-    const { data: created } = await supabase
-      .from("guild_settings")
-      .insert({
-        guild_id: guildId,
-        auto_translate: true,
-        default_language: "EN",
-        enabled_channels: []
-      })
-      .select()
-      .single();
-
-    return created;
-  }
-
-  return data;
+  return created;
 }
 
-// 👤 GET OR CREATE USER SETTINGS
+// ================= USER SETTINGS =================
 export async function getUserSettings(userId) {
-  let { data } = await supabase
+  const { data } = await supabase
     .from("user_settings")
     .select("*")
     .eq("user_id", userId)
+    .maybeSingle();
+
+  if (data) return data;
+
+  const { data: created } = await supabase
+    .from("user_settings")
+    .insert({
+      user_id: userId,
+      language: null
+    })
+    .select()
     .single();
 
-  if (!data) {
-    const { data: created } = await supabase
-      .from("user_settings")
-      .insert({
-        user_id: userId,
-        language: null
-      })
-      .select()
-      .single();
-
-    return created;
-  }
-
-  return data;
-}
-
-// 👤 SET USER LANGUAGE
-export async function setUserLanguage(userId, language) {
-  return await supabase
-    .from("user_settings")
-    .upsert({
-      user_id: userId,
-      language
-    });
+  return created;
 }
