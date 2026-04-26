@@ -22,91 +22,99 @@ const roleNames = {
 export default async function setupCommand(interaction) {
   const guild = interaction.guild;
 
-  // 🔥 IMPORTANT: prevents timeout + missing followup issues
-  await interaction.deferReply({ ephemeral: true });
-
-  await interaction.editReply("⚙️ Setting up UniChat system...");
-
-  // ================= FIND DEFAULT CHANNEL =================
-  const defaultChannel = guild.channels.cache.find(
-    c => c.name === "general" && c.type === 0
-  );
-
-  if (!defaultChannel) {
-    return interaction.editReply("❌ #general not found");
-  }
-
-  // ================= CREATE CATEGORY =================
-  const category = await guild.channels.create({
-    name: "🌍 UniChat",
-    type: 4
+  // ================= SAFE ACK FIRST =================
+  await interaction.reply({
+    content: "⚙️ Starting UniChat setup...",
+    ephemeral: true
   });
 
-  const enabled_channels = {};
+  try {
 
-  // ================= CREATE ROLES + CHANNELS =================
-  for (const [lang, emoji] of Object.entries(languages)) {
+    // ================= FIND GENERAL =================
+    const defaultChannel = guild.channels.cache.find(
+      c => c.name === "general" && c.type === 0
+    );
 
-    let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
-
-    if (!role) {
-      role = await guild.roles.create({
-        name: roleNames[lang],
-        mentionable: false
-      });
+    if (!defaultChannel) {
+      return interaction.editReply("❌ #general not found");
     }
 
-    const channel = await guild.channels.create({
-      name: `general-${emoji}`,
-      type: 0,
-      parent: category.id,
-      permissionOverwrites: [
-        {
-          id: guild.roles.everyone.id,
-          deny: ["ViewChannel"]
-        },
-        {
-          id: role.id,
-          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
-        }
-      ]
+    // ================= CREATE CATEGORY =================
+    const category = await guild.channels.create({
+      name: "🌍 UniChat",
+      type: 4
     });
 
-    enabled_channels[lang] = channel.id;
-  }
+    const enabled_channels = {};
 
-  // ================= SAVE TO DATABASE =================
-  await supabase.from("guild_settings").upsert({
-    guild_id: guild.id,
-    default_channel: defaultChannel.id,
-    enabled_channels
-  });
+    // ================= CREATE ROLES + CHANNELS =================
+    for (const [lang, emoji] of Object.entries(languages)) {
 
-  // ================= APPLY FINAL LOCKS =================
-  await applyChannelLocks(guild, { enabled_channels });
+      let role = guild.roles.cache.find(r => r.name === roleNames[lang]);
 
-  // ================= CATEGORY POSITION FIX =================
-  setTimeout(async () => {
-    try {
-      const channels = await guild.channels.fetch();
-
-      const general = channels.find(
-        c => c.name === "general" && c.type === 0
-      );
-
-      const uniChat = channels.find(
-        c => c.name === "🌍 UniChat" && c.type === 4
-      );
-
-      if (general && uniChat) {
-        await uniChat.setPosition(general.position + 1);
+      if (!role) {
+        role = await guild.roles.create({
+          name: roleNames[lang],
+          mentionable: false
+        });
       }
 
-    } catch (err) {
-      console.log("Category move error:", err.message);
-    }
-  }, 3000);
+      const channel = await guild.channels.create({
+        name: `general-${emoji}`,
+        type: 0,
+        parent: category.id,
+        permissionOverwrites: [
+          {
+            id: guild.roles.everyone.id,
+            deny: ["ViewChannel"]
+          },
+          {
+            id: role.id,
+            allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
+          }
+        ]
+      });
 
-  // ================= FINAL MESSAGE =================
-  return interaction.editReply("✅ UniChat setup complete");
+      enabled_channels[lang] = channel.id;
+    }
+
+    // ================= SAVE DB =================
+    await supabase.from("guild_settings").upsert({
+      guild_id: guild.id,
+      default_channel: defaultChannel.id,
+      enabled_channels
+    });
+
+    // ================= APPLY LOCKS =================
+    await applyChannelLocks(guild, { enabled_channels });
+
+    // ================= FORCE CATEGORY POSITION (FIXED) =================
+    setTimeout(async () => {
+      try {
+        await guild.channels.fetch();
+
+        const general = guild.channels.cache.find(
+          c => c.name === "general" && c.type === 0
+        );
+
+        const uniChat = guild.channels.cache.find(
+          c => c.name === "🌍 UniChat" && c.type === 4
+        );
+
+        if (general && uniChat) {
+          await uniChat.setPosition(general.position + 1);
+        }
+
+      } catch (err) {
+        console.log("Category move error:", err.message);
+      }
+    }, 5000);
+
+    // ================= FINAL MESSAGE (ALWAYS WORKS) =================
+    return interaction.editReply("✅ UniChat setup complete");
+
+  } catch (err) {
+    console.log("Setup error:", err);
+    return interaction.editReply("❌ Setup failed (check logs)");
+  }
 }
