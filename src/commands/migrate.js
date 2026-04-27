@@ -1,6 +1,6 @@
 import { supabase } from "../services/supabase.js";
 
-const languages = {
+const emojis = {
   ES: "🇪🇸",
   DE: "🇩🇪",
   IT: "🇮🇹",
@@ -9,67 +9,38 @@ const languages = {
   JA: "🇯🇵"
 };
 
-function sanitize(name) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+function clean(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "-");
 }
 
 export default async function migrateCommand(interaction) {
-  const guild = interaction.guild;
 
-  await interaction.reply({
-    content: "🔄 Starting UniChat migration...",
-    ephemeral: true
-  });
+  await interaction.reply("🔄 Migrating channels...");
 
-  try {
-    await guild.channels.fetch();
+  const { data } = await supabase
+    .from("guild_settings")
+    .select("active_channel, enabled_channels")
+    .eq("guild_id", interaction.guild.id)
+    .maybeSingle();
 
-    // ================= GET ACTIVE CHANNEL =================
-    const { data } = await supabase
-      .from("guild_settings")
-      .select("active_channel, enabled_channels")
-      .eq("guild_id", guild.id)
-      .maybeSingle();
+  const base = clean(
+    interaction.guild.channels.cache.get(data?.active_channel)?.name || "general"
+  );
 
-    let baseChannel = "general";
+  let count = 0;
 
-    const active = guild.channels.cache.get(data?.active_channel);
+  for (const [lang, id] of Object.entries(data?.enabled_channels || {})) {
 
-    if (active?.name) {
-      baseChannel = sanitize(active.name);
+    const channel = interaction.guild.channels.cache.get(id);
+    if (!channel) continue;
+
+    const newName = `${base}-${emojis[lang]}`;
+
+    if (channel.name !== newName) {
+      await channel.setName(newName).catch(() => {});
+      count++;
     }
-
-    const enabled = data?.enabled_channels || {};
-
-    let renamed = 0;
-
-    // ================= LOOP CHANNELS =================
-    for (const [lang, channelId] of Object.entries(enabled)) {
-      const channel = guild.channels.cache.get(channelId);
-
-      if (!channel) continue;
-
-      const emoji = languages[lang];
-      if (!emoji) continue;
-
-      const newName = `${baseChannel}-${emoji}`;
-
-      if (channel.name !== newName) {
-        await channel.setName(newName).catch(() => {});
-        renamed++;
-      }
-    }
-
-    return interaction.editReply(
-      `✅ Migration complete. Renamed ${renamed} channels.`
-    );
-
-  } catch (err) {
-    console.log("MIGRATION ERROR:", err.message);
-    return interaction.editReply("❌ Migration failed.");
   }
+
+  return interaction.editReply(`✅ Migrated ${count} channels`);
 }
