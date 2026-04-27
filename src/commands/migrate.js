@@ -10,7 +10,11 @@ const emojis = {
 };
 
 function clean(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, "-");
+  return (name || "chat")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export default async function migrateCommand(interaction) {
@@ -19,13 +23,16 @@ export default async function migrateCommand(interaction) {
 
   const { data } = await supabase
     .from("guild_settings")
-    .select("active_channel, enabled_channels")
+    .select("active_channel, enabled_channels, base_channel_name")
     .eq("guild_id", interaction.guild.id)
     .maybeSingle();
 
-  const base = clean(
-    interaction.guild.channels.cache.get(data?.active_channel)?.name || "general"
-  );
+  let base =
+    data?.base_channel_name ||
+    interaction.guild.channels.cache.get(data?.active_channel)?.name ||
+    "chat";
+
+  base = clean(base);
 
   let count = 0;
 
