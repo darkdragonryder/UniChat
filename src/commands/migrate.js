@@ -23,12 +23,13 @@ export default async function migrateCommand(interaction) {
 
   const { data } = await supabase
     .from("guild_settings")
-    .select("active_channel, enabled_channels, base_channel_name")
+    .select("active_channel, default_channel, base_channel_name, enabled_channels")
     .eq("guild_id", interaction.guild.id)
     .maybeSingle();
 
   let base =
     data?.base_channel_name ||
+    interaction.guild.channels.cache.get(data?.default_channel)?.name ||
     interaction.guild.channels.cache.get(data?.active_channel)?.name ||
     "chat";
 
