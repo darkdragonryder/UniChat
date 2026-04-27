@@ -34,7 +34,6 @@ export default async function setupCommand(interaction, client) {
     await guild.channels.fetch();
     await guild.roles.fetch();
 
-    // ================= BASE CHANNEL =================
     const baseChannel = interaction.channel;
     const baseCategory = baseChannel.parent;
 
@@ -46,7 +45,7 @@ export default async function setupCommand(interaction, client) {
 
     if (!baseName) baseName = "chat";
 
-    // ================= CREATE UNI CHAT CATEGORY =================
+    // ================= UNI CHAT CATEGORY =================
     let category = guild.channels.cache.find(
       c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
     );
@@ -58,7 +57,7 @@ export default async function setupCommand(interaction, client) {
       });
     }
 
-    // ================= POSITION CATEGORY UNDER BASE =================
+    // ================= CATEGORY POSITION =================
     if (baseCategory && category) {
       const sorted = guild.channels.cache
         .filter(c => c.type === ChannelType.GuildCategory)
@@ -72,7 +71,7 @@ export default async function setupCommand(interaction, client) {
       }
     }
 
-    // ================= CREATE ROLES =================
+    // ================= ROLES =================
     const roles = {};
 
     for (const [lang, name] of Object.entries(roleNames)) {
@@ -89,7 +88,7 @@ export default async function setupCommand(interaction, client) {
       roles[lang] = role;
     }
 
-    // ================= ENSURE BASE CHANNEL IS OPEN =================
+    // ================= ENABLE BASE CHANNEL =================
     await baseChannel.permissionOverwrites.set([
       {
         id: guild.roles.everyone.id,
@@ -97,19 +96,25 @@ export default async function setupCommand(interaction, client) {
           PermissionsBitField.Flags.ViewChannel,
           PermissionsBitField.Flags.SendMessages
         ]
+      },
+      {
+        id: client.user.id, // 🔥 BOT ACCESS FIX
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory
+        ]
       }
     ]);
 
-    // ================= DB STRUCTURE =================
     const enabled_channels = {
       EN: baseChannel.id
     };
 
-    // ================= CREATE LANGUAGE CHANNELS =================
+    // ================= LANGUAGE CHANNELS =================
     for (const [lang, emoji] of Object.entries(languages)) {
 
       const role = roles[lang];
-
       const channelName = `${baseName}-${emoji}`;
 
       let channel = guild.channels.cache.find(
@@ -124,7 +129,7 @@ export default async function setupCommand(interaction, client) {
         });
       }
 
-      // LOCK CHANNEL
+      // ================= FIXED PERMISSIONS =================
       await channel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id,
@@ -134,7 +139,16 @@ export default async function setupCommand(interaction, client) {
           id: role.id,
           allow: [
             PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
+        },
+        {
+          id: client.user.id, // 🔥 CRITICAL FIX (Missing Access)
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
           ]
         }
       ]);
@@ -142,7 +156,7 @@ export default async function setupCommand(interaction, client) {
       enabled_channels[lang] = channel.id;
     }
 
-    // ================= SAVE DATABASE =================
+    // ================= DATABASE =================
     const { error } = await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
       enabled_channels,
@@ -171,7 +185,6 @@ export default async function setupCommand(interaction, client) {
     const botMember = await guild.members.fetch(client.user.id);
     await botMember.roles.add(botRole).catch(() => {});
 
-    // ================= COMPLETE =================
     return interaction.editReply("✅ UniChat setup complete!");
 
   } catch (err) {
