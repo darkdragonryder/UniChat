@@ -13,7 +13,6 @@ import {
 
 import { translateCached } from "./services/cacheTranslate.js";
 
-// Commands
 import setupCommand, { runFinalSetup } from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
@@ -21,14 +20,11 @@ import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
 import migrateCommand from "./commands/migrate.js";
 
-// Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
 
-// Supabase
 import { supabase } from "./services/supabase.js";
 
-// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -38,7 +34,30 @@ const client = new Client({
   ]
 });
 
-client.tempSetup = {};
+// ================= DB HELPERS =================
+async function getSetup(guildId) {
+  const { data } = await supabase
+    .from("guild_setup_sessions")
+    .select("*")
+    .eq("guild_id", guildId)
+    .maybeSingle();
+  return data;
+}
+
+async function saveSetup(guildId, payload) {
+  await supabase.from("guild_setup_sessions").upsert({
+    guild_id: guildId,
+    ...payload,
+    updated_at: new Date().toISOString()
+  });
+}
+
+async function deleteSetup(guildId) {
+  await supabase
+    .from("guild_setup_sessions")
+    .delete()
+    .eq("guild_id", guildId);
+}
 
 // ================= READY =================
 client.once("ready", () => {
@@ -49,11 +68,10 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🌍 TRANSLATION ENGINE =================
+// ================= TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
+    if (!message.guild || message.author.bot) return;
 
     const { data } = await supabase
       .from("guild_settings")
@@ -61,50 +79,21 @@ client.on("messageCreate", async (message) => {
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    const channels = data?.enabled_channels;
-    if (!channels || typeof channels !== "object") return;
+    const map = data?.enabled_channels;
+    if (!map) return;
 
-    // ================= FIND SOURCE LANGUAGE =================
-    let sourceLang = null;
+    let lang = null;
 
-    for (const [lang, channelId] of Object.entries(channels)) {
-      if (channelId === message.channel.id) {
-        sourceLang = lang;
-        break;
-      }
+    for (const [l, id] of Object.entries(map)) {
+      if (id === message.channel.id) lang = l;
     }
 
-    if (!sourceLang) return;
+    if (!lang) return;
 
-    // ================= TRANSLATE TO ALL OTHER LANGS =================
-    for (const [lang, channelId] of Object.entries(channels)) {
-      if (lang === sourceLang) continue;
+    const translated = await translateCached(message.content, lang);
+    if (!translated || translated === message.content) return;
 
-      const targetChannel = message.guild.channels.cache.get(channelId);
-      if (!targetChannel) continue;
-
-      const translated = await translateCached(message.content, lang);
-      if (!translated || translated === message.content) continue;
-
-      await targetChannel.send({
-        content: `🌍 **${sourceLang} → ${lang}**\n${translated}`
-      });
-    }
-
-    // ================= FORCE ENGLISH OUTPUT =================
-    if (sourceLang !== "EN" && channels.EN) {
-      const enChannel = message.guild.channels.cache.get(channels.EN);
-
-      if (enChannel) {
-        const english = await translateCached(message.content, "EN");
-
-        if (english && english !== message.content) {
-          await enChannel.send({
-            content: `🌍 **${sourceLang} → EN**\n${english}`
-          });
-        }
-      }
-    }
+    await message.channel.send(`🌍 ${translated}`);
 
   } catch (err) {
     console.log("TRANSLATION ERROR:", err.message);
@@ -117,31 +106,22 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-        case "setup":
-          return setupCommand(interaction);
-
-        case "uninstall":
-          return uninstallCommand(interaction);
-
-        case "setlanguage":
-          return setLanguageCommand(interaction);
-
-        case "help":
-          return helpCommand(interaction);
-
-        case "info":
-          return infoCommand(interaction, client);
-
-        case "migrate":
-          return migrateCommand(interaction);
-
-        case "announce-owner":
-          return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
+        case "setup": return setupCommand(interaction);
+        case "uninstall": return uninstallCommand(interaction);
+        case "setlanguage": return setLanguageCommand(interaction);
+        case "help": return helpCommand(interaction);
+        case "info": return infoCommand(interaction, client);
+        case "migrate": return migrateCommand(interaction);
       }
     }
 
-    // ================= SETUP START =================
+    // ================= STEP 1 =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
+
+      await saveSetup(interaction.guild.id, {
+        user_id: interaction.user.id,
+        step: "langs"
+      });
 
       const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -165,24 +145,22 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= LANGUAGE SELECT =================
+    // ================= LANG SELECT =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
 
-      if (!client.tempSetup) client.tempSetup = {};
-
-      client.tempSetup[interaction.guild.id] = {
-        langs: interaction.values
-      };
+      await saveSetup(interaction.guild.id, {
+        langs: interaction.values,
+        step: "preview"
+      });
 
       const modal = new ModalBuilder()
         .setCustomId("setup_preview_input")
-        .setTitle("🌐 Translation Preview");
+        .setTitle("Preview");
 
       const input = new TextInputBuilder()
         .setCustomId("preview_text")
-        .setLabel("Enter preview message")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
+        .setLabel("Message")
+        .setStyle(TextInputStyle.Paragraph);
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
 
@@ -192,62 +170,70 @@ client.on("interactionCreate", async (interaction) => {
     // ================= PREVIEW =================
     if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
 
-      const previewText = interaction.fields.getTextInputValue("preview_text");
-      const setup = client.tempSetup[interaction.guild.id];
+      const text = interaction.fields.getTextInputValue("preview_text");
 
+      await saveSetup(interaction.guild.id, {
+        preview_text: text
+      });
+
+      const setup = await getSetup(interaction.guild.id);
       if (!setup?.langs) {
-        return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
+        return interaction.reply({ content: "Setup expired", ephemeral: true });
       }
 
       const results = await Promise.all(
-        setup.langs.map(async (lang) => {
-          const translated = await translateCached(previewText, lang);
-          return `${lang}: ${translated}`;
+        setup.langs.map(async (l) => {
+          const t = await translateCached(text, l);
+          return `${l}: ${t}`;
         })
       );
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("setup_confirm")
-          .setLabel("Confirm Setup")
+          .setLabel("Confirm")
           .setStyle(ButtonStyle.Success)
       );
 
       return interaction.reply({
-        content: "🌐 Preview:\n\n" + results.join("\n"),
+        content: results.join("\n"),
         components: [row],
         ephemeral: true
       });
     }
 
-    // ================= FINAL SETUP =================
+    // ================= CONFIRM =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
-      const setup = client.tempSetup[interaction.guild.id];
+      const setup = await getSetup(interaction.guild.id);
 
       if (!setup?.langs) {
-        return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
+        return interaction.reply({ content: "Setup expired", ephemeral: true });
       }
 
       await interaction.update({
-        content: "⚙️ Setting up UniChat...",
+        content: "Setting up...",
         components: []
       });
 
-      await runFinalSetup(interaction.guild, client, setup.langs, interaction);
+      await runFinalSetup(
+        interaction.guild,
+        client,
+        setup.langs,
+        interaction
+      );
 
-      delete client.tempSetup[interaction.guild.id];
+      await deleteSetup(interaction.guild.id);
 
       return interaction.followUp({
-        content: "✅ Setup complete!",
+        content: "Setup complete!",
         ephemeral: true
       });
     }
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err.message);
+    console.log("INTERACTION ERROR:", err);
   }
 });
 
-// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
