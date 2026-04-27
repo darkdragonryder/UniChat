@@ -7,7 +7,6 @@ import {
 
 import { supabase } from "../services/supabase.js";
 
-// ================= LANGUAGE MAP =================
 const languages = {
   ES: "🇪🇸",
   DE: "🇩🇪",
@@ -26,19 +25,14 @@ const roleNames = {
   JA: "Japanese"
 };
 
-// ================= BOT ROLE =================
 async function ensureBotRole(guild, client) {
   const botMember = await guild.members.fetch(client.user.id);
 
-  const keywords = ["bots only", "bots", "bot", "system"];
-
-  let role =
-    guild.roles.cache.find(r =>
-      keywords.includes(r.name.toLowerCase())
-    ) ||
-    guild.roles.cache.find(r =>
-      keywords.some(k => r.name.toLowerCase().includes(k))
-    );
+  let role = guild.roles.cache.find(r =>
+    ["bot", "bots", "unichat"].some(k =>
+      r.name.toLowerCase().includes(k)
+    )
+  );
 
   if (!role) {
     role = await guild.roles.create({
@@ -52,11 +46,25 @@ async function ensureBotRole(guild, client) {
   return role;
 }
 
-// ================= FINAL SETUP =================
 export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   await guild.channels.fetch();
   await guild.roles.fetch();
+
+  // ================= BASE CHANNEL FIX =================
+  let baseChannel = "chat";
+
+  if (interaction?.channel?.name) {
+    baseChannel = interaction.channel.name;
+  }
+
+  baseChannel = baseChannel
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  if (!baseChannel) baseChannel = "chat";
 
   // ================= CATEGORY =================
   const category = await guild.channels.create({
@@ -66,33 +74,7 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   const enabled_channels = {};
 
-  // ================= FIXED CHANNEL NAME DETECTION =================
-  let baseChannel = "general";
-
-  try {
-    const channelId = interaction?.channelId;
-
-    if (channelId) {
-      const channel = await guild.channels.fetch(channelId).catch(() => null);
-
-      if (channel?.name) {
-        baseChannel = channel.name;
-      }
-    }
-  } catch (err) {
-    console.log("Channel detection fallback:", err.message);
-  }
-
-  // sanitize channel name (Discord-safe)
-  baseChannel = baseChannel
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  if (!baseChannel) baseChannel = "general";
-
-  // ================= CHANNEL CREATION =================
+  // ================= CHANNELS =================
   for (const lang of selectedLangs) {
     const emoji = languages[lang];
 
@@ -105,36 +87,30 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
     enabled_channels[lang] = channel.id;
   }
 
-  // ================= SAVE DB =================
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
-    enabled_channels
+    enabled_channels,
+    base_channel_name: baseChannel
   });
 
-  // ================= LANGUAGE ROLES =================
+  // ================= ROLES =================
   for (const lang of selectedLangs) {
     const name = roleNames[lang];
 
     if (!guild.roles.cache.find(r => r.name === name)) {
-      await guild.roles.create({
-        name,
-        mentionable: false
-      });
+      await guild.roles.create({ name });
     }
   }
 
-  // ================= OWNER ROLE =================
   let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
 
   if (!ownerRole) {
     ownerRole = await guild.roles.create({
       name: "🌏 UniChat Owner",
-      color: 0x00bfff,
-      mentionable: false
+      color: 0x00bfff
     });
   }
 
-  // ================= BOT ROLE =================
   const botRole = await ensureBotRole(guild, client);
 
   const botMember = await guild.members.fetch(client.user.id);
@@ -144,9 +120,7 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
   await botRole.setPosition(pos--).catch(() => {});
 }
 
-// ================= WIZARD ENTRY =================
 export default async function setupCommand(interaction) {
-
   const embed = new EmbedBuilder()
     .setColor(0x00bfff)
     .setTitle("🌐 UniChat Setup Wizard")
