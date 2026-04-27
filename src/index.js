@@ -5,7 +5,10 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } from "discord.js";
 
 import { runFinalSetup } from "./commands/setup.js";
@@ -33,7 +36,7 @@ const client = new Client({
 // TEMP STORAGE
 client.tempSetup = {};
 
-// LANGUAGE EMOJIS
+// EMOJIS
 const langEmojis = {
   ES: "🇪🇸",
   DE: "🇩🇪",
@@ -94,14 +97,45 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= STEP 2 (LIVE PREVIEW) =================
+    // ================= STEP 2 (OPEN MODAL) =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
 
-      const langs = interaction.values;
+      client.tempSetup[interaction.guild.id] = {
+        langs: interaction.values
+      };
 
-      client.tempSetup[interaction.guild.id] = langs;
+      const modal = new ModalBuilder()
+        .setCustomId("setup_preview_input")
+        .setTitle("🌐 Enter Preview Text");
 
-      const previewText = "Hello everyone";
+      const input = new TextInputBuilder()
+        .setCustomId("preview_text")
+        .setLabel("Type a message to preview translations")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setPlaceholder("Hello everyone");
+
+      const row = new ActionRowBuilder().addComponents(input);
+      modal.addComponents(row);
+
+      return interaction.showModal(modal);
+    }
+
+    // ================= STEP 3 (PREVIEW) =================
+    if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
+
+      const previewText = interaction.fields.getTextInputValue("preview_text");
+
+      const setupData = client.tempSetup[interaction.guild.id];
+
+      if (!setupData?.langs) {
+        return interaction.reply({
+          content: "❌ Setup expired",
+          ephemeral: true
+        });
+      }
+
+      const langs = setupData.langs;
 
       let preview = "🌐 **Live Translation Preview**\n\n";
 
@@ -125,16 +159,18 @@ client.on("interactionCreate", async (interaction) => {
           .setStyle(ButtonStyle.Success)
       );
 
-      return interaction.update({
+      return interaction.reply({
         content: preview,
-        components: [row]
+        components: [row],
+        ephemeral: true
       });
     }
 
     // ================= FINAL =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
-      const langs = client.tempSetup[interaction.guild.id];
+      const setupData = client.tempSetup[interaction.guild.id];
+      const langs = setupData?.langs;
 
       if (!langs) {
         return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
