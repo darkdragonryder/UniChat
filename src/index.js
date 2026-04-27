@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { Client, GatewayIntentBits } from "discord.js";
 import { supabase } from "./services/supabase.js";
-import { translateCached } from "./services/cacheTranslate.js";
 
 // Commands
 import setupCommand from "./commands/setup.js";
@@ -17,7 +16,8 @@ import guildCreate from "./events/guildCreate.js";
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages // ✅ REQUIRED for tracking
   ]
 });
 
@@ -26,11 +26,28 @@ client.once("ready", () => {
   console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
 });
 
-// ================= GUILD JOIN ANIMATION =================
+// ================= GUILD JOIN =================
 client.on("guildCreate", guildCreate(client));
 
 // ================= MEMBER JOIN =================
 client.on("guildMemberAdd", guildMemberAdd(client));
+
+// ================= 📊 ACTIVITY TRACKER =================
+// (THIS replaces needing a separate file)
+client.on("messageCreate", async (message) => {
+  try {
+    if (!message.guild) return;
+    if (message.author.bot) return;
+
+    await supabase.from("guild_settings").upsert({
+      guild_id: message.guild.id,
+      active_channel: message.channel.id
+    });
+
+  } catch (err) {
+    console.log("ACTIVITY TRACK ERROR:", err.message);
+  }
+});
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
@@ -64,7 +81,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ================= SETUP WIZARD BUTTONS =================
+    // ================= SETUP WIZARD BUTTON =================
     if (interaction.isButton()) {
       if (interaction.customId === "setup_start") {
 
