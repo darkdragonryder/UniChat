@@ -10,7 +10,6 @@ const languages = {
 };
 
 const roleNames = {
-  EN: "English",
   ES: "Spanish",
   DE: "German",
   IT: "Italian",
@@ -34,6 +33,7 @@ export default async function setupCommand(interaction, client) {
     // ================= BASE CHANNEL (ENGLISH) =================
     const baseChannel = interaction.channel;
     const baseChannelId = baseChannel.id;
+    const parentCategory = baseChannel.parent;
 
     let baseName = baseChannel.name
       .toLowerCase()
@@ -43,19 +43,23 @@ export default async function setupCommand(interaction, client) {
 
     if (!baseName) baseName = "chat";
 
-    // ================= CATEGORY =================
+    // ================= CREATE / FIND UNICHAT CATEGORY =================
     let category = guild.channels.cache.find(
-      c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
+      c =>
+        c.name === "🌍 UniChat" &&
+        c.type === ChannelType.GuildCategory &&
+        c.parentId === parentCategory?.id
     );
 
     if (!category) {
       category = await guild.channels.create({
         name: "🌍 UniChat",
-        type: ChannelType.GuildCategory
+        type: ChannelType.GuildCategory,
+        parent: parentCategory?.id || null
       });
     }
 
-    // ================= CREATE ROLES =================
+    // ================= CREATE LANGUAGE ROLES =================
     const roles = {};
 
     for (const [lang, name] of Object.entries(roleNames)) {
@@ -71,22 +75,19 @@ export default async function setupCommand(interaction, client) {
       roles[lang] = role;
     }
 
-    // ================= SET EN CHANNEL PERMISSIONS =================
-    await baseChannel.setParent(category.id).catch(() => {});
-
+    // ================= ENSURE BASE CHANNEL IS OPEN =================
     await baseChannel.permissionOverwrites.set([
       {
         id: guild.roles.everyone.id,
-        allow: [PermissionsBitField.Flags.ViewChannel]
-      },
-      {
-        id: roles.EN.id,
-        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages
+        ]
       }
     ]);
 
     const enabled_channels = {
-      EN: baseChannelId
+      EN: baseChannelId // 🔥 STILL REQUIRED FOR TRANSLATION ENGINE
     };
 
     // ================= CREATE LANGUAGE CHANNELS =================
@@ -95,7 +96,9 @@ export default async function setupCommand(interaction, client) {
       const role = roles[lang];
       const channelName = `${baseName}-${emoji}`;
 
-      let channel = guild.channels.cache.find(c => c.name === channelName);
+      let channel = guild.channels.cache.find(
+        c => c.name === channelName && c.parentId === category.id
+      );
 
       if (!channel) {
         channel = await guild.channels.create({
@@ -104,8 +107,6 @@ export default async function setupCommand(interaction, client) {
           parent: category.id
         });
       }
-
-      await channel.setParent(category.id).catch(() => {});
 
       // 🔥 LOCK CHANNEL TO ROLE
       await channel.permissionOverwrites.set([
