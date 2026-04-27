@@ -1,40 +1,58 @@
 import { supabase } from "../services/supabase.js";
 
 export default async function uninstallCommand(interaction) {
+
+  await interaction.reply({
+    content: "🧹 Starting safe UniChat uninstall...",
+    ephemeral: true
+  });
+
+  const guild = interaction.guild;
+
   try {
 
-    // 💥 CRITICAL FIX: prevents "application not responding"
-    await interaction.deferReply({ ephemeral: true });
-
-    const guildId = interaction.guild.id;
-
-    // ================= FETCH DATA =================
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("guild_settings")
       .select("*")
-      .eq("guild_id", guildId)
+      .eq("guild_id", guild.id)
       .maybeSingle();
 
-    if (error) {
-      return interaction.editReply("❌ DB error while uninstalling.");
-    }
-
     if (!data) {
-      return interaction.editReply("⚠️ No UniChat setup found for this server.");
+      return interaction.editReply("❌ No UniChat setup found.");
     }
 
-    // ================= DELETE CHANNELS (SAFE LOOP) =================
     const channels = data.enabled_channels || {};
 
-    for (const id of Object.values(channels)) {
-      const ch = await interaction.guild.channels.fetch(id).catch(() => null);
-      if (ch) {
-        await ch.delete("UniChat uninstall").catch(() => {});
+    // ================= 1. REMOVE ROLES FIRST =================
+    const roleNames = [
+      "Spanish",
+      "German",
+      "Italian",
+      "Japanese",
+      "Korean",
+      "🤖 UniChat Bot"
+    ];
+
+    for (const role of guild.roles.cache.values()) {
+      if (roleNames.includes(role.name)) {
+        await role.delete("UniChat uninstall").catch(() => {});
       }
     }
 
-    // ================= DELETE CATEGORY SAFELY =================
-    const category = interaction.guild.channels.cache.find(
+    // ================= 2. DELETE LANGUAGE CHANNELS =================
+    for (const [lang, channelId] of Object.entries(channels)) {
+
+      // 🚨 SAFETY: NEVER TOUCH BASE CHANNEL
+      if (channelId === data.default_channel) continue;
+
+      const channel = guild.channels.cache.get(channelId);
+      if (!channel) continue;
+
+      await channel.delete("UniChat uninstall cleanup").catch(() => {});
+    }
+
+    // ================= 3. DELETE CATEGORY =================
+    const category = guild.channels.cache.find(
       c => c.name === "🌍 UniChat"
     );
 
@@ -42,33 +60,16 @@ export default async function uninstallCommand(interaction) {
       await category.delete("UniChat uninstall").catch(() => {});
     }
 
-    // ================= REMOVE ROLES =================
-    const roles = interaction.guild.roles.cache.filter(r =>
-      r.name.includes("UniChat") || r.name.includes("Spanish") ||
-      r.name.includes("German") || r.name.includes("Italian") ||
-      r.name.includes("Korean") || r.name.includes("Japanese")
-    );
-
-    for (const role of roles.values()) {
-      await role.delete("UniChat uninstall").catch(() => {});
-    }
-
-    // ================= DELETE DB ROW =================
+    // ================= 4. CLEAR DATABASE LAST =================
     await supabase
       .from("guild_settings")
       .delete()
-      .eq("guild_id", guildId);
+      .eq("guild_id", guild.id);
 
-    return interaction.editReply("✅ UniChat successfully uninstalled.");
+    return interaction.editReply("✅ UniChat safely uninstalled.");
 
   } catch (err) {
     console.log("UNINSTALL ERROR:", err.message);
-
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: "❌ Uninstall failed.",
-        ephemeral: true
-      });
-    }
+    return interaction.editReply("❌ Uninstall failed safely.");
   }
 }
