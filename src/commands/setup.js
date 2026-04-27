@@ -7,7 +7,6 @@ import {
 
 import { supabase } from "../services/supabase.js";
 
-// ================= LANGUAGE MAP =================
 const languages = {
   ES: "🇪🇸",
   DE: "🇩🇪",
@@ -26,7 +25,6 @@ const roleNames = {
   JA: "Japanese"
 };
 
-// ================= BOT ROLE =================
 async function ensureBotRole(guild, client) {
   const botMember = await guild.members.fetch(client.user.id);
 
@@ -43,8 +41,7 @@ async function ensureBotRole(guild, client) {
   if (!role) {
     role = await guild.roles.create({
       name: "🤖 UniChat Bot",
-      color: 0x5865f2,
-      mentionable: false
+      color: 0x5865f2
     });
   }
 
@@ -52,12 +49,10 @@ async function ensureBotRole(guild, client) {
   return role;
 }
 
-// ================= FINAL SETUP =================
 export async function runFinalSetup(guild, client, selectedLangs) {
+
   await guild.channels.fetch();
   await guild.roles.fetch();
-
-  const default_channel = guild.systemChannelId;
 
   const category = await guild.channels.create({
     name: "🌍 UniChat",
@@ -80,11 +75,9 @@ export async function runFinalSetup(guild, client, selectedLangs) {
 
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
-    default_channel,
     enabled_channels
   });
 
-  // ROLES
   for (const lang of selectedLangs) {
     const name = roleNames[lang];
     if (!guild.roles.cache.find(r => r.name === name)) {
@@ -103,18 +96,15 @@ export async function runFinalSetup(guild, client, selectedLangs) {
 
   const botRole = await ensureBotRole(guild, client);
 
-  // SORT
   const botMember = await guild.members.fetch(client.user.id);
   let pos = botMember.roles.highest.position - 1;
 
   await ownerRole.setPosition(pos--).catch(() => {});
   await botRole.setPosition(pos--).catch(() => {});
-
-  return true;
 }
 
-// ================= WIZARD ENTRY =================
 export default async function setupCommand(interaction) {
+
   const embed = new EmbedBuilder()
     .setColor(0x00bfff)
     .setTitle("🌐 UniChat Setup Wizard")
