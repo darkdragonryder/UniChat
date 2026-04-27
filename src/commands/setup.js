@@ -25,6 +25,7 @@ const roleNames = {
   JA: "Japanese"
 };
 
+// ================= BOT ROLE =================
 async function ensureBotRole(guild, client) {
   const botMember = await guild.members.fetch(client.user.id);
 
@@ -38,7 +39,8 @@ async function ensureBotRole(guild, client) {
     role = await guild.roles.create({
       name: "🤖 UniChat Bot",
       color: 0x5865f2,
-      mentionable: false
+      mentionable: false,
+      reason: "Auto bot role"
     });
   }
 
@@ -46,13 +48,17 @@ async function ensureBotRole(guild, client) {
   return role;
 }
 
+// ================= FINAL SETUP =================
 export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   await guild.channels.fetch();
   await guild.roles.fetch();
 
-  // ================= BASE CHANNEL =================
-  let baseChannel = interaction.channel?.name || "chat";
+  // ================= SAFE BASE CHANNEL DETECTION =================
+  let baseChannel =
+    interaction.channel?.name ||
+    guild.systemChannel?.name ||
+    "chat";
 
   baseChannel = baseChannel
     .toLowerCase()
@@ -70,6 +76,7 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   const enabled_channels = {};
 
+  // ================= CHANNEL CREATION =================
   for (const lang of selectedLangs) {
     const emoji = languages[lang];
 
@@ -82,35 +89,47 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
     enabled_channels[lang] = channel.id;
   }
 
-  // ================= DB FIX (IMPORTANT) =================
+  // ================= SAVE DB (FIXED STRUCTURE) =================
+  const firstChannelId = Object.values(enabled_channels)[0];
+
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
+
+    // CORE SYSTEM
     enabled_channels,
     base_channel_name: baseChannel,
 
-    // 🔥 PRIMARY SOURCE
-    default_channel: interaction.channelId,
-
-    // 📊 TRACKING
-    active_channel: interaction.channelId
+    // 🔥 FIXED (IMPORTANT FOR YOUR TRANSLATION ENGINE)
+    default_channel: firstChannelId,
+    active_channel: firstChannelId
   });
 
+  // ================= LANGUAGE ROLES =================
   for (const lang of selectedLangs) {
     const name = roleNames[lang];
+
     if (!guild.roles.cache.find(r => r.name === name)) {
-      await guild.roles.create({ name });
+      await guild.roles.create({
+        name,
+        mentionable: false,
+        reason: "UniChat language role"
+      });
     }
   }
 
+  // ================= OWNER ROLE =================
   let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
 
   if (!ownerRole) {
     ownerRole = await guild.roles.create({
       name: "🌏 UniChat Owner",
-      color: 0x00bfff
+      color: 0x00bfff,
+      mentionable: false,
+      reason: "Owner role"
     });
   }
 
+  // ================= BOT ROLE =================
   const botRole = await ensureBotRole(guild, client);
   const botMember = await guild.members.fetch(client.user.id);
 
@@ -120,7 +139,9 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
   await botRole.setPosition(pos--).catch(() => {});
 }
 
+// ================= WIZARD ENTRY =================
 export default async function setupCommand(interaction) {
+
   const embed = new EmbedBuilder()
     .setColor(0x00bfff)
     .setTitle("🌐 UniChat Setup Wizard")
