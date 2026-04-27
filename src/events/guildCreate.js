@@ -6,10 +6,10 @@ export default (client) => async (guild) => {
     if (!channel) return;
 
     const frames = [
-      "🌐 UniChat is joining your server...",
-      "⚙️ Setting up translation network...",
-      "🌍 Connecting languages...",
-      "✅ UniChat is ready!"
+      "🌐 UniChat is joining...",
+      "⚙️ Setting up translation system...",
+      "🌍 Initializing languages...",
+      "✅ Ready!"
     ];
 
     const msg = await channel.send({ content: frames[0] });
@@ -24,16 +24,13 @@ export default (client) => async (guild) => {
     const embed = new EmbedBuilder()
       .setColor(0x00bfff)
       .setTitle("🌐 UniChat Installed")
-      .setDescription(
-        "Thanks for adding UniChat!\n\n" +
-        "Run `/setup` to configure language channels."
-      );
+      .setDescription("Run `/setup` to configure your server.");
 
     setTimeout(() => {
       channel.send({ embeds: [embed] });
     }, 4500);
 
   } catch (err) {
-    console.log("GUILD JOIN ERROR:", err.message);
+    console.log("GUILD CREATE ERROR:", err.message);
   }
 };
