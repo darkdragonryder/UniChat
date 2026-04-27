@@ -108,16 +108,19 @@ export default (client) => async (guild) => {
       channel.send({ embeds: [embed] }).catch(() => {});
     }, 4500);
 
-    // ================= 🤖 ROLE SYSTEM (DEBUG + SAFE) =================
+    // ================= 🤖 AUTO ROLE SYSTEM =================
 
-    const botMember = await guild.members.fetch(client.user.id).catch(err => {
-      console.log("❌ Failed to fetch bot member:", err.message);
-      return null;
-    });
+    await guild.roles.fetch(); // 🔥 FORCE CACHE REFRESH
+
+    const botMember =
+      guild.members.me ||
+      await guild.members.fetch(client.user.id).catch(err => {
+        console.log("❌ Failed to fetch bot member:", err.message);
+        return null;
+      });
 
     if (!botMember) return console.log("❌ botMember is null");
 
-    // 🔐 Check permissions
     const perms = guild.members.me.permissions;
     console.log("🔐 Permissions:", perms.toArray());
 
@@ -125,10 +128,12 @@ export default (client) => async (guild) => {
       return console.log("❌ Missing ManageRoles permission");
     }
 
-    // 🔍 Find role
+    // ================= 🔍 FIND ROLE =================
     let role =
       guild.roles.cache.find(r =>
-        ["bot", "bots"].some(k => r.name.toLowerCase().includes(k))
+        ["bot", "bots", "bots-only"].some(k =>
+          r.name.toLowerCase().includes(k)
+        )
       ) ||
       guild.roles.cache.find(r =>
         r.name.toLowerCase().includes("unichat")
@@ -136,14 +141,15 @@ export default (client) => async (guild) => {
 
     console.log("🔍 Found role:", role?.name || "NONE");
 
-    // 🆕 Create role if missing
+    // ================= 🆕 CREATE ROLE =================
     if (!role) {
       try {
         role = await guild.roles.create({
           name: "🤖 UniChat Bot",
           color: 0x5865f2,
           hoist: true,
-          mentionable: false
+          mentionable: false,
+          reason: "Auto-created UniChat role"
         });
 
         console.log("✅ Created role:", role.name);
@@ -153,22 +159,41 @@ export default (client) => async (guild) => {
       }
     }
 
-    // 📊 Check hierarchy
-    const botHighest = botMember.roles.highest;
+    // ================= 🔧 AUTO FIX POSITION =================
+    try {
+      const botHighest = botMember.roles.highest;
 
-    console.log("📊 Bot highest:", botHighest.position);
-    console.log("📊 Role position:", role.position);
+      console.log("📊 Bot highest:", botHighest.position);
+      console.log("📊 Role position:", role.position);
 
-    if (role.position >= botHighest.position) {
-      console.log("⚠️ Role is ABOVE bot → cannot assign");
+      if (role.position >= botHighest.position) {
+        console.log("⚠️ Role above bot — attempting fix...");
+
+        await role.setPosition(botHighest.position - 1);
+
+        console.log("🔧 Role position fixed");
+      }
+    } catch (err) {
+      console.log("⚠️ Could not auto-move role:", err.message);
     }
 
-    // ➕ Assign role
-    try {
-      await botMember.roles.add(role);
-      console.log("✅ ROLE ASSIGNED SUCCESSFULLY:", role.name);
-    } catch (err) {
-      console.log("❌ ROLE ASSIGN FAILED:", err.message);
+    // ================= 🔁 GUARANTEED ASSIGN =================
+    let assigned = false;
+
+    for (let i = 0; i < 3; i++) {
+      try {
+        await botMember.roles.add(role);
+        console.log("✅ ROLE ASSIGNED:", role.name);
+        assigned = true;
+        break;
+      } catch (err) {
+        console.log(`❌ Assign attempt ${i + 1} failed:`, err.message);
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!assigned) {
+      console.log("❌ FINAL ROLE ASSIGN FAILED — check hierarchy manually");
     }
 
   } catch (err) {
