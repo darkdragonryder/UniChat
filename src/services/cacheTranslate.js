@@ -1,104 +1,129 @@
-import { supabase } from "./supabase.js";
+import {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from "discord.js";
 
-const DEEPL_URL = "https://api-free.deepl.com/v2/translate";
+import { supabase } from "../services/supabase.js";
 
-// ================= MEMORY CACHE =================
-// key: guild-safe shared cache
-const memoryCache = new Map();
+// ================= LANGUAGE MAP =================
+const languages = {
+  ES: "🇪🇸",
+  DE: "🇩🇪",
+  IT: "🇮🇹",
+  KO: "🇰🇷",
+  RU: "🇷🇺",
+  JA: "🇯🇵"
+};
 
-// ================= NORMALISE TEXT =================
-function normalise(text) {
-  return text
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .trim();
-}
+const roleNames = {
+  ES: "Spanish",
+  DE: "German",
+  IT: "Italian",
+  KO: "Korean",
+  RU: "Russian",
+  JA: "Japanese"
+};
 
-// ================= KEY =================
-function makeKey(text, lang) {
-  return `${lang}::${normalise(text)}`;
-}
+// ================= BOT ROLE =================
+async function ensureBotRole(guild, client) {
+  const botMember = await guild.members.fetch(client.user.id);
 
-// ================= SKIP RULES =================
-function shouldSkip(text) {
-  if (!text) return true;
+  const keywords = ["bots only", "bots", "bot", "system"];
 
-  const t = text.trim().toLowerCase();
+  let role =
+    guild.roles.cache.find(r =>
+      keywords.includes(r.name.toLowerCase())
+    ) ||
+    guild.roles.cache.find(r =>
+      keywords.some(k => r.name.toLowerCase().includes(k))
+    );
 
-  if (t.length <= 2) return true;
-
-  const junk = ["ok", "okay", "lol", "lmao", "brb", "gg"];
-  if (junk.includes(t)) return true;
-
-  if (/^[^\p{L}\p{N}]+$/u.test(t)) return true;
-
-  if (t.startsWith("http")) return true;
-
-  return false;
-}
-
-// ================= MAIN =================
-export async function translateCached(text, targetLang) {
-  if (shouldSkip(text)) return text;
-
-  const key = makeKey(text, targetLang);
-
-  // ================= 1. MEMORY CACHE =================
-  if (memoryCache.has(key)) {
-    return memoryCache.get(key);
-  }
-
-  // ================= 2. DATABASE CACHE =================
-  const { data } = await supabase
-    .from("translation_cache")
-    .select("translated_text")
-    .eq("hash", key)
-    .maybeSingle();
-
-  if (data?.translated_text) {
-    memoryCache.set(key, data.translated_text);
-    return data.translated_text;
-  }
-
-  // ================= 3. DEEPL CALL =================
-  let translated = text;
-
-  try {
-    const res = await fetch(DEEPL_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`
-      },
-      body: new URLSearchParams({
-        text,
-        target_lang: targetLang
-      })
+  if (!role) {
+    role = await guild.roles.create({
+      name: "🤖 UniChat Bot",
+      color: 0x5865f2
     });
-
-    const result = await res.json();
-
-    if (result?.translations?.[0]?.text) {
-      translated = result.translations[0].text;
-    }
-
-  } catch (err) {
-    console.log("DEEPL ERROR:", err.message);
   }
 
-  // ================= 4. SAVE =================
-  await supabase.from("translation_cache").upsert({
-    hash: key,
-    translated_text: translated
+  await botMember.roles.add(role).catch(() => {});
+  return role;
+}
+
+// ================= FINAL SETUP =================
+export async function runFinalSetup(guild, client, selectedLangs) {
+
+  await guild.channels.fetch();
+  await guild.roles.fetch();
+
+  const category = await guild.channels.create({
+    name: "🌍 UniChat",
+    type: 4
   });
 
-  memoryCache.set(key, translated);
+  const enabled_channels = {};
 
-  return translated;
+  for (const lang of selectedLangs) {
+    const emoji = languages[lang];
+
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
+      type: 0,
+      parent: category.id
+    });
+
+    enabled_channels[lang] = channel.id;
+  }
+
+  await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    enabled_channels
+  });
+
+  for (const lang of selectedLangs) {
+    const name = roleNames[lang];
+    if (!guild.roles.cache.find(r => r.name === name)) {
+      await guild.roles.create({ name });
+    }
+  }
+
+  let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
+
+  if (!ownerRole) {
+    ownerRole = await guild.roles.create({
+      name: "🌏 UniChat Owner",
+      color: 0x00bfff
+    });
+  }
+
+  const botRole = await ensureBotRole(guild, client);
+
+  const botMember = await guild.members.fetch(client.user.id);
+  let pos = botMember.roles.highest.position - 1;
+
+  await ownerRole.setPosition(pos--).catch(() => {});
+  await botRole.setPosition(pos--).catch(() => {});
 }
 
-// ================= MEMORY CLEANUP =================
-setInterval(() => {
-  memoryCache.clear();
-}, 1000 * 60 * 15); // 15 min cleanup
+// ================= WIZARD ENTRY =================
+export default async function setupCommand(interaction) {
+
+  const embed = new EmbedBuilder()
+    .setColor(0x00bfff)
+    .setTitle("🌐 UniChat Setup Wizard")
+    .setDescription("Click below to begin setup.");
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("setup_start")
+      .setLabel("Start Setup")
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  return interaction.reply({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
+}
