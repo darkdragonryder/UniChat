@@ -12,7 +12,8 @@ import infoCommand from "./commands/info.js";
 
 // ================= EVENTS =================
 import guildMemberAdd from "./events/guildMemberAdd.js";
-
+import guildCreate from "./events/guildCreate.js";
+client.on("guildCreate", guildCreate(client));
 // ================= CLIENT =================
 const client = new Client({
   intents: [
