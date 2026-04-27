@@ -33,12 +33,10 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent // 🔥 REQUIRED
   ]
 });
 
-// 🔥 GLOBAL CACHE
-client.guildChannels = {};
 client.tempSetup = {};
 
 // ================= READY =================
@@ -50,55 +48,79 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🌍 TRANSLATION ENGINE =================
+
+// ================= 🌍 TRANSLATION ENGINE (FULL DEBUG + FIXED) =================
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild) return;
     if (message.author.bot) return;
 
-    let channels = client.guildChannels[message.guild.id];
+    console.log("📨 MESSAGE:", message.content);
+    console.log("📍 CHANNEL:", message.channel.id);
+    console.log("🏠 GUILD:", message.guild.id);
 
-    // 🔥 FALLBACK TO DB
-    if (!channels) {
-      const { data } = await supabase
-        .from("guild_settings")
-        .select("enabled_channels")
-        .eq("guild_id", message.guild.id)
-        .maybeSingle();
+    // ================= FETCH SETTINGS =================
+    const { data, error } = await supabase
+      .from("guild_settings")
+      .select("enabled_channels")
+      .eq("guild_id", message.guild.id)
+      .maybeSingle();
 
-      channels = data?.enabled_channels;
-
-      if (channels) {
-        client.guildChannels[message.guild.id] = channels;
-      }
+    if (error) {
+      console.log("❌ SUPABASE ERROR:", error.message);
+      return;
     }
 
-    if (!channels || typeof channels !== "object") return;
+    console.log("🗄️ DB DATA:", data);
 
+    const channels = data?.enabled_channels;
+
+    // 🔥 HARD CHECK
+    if (!channels || typeof channels !== "object") {
+      console.log("❌ NO VALID CHANNEL MAP");
+      return;
+    }
+
+    console.log("📡 CHANNEL MAP:", channels);
+
+    // ================= FIND MATCH =================
     let targetLang = null;
 
     for (const [lang, channelId] of Object.entries(channels)) {
+      console.log(`🔍 CHECKING ${lang}: ${channelId}`);
+
       if (String(message.channel.id) === String(channelId)) {
         targetLang = lang;
         break;
       }
     }
 
+    console.log("🎯 TARGET LANG:", targetLang);
+
     if (!targetLang) return;
 
+    // ================= TRANSLATE =================
     const translated = await translateCached(message.content, targetLang);
 
-    if (!translated) return;
-    if (translated === message.content && message.content.length < 10) return;
+    console.log("🌍 TRANSLATED:", translated);
 
+    if (!translated) return;
+
+    if (translated === message.content && message.content.length < 10) {
+      console.log("⚠️ SKIPPED (same/short)");
+      return;
+    }
+
+    // ================= SEND =================
     await message.channel.send({
       content: `🌍 **Translated:** ${translated}`
     });
 
   } catch (err) {
-    console.log("TRANSLATION ERROR:", err.message);
+    console.log("💥 TRANSLATION ERROR:", err.message);
   }
 });
+
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
@@ -117,7 +139,9 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
+    // ================= SETUP START =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
+
       const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId("setup_languages")
@@ -140,7 +164,9 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
+    // ================= LANGUAGE SELECT =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
+
       client.tempSetup[interaction.guild.id] = {
         langs: interaction.values
       };
@@ -159,6 +185,7 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.showModal(modal);
     }
 
+    // ================= PREVIEW =================
     if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
 
       const previewText = interaction.fields.getTextInputValue("preview_text");
@@ -189,6 +216,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
+    // ================= FINAL =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
       const setup = client.tempSetup[interaction.guild.id];
@@ -213,7 +241,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err.message);
+    console.log("💥 INTERACTION ERROR:", err.message);
   }
 });
 
