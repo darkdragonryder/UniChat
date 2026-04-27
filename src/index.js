@@ -19,6 +19,7 @@ import migrateCommand from "./commands/migrate.js";
 import guildCreate from "./events/guildCreate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -37,58 +38,54 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🌍 TRANSLATION ENGINE =================
+// ================= 🌍 TRANSLATION ENGINE (FIXED CORE) =================
 client.on("messageCreate", async (message) => {
   try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
-    if (!message.content || message.content.length < 1) return;
 
-    // ================= GET SETTINGS =================
-    const { data, error } = await supabase
+    if (!message.guild || message.author.bot) return;
+
+    const { data } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    if (error) {
-      console.log("DB FETCH ERROR:", error.message);
-      return;
-    }
-
     const channels = data?.enabled_channels;
 
     if (!channels || typeof channels !== "object") return;
 
+    // ================= DETECT SOURCE LANGUAGE =================
     let sourceLang = null;
 
-    for (const [lang, id] of Object.entries(channels)) {
-      if (message.channel.id === id) {
+    for (const [lang, channelId] of Object.entries(channels)) {
+      if (message.channel.id === channelId) {
         sourceLang = lang;
         break;
       }
     }
 
+    // Not a UniChat channel → ignore
     if (!sourceLang) return;
 
-    // ================= TRANSLATE TO ALL OTHER CHANNELS =================
-    for (const [lang, id] of Object.entries(channels)) {
+    // ================= BROADCAST TRANSLATIONS =================
+    for (const [lang, channelId] of Object.entries(channels)) {
+
+      // skip same language
       if (lang === sourceLang) continue;
 
-      try {
-        const translated = await translateCached(message.content, lang);
-        if (!translated) continue;
+      const targetChannel = await message.guild.channels.fetch(channelId)
+        .catch(() => null);
 
-        const channel = await message.guild.channels.fetch(id).catch(() => null);
-        if (!channel) continue;
+      if (!targetChannel) continue;
 
-        await channel.send({
-          content: `🌍 ${sourceLang} → ${lang}: ${translated}`
-        });
+      const translated = await translateCached(message.content, lang);
+      if (!translated) continue;
 
-      } catch (sendErr) {
-        console.log(`SEND ERROR (${lang}):`, sendErr.message);
-      }
+      await targetChannel.send({
+        content: `🌍 ${sourceLang} → ${lang}: ${translated}`
+      }).catch((err) => {
+        console.log(`SEND ERROR (${lang}):`, err.message);
+      });
     }
 
   } catch (err) {
@@ -96,13 +93,14 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ================= COMMANDS =================
+// ================= COMMAND HANDLER =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
     if (!interaction.isChatInputCommand()) return;
 
     switch (interaction.commandName) {
+
       case "setup":
         return setupCommand(interaction, client);
 
@@ -121,8 +119,8 @@ client.on("interactionCreate", async (interaction) => {
       case "migrate":
         return migrateCommand(interaction);
 
-      case "announce-owner":
-        return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
+      default:
+        return;
     }
 
   } catch (err) {
