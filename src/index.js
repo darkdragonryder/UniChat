@@ -11,7 +11,6 @@ import {
   TextInputStyle
 } from "discord.js";
 
-// FIXED IMPORT
 import { translateCached } from "./services/cacheTranslate.js";
 
 // Commands
@@ -25,17 +24,15 @@ import migrateCommand from "./commands/migrate.js";
 // Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
+
 import { supabase } from "./services/supabase.js";
 
-// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-
-    // 🔥 REQUIRED FOR TRANSLATION
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent // 🔥 REQUIRED FOR TRANSLATION
   ]
 });
 
@@ -50,42 +47,42 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🔥 TRANSLATION ENGINE =================
+// ================= 🌍 TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild) return;
     if (message.author.bot) return;
-    if (!message.content) return;
 
-    // ================= GET SERVER SETTINGS =================
+    // ================= GET GUILD SETTINGS =================
     const { data } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    if (!data?.enabled_channels) return;
+    const channels = data?.enabled_channels;
+    if (!channels) return;
 
-    const enabled = data.enabled_channels;
+    // ================= FIND LANGUAGE =================
+    let targetLang = null;
 
-    // ================= FIND LANGUAGE CHANNEL =================
-    for (const [lang, channelId] of Object.entries(enabled)) {
-      if (message.channel.id === channelId) continue;
-
-      const translated = await translateCached(message.content, lang);
-
-      const targetChannel = message.guild.channels.cache.get(channelId);
-      if (!targetChannel) continue;
-
-      await targetChannel.send({
-        content: `**${message.author.username}:** ${translated}`
-      });
+    for (const [lang, channelId] of Object.entries(channels)) {
+      if (message.channel.id === channelId) {
+        targetLang = lang;
+        break;
+      }
     }
 
-    // ================= TRACK ACTIVE CHANNEL =================
-    await supabase.from("guild_settings").upsert({
-      guild_id: message.guild.id,
-      active_channel: message.channel.id
+    if (!targetLang) return;
+
+    // ================= TRANSLATE =================
+    const translated = await translateCached(message.content, targetLang);
+
+    if (!translated || translated === message.content) return;
+
+    // ================= SEND TRANSLATION =================
+    await message.channel.send({
+      content: `🌍 **Translated:** ${translated}`
     });
 
   } catch (err) {
@@ -99,31 +96,18 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-
-        case "setup":
-          return setupCommand(interaction);
-
-        case "uninstall":
-          return uninstallCommand(interaction);
-
-        case "setlanguage":
-          return setLanguageCommand(interaction);
-
-        case "help":
-          return helpCommand(interaction);
-
-        case "info":
-          return infoCommand(interaction, client);
-
-        case "migrate":
-          return migrateCommand(interaction);
-
+        case "setup": return setupCommand(interaction);
+        case "uninstall": return uninstallCommand(interaction);
+        case "setlanguage": return setLanguageCommand(interaction);
+        case "help": return helpCommand(interaction);
+        case "info": return infoCommand(interaction, client);
+        case "migrate": return migrateCommand(interaction);
         case "announce-owner":
           return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
       }
     }
 
-    // ================= SETUP =================
+    // ================= SETUP FLOW =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
 
       const row = new ActionRowBuilder().addComponents(
