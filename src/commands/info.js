@@ -1,24 +1,38 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 
-export default async function infoCommand(interaction) {
+export default async function infoCommand(interaction, client) {
+
   const embed = new EmbedBuilder()
     .setColor(0x00bfff)
-    .setTitle("🌐 UniChat – Clutterless Auto Translator")
+    .setTitle("🌐 UniChat Dashboard")
     .setDescription(
-      "Real-time translation so everyone reads messages in their own language.\n\n" +
-      "• In-channel translations\n" +
-      "• Reaction translate 🌐\n" +
-      "• Multi-language support\n" +
-      "• Clean, clutterless design"
+      "Clutterless Auto Translator System\n\n" +
+      "Live bot overview and controls."
     )
-    .setFooter({ text: "UniChat • Global communication made simple" });
+    .addFields(
+      {
+        name: "📊 Servers",
+        value: `${client.guilds.cache.size}`,
+        inline: true
+      },
+      {
+        name: "👥 Users",
+        value: `${client.users.cache.size}`,
+        inline: true
+      },
+      {
+        name: "⚡ Status",
+        value: "Online & Translating",
+        inline: false
+      }
+    );
 
-  const inviteButton = new ButtonBuilder()
-    .setLabel("🚀 Invite UniChat")
-    .setStyle(ButtonStyle.Link)
-    .setURL("https://discord.com/oauth2/authorize?client_id=1493079688904704180&permissions=378762546288&scope=bot+applications.commands");
-
-  const row = new ActionRowBuilder().addComponents(inviteButton);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel("🚀 Invite")
+      .setStyle(ButtonStyle.Link)
+      .setURL("https://discord.com/oauth2/authorize?client_id=1493079688904704180&permissions=378762546288&scope=bot+applications.commands")
+  );
 
   return interaction.reply({
     embeds: [embed],
