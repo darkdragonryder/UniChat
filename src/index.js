@@ -208,28 +208,35 @@ client.on("interactionCreate", async (interaction) => {
       const setup = await getSetup(interaction.guild.id);
 
       if (!setup?.langs) {
-        return interaction.reply({ content: "Setup expired", ephemeral: true });
+        return interaction.reply({
+          content: "❌ Setup expired",
+          ephemeral: true
+        });
       }
 
-      await interaction.update({
-        content: "Setting up...",
-        components: []
-      });
+    // 🔥 STEP 1: update loading message
+    await interaction.update({
+      content: "⚙️ Setting up UniChat...",
+      components: []
+    });
 
-      await runFinalSetup(
-        interaction.guild,
-        client,
-        setup.langs,
-        interaction
-      );
+    // 🔥 STEP 2: run setup
+    await runFinalSetup(
+      interaction.guild,
+      client,
+      setup.langs,
+      interaction
+    );
 
-      await deleteSetup(interaction.guild.id);
+    // 🔥 STEP 3: cleanup
+    await deleteSetup(interaction.guild.id);
 
-      return interaction.followUp({
-        content: "Setup complete!",
-        ephemeral: true
-      });
-    }
+    // 🔥 STEP 4: FINAL CONFIRM MESSAGE (THIS WAS MISSING)
+    return interaction.followUp({
+      content: "✅ Setup complete! UniChat is now active.",
+      ephemeral: true
+    });
+  }
 
   } catch (err) {
     console.log("INTERACTION ERROR:", err);
