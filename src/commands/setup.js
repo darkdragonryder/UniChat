@@ -18,6 +18,34 @@ const roleNames = {
   JA: "Japanese"
 };
 
+// ================= BOT ROLE HANDLER =================
+async function ensureBotRole(guild, client) {
+  const botMember = await guild.members.fetch(client.user.id);
+
+  const keywords = ["bots only", "bots", "bot", "system"];
+
+  let role =
+    guild.roles.cache.find(r =>
+      keywords.includes(r.name.toLowerCase())
+    ) ||
+    guild.roles.cache.find(r =>
+      keywords.some(k => r.name.toLowerCase().includes(k))
+    );
+
+  if (!role) {
+    role = await guild.roles.create({
+      name: "🤖 UniChat Bot",
+      color: 0x5865f2,
+      mentionable: false,
+      reason: "Fallback UniChat bot role"
+    });
+  }
+
+  await botMember.roles.add(role).catch(() => {});
+
+  return role;
+}
+
 export default async function setupCommand(interaction) {
   const guild = interaction.guild;
 
@@ -29,13 +57,13 @@ export default async function setupCommand(interaction) {
 
     const default_channel = interaction.channel.id;
 
-    // ================= CREATE CATEGORY =================
+    // ================= CATEGORY =================
     const category = await guild.channels.create({
       name: "🌍 UniChat",
       type: 4
     });
 
-    // ================= CREATE CHANNELS =================
+    // ================= CHANNELS =================
     const enabled_channels = {};
 
     for (const [lang, emoji] of Object.entries(languages)) {
@@ -48,14 +76,14 @@ export default async function setupCommand(interaction) {
       enabled_channels[lang] = channel.id;
     }
 
-    // ================= SAVE DB =================
+    // ================= DB =================
     await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
       default_channel,
       enabled_channels
     });
 
-    // ================= CREATE LANGUAGE ROLES =================
+    // ================= LANGUAGE ROLES =================
     for (const name of Object.values(roleNames)) {
       const exists = guild.roles.cache.find(r => r.name === name);
 
@@ -67,43 +95,21 @@ export default async function setupCommand(interaction) {
       }
     }
 
-    // ================= SYSTEM ROLES =================
-
-    let botRole = guild.roles.cache.find(r => r.name === "🤖 UniChat Bot");
-
-    if (!botRole) {
-      botRole = await guild.roles.create({
-        name: "🤖 UniChat Bot",
-        color: 0x5865f2,
-        mentionable: false,
-        reason: "UniChat system bot role"
-      });
-    }
-
+    // ================= OWNER ROLE =================
     let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
 
     if (!ownerRole) {
       ownerRole = await guild.roles.create({
         name: "🌏 UniChat Owner",
         color: 0x00bfff,
-        mentionable: false,
-        reason: "UniChat owner role"
+        mentionable: false
       });
     }
 
-    // ================= ASSIGN BOT ROLE =================
-    try {
-      const botMember = await guild.members.fetch(interaction.client.user.id);
+    // ================= BOT ROLE =================
+    const botRole = await ensureBotRole(guild, interaction.client);
 
-      if (botRole && botMember) {
-        await botMember.roles.add(botRole).catch(() => {});
-      }
-    } catch (err) {
-      console.log("⚠️ Bot role assignment failed:", err.message);
-    }
-
-    // ================= 🔥 ROLE SORTING (NEW) =================
-
+    // ================= ROLE SORTING =================
     await guild.roles.fetch();
 
     const botMember = await guild.members.fetch(interaction.client.user.id);
@@ -111,17 +117,9 @@ export default async function setupCommand(interaction) {
 
     let position = botHighest - 1;
 
-    // Move owner role
-    if (ownerRole) {
-      await ownerRole.setPosition(position--).catch(() => {});
-    }
+    if (ownerRole) await ownerRole.setPosition(position--).catch(() => {});
+    if (botRole) await botRole.setPosition(position--).catch(() => {});
 
-    // Move bot role
-    if (botRole) {
-      await botRole.setPosition(position--).catch(() => {});
-    }
-
-    // Move language roles below system roles
     const languageOrder = [
       "Spanish",
       "German",
@@ -133,25 +131,19 @@ export default async function setupCommand(interaction) {
 
     for (const name of languageOrder) {
       const role = guild.roles.cache.find(r => r.name === name);
-
       if (role) {
         await role.setPosition(position--).catch(() => {});
       }
     }
 
-    // ================= DELAYED CATEGORY MOVE =================
+    // ================= CATEGORY POSITION =================
     setTimeout(async () => {
       try {
         await guild.channels.fetch();
-
         const referenceChannel = interaction.channel;
-
         await category.setPosition(referenceChannel.rawPosition + 1);
-
-        console.log("✅ Category moved successfully");
-
       } catch (err) {
-        console.log("❌ Category move failed:", err.message);
+        console.log("Category move failed:", err.message);
       }
     }, 3000);
 
