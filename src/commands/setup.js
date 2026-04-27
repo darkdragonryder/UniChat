@@ -1,5 +1,13 @@
+import {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} from "discord.js";
+
 import { supabase } from "../services/supabase.js";
 
+// ================= LANGUAGE MAP =================
 const languages = {
   ES: "🇪🇸",
   DE: "🇩🇪",
@@ -18,7 +26,7 @@ const roleNames = {
   JA: "Japanese"
 };
 
-// ================= BOT ROLE HANDLER =================
+// ================= BOT ROLE =================
 async function ensureBotRole(guild, client) {
   const botMember = await guild.members.fetch(client.user.id);
 
@@ -36,121 +44,92 @@ async function ensureBotRole(guild, client) {
     role = await guild.roles.create({
       name: "🤖 UniChat Bot",
       color: 0x5865f2,
-      mentionable: false,
-      reason: "Fallback UniChat bot role"
+      mentionable: false
     });
   }
 
   await botMember.roles.add(role).catch(() => {});
-
   return role;
 }
 
-export default async function setupCommand(interaction) {
-  const guild = interaction.guild;
+// ================= FINAL SETUP =================
+export async function runFinalSetup(guild, client, selectedLangs) {
+  await guild.channels.fetch();
+  await guild.roles.fetch();
 
-  await interaction.reply({ content: "⚙️ Setting up UniChat...", ephemeral: true });
+  const default_channel = guild.systemChannelId;
 
-  try {
-    await guild.channels.fetch();
-    await guild.roles.fetch();
+  const category = await guild.channels.create({
+    name: "🌍 UniChat",
+    type: 4
+  });
 
-    const default_channel = interaction.channel.id;
+  const enabled_channels = {};
 
-    // ================= CATEGORY =================
-    const category = await guild.channels.create({
-      name: "🌍 UniChat",
-      type: 4
+  for (const lang of selectedLangs) {
+    const emoji = languages[lang];
+
+    const channel = await guild.channels.create({
+      name: `general-${emoji}`,
+      type: 0,
+      parent: category.id
     });
 
-    // ================= CHANNELS =================
-    const enabled_channels = {};
-
-    for (const [lang, emoji] of Object.entries(languages)) {
-      const channel = await guild.channels.create({
-        name: `general-${emoji}`,
-        type: 0,
-        parent: category.id
-      });
-
-      enabled_channels[lang] = channel.id;
-    }
-
-    // ================= DB =================
-    await supabase.from("guild_settings").upsert({
-      guild_id: guild.id,
-      default_channel,
-      enabled_channels
-    });
-
-    // ================= LANGUAGE ROLES =================
-    for (const name of Object.values(roleNames)) {
-      const exists = guild.roles.cache.find(r => r.name === name);
-
-      if (!exists) {
-        await guild.roles.create({
-          name,
-          mentionable: false
-        });
-      }
-    }
-
-    // ================= OWNER ROLE =================
-    let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
-
-    if (!ownerRole) {
-      ownerRole = await guild.roles.create({
-        name: "🌏 UniChat Owner",
-        color: 0x00bfff,
-        mentionable: false
-      });
-    }
-
-    // ================= BOT ROLE =================
-    const botRole = await ensureBotRole(guild, interaction.client);
-
-    // ================= ROLE SORTING =================
-    await guild.roles.fetch();
-
-    const botMember = await guild.members.fetch(interaction.client.user.id);
-    const botHighest = botMember.roles.highest.position;
-
-    let position = botHighest - 1;
-
-    if (ownerRole) await ownerRole.setPosition(position--).catch(() => {});
-    if (botRole) await botRole.setPosition(position--).catch(() => {});
-
-    const languageOrder = [
-      "Spanish",
-      "German",
-      "Italian",
-      "Korean",
-      "Russian",
-      "Japanese"
-    ];
-
-    for (const name of languageOrder) {
-      const role = guild.roles.cache.find(r => r.name === name);
-      if (role) {
-        await role.setPosition(position--).catch(() => {});
-      }
-    }
-
-    // ================= CATEGORY POSITION =================
-    setTimeout(async () => {
-      try {
-        await guild.channels.fetch();
-        const referenceChannel = interaction.channel;
-        await category.setPosition(referenceChannel.rawPosition + 1);
-      } catch (err) {
-        console.log("Category move failed:", err.message);
-      }
-    }, 3000);
-
-    return interaction.editReply("✅ Setup complete");
-
-  } catch (err) {
-    console.log("SETUP ERROR:", err);
-    return interaction.editReply(`❌ Setup failed: ${err.message}`);
+    enabled_channels[lang] = channel.id;
   }
+
+  await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    default_channel,
+    enabled_channels
+  });
+
+  // ROLES
+  for (const lang of selectedLangs) {
+    const name = roleNames[lang];
+    if (!guild.roles.cache.find(r => r.name === name)) {
+      await guild.roles.create({ name });
+    }
+  }
+
+  let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
+
+  if (!ownerRole) {
+    ownerRole = await guild.roles.create({
+      name: "🌏 UniChat Owner",
+      color: 0x00bfff
+    });
+  }
+
+  const botRole = await ensureBotRole(guild, client);
+
+  // SORT
+  const botMember = await guild.members.fetch(client.user.id);
+  let pos = botMember.roles.highest.position - 1;
+
+  await ownerRole.setPosition(pos--).catch(() => {});
+  await botRole.setPosition(pos--).catch(() => {});
+
+  return true;
+}
+
+// ================= WIZARD ENTRY =================
+export default async function setupCommand(interaction) {
+  const embed = new EmbedBuilder()
+    .setColor(0x00bfff)
+    .setTitle("🌐 UniChat Setup Wizard")
+    .setDescription("Click below to begin setup.");
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("setup_start")
+      .setLabel("Start Setup")
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  return interaction.reply({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
 }
