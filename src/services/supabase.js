@@ -5,15 +5,17 @@ export const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// ONLY ONE STRUCTURE RULE:
-// enabled_channels MUST ALWAYS be object {}
-
 export async function getGuildSettings(guildId) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("guild_settings")
     .select("*")
     .eq("guild_id", guildId)
     .maybeSingle();
+
+  if (error) {
+    console.log("DB ERROR:", error.message);
+    return null;
+  }
 
   return data;
 }
