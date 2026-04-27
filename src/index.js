@@ -11,11 +11,11 @@ import {
   TextInputStyle
 } from "discord.js";
 
-import { runFinalSetup } from "./commands/setup.js";
+// IMPORTANT FIX: named import
 import { translateCached } from "./services/cacheTranslate.js";
 
 // Commands
-import setupCommand from "./commands/setup.js";
+import setupCommand, { runFinalSetup } from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
@@ -26,6 +26,7 @@ import migrateCommand from "./commands/migrate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
 
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -34,25 +35,14 @@ const client = new Client({
   ]
 });
 
-// TEMP STORAGE
 client.tempSetup = {};
 
-// EMOJIS
-const langEmojis = {
-  ES: "🇪🇸",
-  DE: "🇩🇪",
-  IT: "🇮🇹",
-  KO: "🇰🇷",
-  RU: "🇷🇺",
-  JA: "🇯🇵"
-};
-
-// READY
+// ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat Bot is ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat ONLINE: ${client.user.tag}`);
 });
 
-// EVENTS
+// ================= EVENTS =================
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
@@ -60,20 +50,34 @@ client.on("guildMemberAdd", guildMemberAdd(client));
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= SLASH =================
+    // ================= SLASH COMMANDS =================
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-        case "setup": return setupCommand(interaction);
-        case "uninstall": return uninstallCommand(interaction);
-        case "setlanguage": return setLanguageCommand(interaction);
-        case "help": return helpCommand(interaction);
-        case "info": return infoCommand(interaction, client);
+
+        case "setup":
+          return setupCommand(interaction);
+
+        case "uninstall":
+          return uninstallCommand(interaction);
+
+        case "setlanguage":
+          return setLanguageCommand(interaction);
+
+        case "help":
+          return helpCommand(interaction);
+
+        case "info":
+          return infoCommand(interaction, client);
+
+        case "migrate":
+          return migrateCommand(interaction);
+
         case "announce-owner":
           return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
       }
     }
 
-    // ================= STEP 1 =================
+    // ================= SETUP FLOW =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
 
       const row = new ActionRowBuilder().addComponents(
@@ -98,7 +102,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= STEP 2 (OPEN MODAL) =================
+    // ================= LANGUAGE SELECT =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
 
       client.tempSetup[interaction.guild.id] = {
@@ -107,51 +111,35 @@ client.on("interactionCreate", async (interaction) => {
 
       const modal = new ModalBuilder()
         .setCustomId("setup_preview_input")
-        .setTitle("🌐 Enter Preview Text");
+        .setTitle("🌐 Translation Preview");
 
       const input = new TextInputBuilder()
         .setCustomId("preview_text")
-        .setLabel("Type a message to preview translations")
+        .setLabel("Enter preview message")
         .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
-        .setPlaceholder("Hello everyone");
+        .setRequired(true);
 
-      const row = new ActionRowBuilder().addComponents(input);
-      modal.addComponents(row);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
 
       return interaction.showModal(modal);
     }
 
-    // ================= STEP 3 (PREVIEW) =================
+    // ================= PREVIEW =================
     if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
 
       const previewText = interaction.fields.getTextInputValue("preview_text");
+      const setup = client.tempSetup[interaction.guild.id];
 
-      const setupData = client.tempSetup[interaction.guild.id];
-
-      if (!setupData?.langs) {
-        return interaction.reply({
-          content: "❌ Setup expired",
-          ephemeral: true
-        });
+      if (!setup?.langs) {
+        return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
       }
 
-      const langs = setupData.langs;
-
-      let preview = "🌐 **Live Translation Preview**\n\n";
-
       const results = await Promise.all(
-        langs.map(async (lang) => {
-          try {
-            const translated = await translateCached(previewText, lang);
-            return `${langEmojis[lang] || lang} ${translated}`;
-          } catch {
-            return `${langEmojis[lang] || lang} ❌ failed`;
-          }
+        setup.langs.map(async (lang) => {
+          const translated = await translateCached(previewText, lang);
+          return `${lang}: ${translated}`;
         })
       );
-
-      preview += results.join("\n");
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -161,7 +149,7 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       return interaction.reply({
-        content: preview,
+        content: "🌐 Preview:\n\n" + results.join("\n"),
         components: [row],
         ephemeral: true
       });
@@ -170,29 +158,31 @@ client.on("interactionCreate", async (interaction) => {
     // ================= FINAL =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
-      const setupData = client.tempSetup[interaction.guild.id];
-      const langs = setupData?.langs;
+      const setup = client.tempSetup[interaction.guild.id];
 
-      if (!langs) {
+      if (!setup?.langs) {
         return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
       }
 
       await interaction.update({
-        content: "⚙️ Creating UniChat...",
+        content: "⚙️ Setting up UniChat...",
         components: []
       });
 
-      await runFinalSetup(interaction.guild, client, langs);
+      await runFinalSetup(interaction.guild, client, setup.langs, interaction);
 
       delete client.tempSetup[interaction.guild.id];
 
-      return interaction.followUp("✅ UniChat setup complete!");
+      return interaction.followUp({
+        content: "✅ Setup complete!",
+        ephemeral: true
+      });
     }
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err.message);
+    console.log("INTERACTION ERROR:", err);
   }
 });
 
-// LOGIN
+// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
