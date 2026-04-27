@@ -1,7 +1,7 @@
 import { supabase } from "../services/supabase.js";
+import { ChannelType, PermissionsBitField } from "discord.js";
 
 const languages = {
-  EN: "🇬🇧",
   ES: "🇪🇸",
   DE: "🇩🇪",
   IT: "🇮🇹",
@@ -31,79 +31,112 @@ export default async function setupCommand(interaction, client) {
     await guild.channels.fetch();
     await guild.roles.fetch();
 
-    // ================= BASE NAME =================
-    let base =
-      interaction.channel?.name ||
-      guild.systemChannel?.name ||
-      "chat";
+    // ================= BASE CHANNEL (ENGLISH) =================
+    const baseChannel = interaction.channel;
+    const baseChannelId = baseChannel.id;
 
-    base = base
+    let baseName = baseChannel.name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
 
-    if (!base) base = "chat";
+    if (!baseName) baseName = "chat";
 
     // ================= CATEGORY =================
     let category = guild.channels.cache.find(
-      c => c.name === "🌍 UniChat" && c.type === 4
+      c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
     );
 
     if (!category) {
       category = await guild.channels.create({
         name: "🌍 UniChat",
-        type: 4
+        type: ChannelType.GuildCategory
       });
     }
 
-    const enabled_channels = {};
+    // ================= CREATE ROLES =================
+    const roles = {};
 
-    // ================= CREATE CHANNELS =================
+    for (const [lang, name] of Object.entries(roleNames)) {
+      let role = guild.roles.cache.find(r => r.name === name);
+
+      if (!role) {
+        role = await guild.roles.create({
+          name,
+          mentionable: false
+        });
+      }
+
+      roles[lang] = role;
+    }
+
+    // ================= SET EN CHANNEL PERMISSIONS =================
+    await baseChannel.setParent(category.id).catch(() => {});
+
+    await baseChannel.permissionOverwrites.set([
+      {
+        id: guild.roles.everyone.id,
+        allow: [PermissionsBitField.Flags.ViewChannel]
+      },
+      {
+        id: roles.EN.id,
+        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
+      }
+    ]);
+
+    const enabled_channels = {
+      EN: baseChannelId
+    };
+
+    // ================= CREATE LANGUAGE CHANNELS =================
     for (const [lang, emoji] of Object.entries(languages)) {
 
-      let channel = guild.channels.cache.find(
-        c => c.name === `${base}-${emoji}`
-      );
+      const role = roles[lang];
+      const channelName = `${baseName}-${emoji}`;
+
+      let channel = guild.channels.cache.find(c => c.name === channelName);
 
       if (!channel) {
         channel = await guild.channels.create({
-          name: `${base}-${emoji}`,
-          type: 0,
+          name: channelName,
+          type: ChannelType.GuildText,
           parent: category.id
         });
-      } else {
-        // 🔥 FORCE INTO CATEGORY (FIX YOUR ISSUE)
-        await channel.setParent(category.id).catch(() => {});
       }
+
+      await channel.setParent(category.id).catch(() => {});
+
+      // 🔥 LOCK CHANNEL TO ROLE
+      await channel.permissionOverwrites.set([
+        {
+          id: guild.roles.everyone.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: role.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages
+          ]
+        }
+      ]);
 
       enabled_channels[lang] = channel.id;
     }
-
-    const firstChannelId = enabled_channels["EN"];
 
     // ================= SAVE DATABASE =================
     const { error } = await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
       enabled_channels,
-      base_channel_name: base,
-      default_channel: firstChannelId,
-      active_channel: firstChannelId
+      base_channel_name: baseName,
+      default_channel: baseChannelId,
+      active_channel: baseChannelId
     });
 
     if (error) {
       console.log("DB ERROR:", error.message);
       return interaction.editReply("❌ Failed to save setup.");
-    }
-
-    // ================= CREATE ROLES =================
-    for (const [lang, name] of Object.entries(roleNames)) {
-      if (!guild.roles.cache.find(r => r.name === name)) {
-        await guild.roles.create({
-          name,
-          mentionable: false
-        });
-      }
     }
 
     // ================= BOT ROLE =================
