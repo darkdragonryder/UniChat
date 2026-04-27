@@ -9,25 +9,18 @@ export default (client) => async (guild) => {
     const canSend = (c) =>
       c?.permissionsFor(me)?.has(PermissionsBitField.Flags.SendMessages);
 
-    // ================= BASE CHANNEL FIX =================
     const { data } = await supabase
       .from("guild_settings")
-      .select("active_channel, base_channel_name")
+      .select("active_channel, default_channel, base_channel_name")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
-    let channel = null;
-    let baseChannel = data?.base_channel_name || "chat";
-
-    const saved = guild.channels.cache.get(data?.active_channel);
-
-    if (saved?.name) {
-      channel = saved;
-      baseChannel = saved.name;
-    } else if (guild.systemChannel && canSend(guild.systemChannel)) {
-      channel = guild.systemChannel;
-      baseChannel = guild.systemChannel.name;
-    }
+    let baseChannel =
+      data?.base_channel_name ||
+      guild.channels.cache.get(data?.default_channel)?.name ||
+      guild.channels.cache.get(data?.active_channel)?.name ||
+      guild.systemChannel?.name ||
+      "chat";
 
     baseChannel = baseChannel
       .toLowerCase()
@@ -35,36 +28,15 @@ export default (client) => async (guild) => {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
 
-    if (!channel) {
-      const textChannels = guild.channels.cache.filter(
-        c => c.type === ChannelType.GuildText && canSend(c)
+    let channel =
+      guild.channels.cache.get(data?.active_channel) ||
+      guild.systemChannel ||
+      guild.channels.cache.find(c =>
+        c.type === ChannelType.GuildText && canSend(c)
       );
-
-      const keywords = ["general", "chat", "main", "welcome"];
-
-      let best = null;
-      let score = 0;
-
-      for (const c of textChannels.values()) {
-        let s = 0;
-        const name = c.name.toLowerCase();
-
-        for (const k of keywords) {
-          if (name.includes(k)) s++;
-        }
-
-        if (s > score) {
-          score = s;
-          best = c;
-        }
-      }
-
-      channel = best || textChannels.first();
-    }
 
     if (!channel) return;
 
-    // ================= JOIN ANIMATION =================
     const frames = [
       "🌐 UniChat is joining...",
       "⚙️ Initializing system...",
@@ -90,7 +62,6 @@ export default (client) => async (guild) => {
       channel.send({ embeds: [embed] }).catch(() => {});
     }, 4500);
 
-    // ================= ROLE SYSTEM =================
     await guild.roles.fetch();
 
     const botMember = await guild.members.fetch(client.user.id);
