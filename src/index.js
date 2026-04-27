@@ -1,218 +1,149 @@
-import "dotenv/config";
 import {
-  Client,
-  GatewayIntentBits,
+  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
+  ButtonStyle
 } from "discord.js";
 
-import { translateCached } from "./services/cacheTranslate.js";
+import { supabase } from "../services/supabase.js";
 
-// Commands
-import setupCommand, { runFinalSetup } from "./commands/setup.js";
-import uninstallCommand from "./commands/uninstall.js";
-import setLanguageCommand from "./commands/setlanguage.js";
-import helpCommand from "./commands/help.js";
-import infoCommand from "./commands/info.js";
-import migrateCommand from "./commands/migrate.js";
+const languages = {
+  ES: "🇪🇸",
+  DE: "🇩🇪",
+  IT: "🇮🇹",
+  KO: "🇰🇷",
+  RU: "🇷🇺",
+  JA: "🇯🇵"
+};
 
-// Events
-import guildMemberAdd from "./events/guildMemberAdd.js";
-import guildCreate from "./events/guildCreate.js";
-import { supabase } from "./services/supabase.js";
+const roleNames = {
+  ES: "Spanish",
+  DE: "German",
+  IT: "Italian",
+  KO: "Korean",
+  RU: "Russian",
+  JA: "Japanese"
+};
 
-// ================= CLIENT =================
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
+async function ensureBotRole(guild, client) {
+  const botMember = await guild.members.fetch(client.user.id);
 
-client.tempSetup = {};
+  let role = guild.roles.cache.find(r =>
+    ["bot", "bots", "unichat"].some(k =>
+      r.name.toLowerCase().includes(k)
+    )
+  );
 
-// ================= READY =================
-client.once("ready", () => {
-  console.log(`🚀 UniChat ONLINE: ${client.user.tag}`);
-});
+  if (!role) {
+    role = await guild.roles.create({
+      name: "🤖 UniChat Bot",
+      color: 0x5865f2
+    });
+  }
 
-// ================= EVENTS =================
-client.on("guildCreate", guildCreate(client));
-client.on("guildMemberAdd", guildMemberAdd(client));
+  await botMember.roles.add(role).catch(() => {});
+  return role;
+}
 
-// ================= 🌍 TRANSLATION ENGINE (FIXED) =================
-client.on("messageCreate", async (message) => {
-  try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
+// ================= FINAL SETUP =================
+export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
-    const { data } = await supabase
-      .from("guild_settings")
-      .select("enabled_channels")
-      .eq("guild_id", message.guild.id)
-      .maybeSingle();
+  await guild.channels.fetch();
+  await guild.roles.fetch();
 
-    const channels = data?.enabled_channels;
-    if (!channels || typeof channels !== "object") return;
+  let baseChannel =
+    interaction.channel?.name ||
+    guild.systemChannel?.name ||
+    "chat";
 
-    // ================= FIND LANGUAGE =================
-    let targetLang = null;
+  baseChannel = baseChannel
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
-    for (const [lang, channelId] of Object.entries(channels)) {
-      if (message.channel.id === channelId) {
-        targetLang = lang;
-        break;
-      }
-    }
+  if (!baseChannel) baseChannel = "chat";
 
-    if (!targetLang) return;
+  const category = await guild.channels.create({
+    name: "🌍 UniChat",
+    type: 4
+  });
 
-    // ================= TRANSLATE =================
-    const translated = await translateCached(message.content, targetLang);
+  const enabled_channels = {};
 
-    if (!translated) return;
+  for (const lang of selectedLangs) {
+    const emoji = languages[lang];
 
-    // prevent useless spam duplicates
-    if (translated === message.content && message.content.length < 10) return;
-
-    await message.channel.send({
-      content: `🌍 **Translated:** ${translated}`
+    const channel = await guild.channels.create({
+      name: `${baseChannel}-${emoji}`,
+      type: 0,
+      parent: category.id
     });
 
-  } catch (err) {
-    console.log("TRANSLATION ERROR:", err.message);
+    enabled_channels[lang] = channel.id;
   }
-});
 
-// ================= INTERACTIONS =================
-client.on("interactionCreate", async (interaction) => {
-  try {
+  const firstChannelId = Object.values(enabled_channels)[0];
 
-    if (interaction.isChatInputCommand()) {
-      switch (interaction.commandName) {
-        case "setup": return setupCommand(interaction);
-        case "uninstall": return uninstallCommand(interaction);
-        case "setlanguage": return setLanguageCommand(interaction);
-        case "help": return helpCommand(interaction);
-        case "info": return infoCommand(interaction, client);
-        case "migrate": return migrateCommand(interaction);
-        case "announce-owner":
-          return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
-      }
-    }
+  // ================= 🔥 CRITICAL FIX =================
+  const { error } = await supabase.from("guild_settings").upsert({
+    guild_id: guild.id,
+    enabled_channels,
+    base_channel_name: baseChannel,
+    default_channel: firstChannelId,
+    active_channel: firstChannelId
+  });
 
-    // ================= SETUP START =================
-    if (interaction.isButton() && interaction.customId === "setup_start") {
-
-      const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("setup_languages")
-          .setPlaceholder("Select languages")
-          .setMinValues(1)
-          .setMaxValues(5)
-          .addOptions([
-            { label: "Spanish", value: "ES" },
-            { label: "German", value: "DE" },
-            { label: "Italian", value: "IT" },
-            { label: "Japanese", value: "JA" },
-            { label: "Korean", value: "KO" }
-          ])
-      );
-
-      return interaction.update({
-        content: "🌍 Select languages",
-        components: [row],
-        embeds: []
-      });
-    }
-
-    // ================= LANGUAGE SELECT =================
-    if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
-
-      client.tempSetup[interaction.guild.id] = {
-        langs: interaction.values
-      };
-
-      const modal = new ModalBuilder()
-        .setCustomId("setup_preview_input")
-        .setTitle("🌐 Translation Preview");
-
-      const input = new TextInputBuilder()
-        .setCustomId("preview_text")
-        .setLabel("Enter preview message")
-        .setStyle(TextInputStyle.Paragraph);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-      return interaction.showModal(modal);
-    }
-
-    // ================= PREVIEW =================
-    if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
-
-      const previewText = interaction.fields.getTextInputValue("preview_text");
-      const setup = client.tempSetup[interaction.guild.id];
-
-      if (!setup?.langs) {
-        return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
-      }
-
-      const results = await Promise.all(
-        setup.langs.map(async (lang) => {
-          const translated = await translateCached(previewText, lang);
-          return `${lang}: ${translated}`;
-        })
-      );
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("setup_confirm")
-          .setLabel("Confirm Setup")
-          .setStyle(ButtonStyle.Success)
-      );
-
-      return interaction.reply({
-        content: "🌐 Preview:\n\n" + results.join("\n"),
-        components: [row],
-        ephemeral: true
-      });
-    }
-
-    // ================= FINAL =================
-    if (interaction.isButton() && interaction.customId === "setup_confirm") {
-
-      const setup = client.tempSetup[interaction.guild.id];
-
-      if (!setup?.langs) {
-        return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
-      }
-
-      await interaction.update({
-        content: "⚙️ Setting up UniChat...",
-        components: []
-      });
-
-      await runFinalSetup(interaction.guild, client, setup.langs, interaction);
-
-      delete client.tempSetup[interaction.guild.id];
-
-      return interaction.followUp({
-        content: "✅ Setup complete!",
-        ephemeral: true
-      });
-    }
-
-  } catch (err) {
-    console.log("INTERACTION ERROR:", err.message);
+  if (error) {
+    console.log("❌ SUPABASE SAVE ERROR:", error.message);
+  } else {
+    console.log("✅ SETTINGS SAVED FOR:", guild.id);
   }
-});
 
-// ================= LOGIN =================
-client.login(process.env.DISCORD_TOKEN);
+  // ================= ROLES =================
+  for (const lang of selectedLangs) {
+    const name = roleNames[lang];
+
+    if (!guild.roles.cache.find(r => r.name === name)) {
+      await guild.roles.create({ name });
+    }
+  }
+
+  let ownerRole = guild.roles.cache.find(r => r.name === "🌏 UniChat Owner");
+
+  if (!ownerRole) {
+    ownerRole = await guild.roles.create({
+      name: "🌏 UniChat Owner",
+      color: 0x00bfff
+    });
+  }
+
+  const botRole = await ensureBotRole(guild, client);
+  const botMember = await guild.members.fetch(client.user.id);
+
+  let pos = botMember.roles.highest.position - 1;
+
+  await ownerRole.setPosition(pos--).catch(() => {});
+  await botRole.setPosition(pos--).catch(() => {});
+}
+
+// ================= ENTRY =================
+export default async function setupCommand(interaction) {
+  const embed = new EmbedBuilder()
+    .setColor(0x00bfff)
+    .setTitle("🌐 UniChat Setup Wizard")
+    .setDescription("Click below to begin setup.");
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("setup_start")
+      .setLabel("Start Setup")
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  return interaction.reply({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true
+  });
+}
