@@ -3,18 +3,17 @@ import { Client, GatewayIntentBits } from "discord.js";
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
-// ================= COMMANDS =================
+// Commands
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
 
-// ================= EVENTS =================
+// Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
-client.on("guildCreate", guildCreate(client));
-// ================= CLIENT =================
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -24,76 +23,59 @@ const client = new Client({
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat Bot is ONLINE: ${client.user.tag} (${client.user.id})`);
+  console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
 });
 
-// ================= GUILD MEMBER JOIN =================
+// ================= GUILD JOIN ANIMATION =================
+client.on("guildCreate", guildCreate(client));
+
+// ================= MEMBER JOIN =================
 client.on("guildMemberAdd", guildMemberAdd(client));
-
-// ================= GUILD CREATE =================
-client.on("guildCreate", async (guild) => {
-  try {
-    const botMember = await guild.members.fetch(client.user.id).catch(() => null);
-    if (!botMember) return;
-
-    const keywords = ["bots only", "bots", "bot", "system"];
-
-    let role =
-      guild.roles.cache.find(r =>
-        keywords.includes(r.name.toLowerCase())
-      ) ||
-      guild.roles.cache.find(r =>
-        keywords.some(k => r.name.toLowerCase().includes(k))
-      );
-
-    if (!role) {
-      role = await guild.roles.create({
-        name: "🤖 UniChat Bot",
-        color: 0x5865f2,
-        hoist: true,
-        mentionable: false,
-        reason: "Fallback bot role"
-      });
-    }
-
-    await botMember.roles.add(role).catch(() => {});
-
-    console.log(`🤖 Bot role ensured in ${guild.name}`);
-
-  } catch (err) {
-    console.log("GUILD CREATE ERROR:", err.message);
-  }
-});
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    if (!interaction.isChatInputCommand()) return;
+    // ================= SLASH COMMANDS =================
+    if (interaction.isChatInputCommand()) {
 
-    switch (interaction.commandName) {
+      switch (interaction.commandName) {
 
-      case "setup":
-        return setupCommand(interaction);
+        case "setup":
+          return setupCommand(interaction);
 
-      case "uninstall":
-        return uninstallCommand(interaction);
+        case "uninstall":
+          return uninstallCommand(interaction);
 
-      case "setlanguage":
-        return setLanguageCommand(interaction);
+        case "setlanguage":
+          return setLanguageCommand(interaction);
 
-      case "help":
-        return helpCommand(interaction);
+        case "help":
+          return helpCommand(interaction);
 
-      case "info":
-        return infoCommand(interaction);
+        case "info":
+          return infoCommand(interaction, client);
 
-      // ================= OWNER ANNOUNCE =================
-      case "announce-owner":
-        return interaction.reply({
-          content: "🌏 UniChat created and maintained by **Dr4gonwolf**",
-          ephemeral: false
+        case "announce-owner":
+          return interaction.reply({
+            content: "🌏 UniChat created by **Dr4gonwolf**",
+            ephemeral: false
+          });
+      }
+    }
+
+    // ================= SETUP WIZARD BUTTONS =================
+    if (interaction.isButton()) {
+      if (interaction.customId === "setup_start") {
+
+        await interaction.update({
+          content: "🌍 Step 1: Initializing UniChat system...",
+          embeds: [],
+          components: []
         });
+
+        return setupCommand(interaction);
+      }
     }
 
   } catch (err) {
