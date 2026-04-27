@@ -19,6 +19,7 @@ import migrateCommand from "./commands/migrate.js";
 import guildCreate from "./events/guildCreate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -28,55 +29,44 @@ const client = new Client({
   ]
 });
 
-// ================= MEMORY CACHE =================
-const channelCache = new Map(); // guildId → channels
-const messageMap = new Map();   // syncId → { lang → messageId }
-
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat v3 SYNC ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat STABLE v3.1 ONLINE: ${client.user.tag}`);
 });
 
 // ================= EVENTS =================
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= LOAD CHANNELS =================
-async function getChannels(guildId) {
-
-  if (channelCache.has(guildId)) {
-    return channelCache.get(guildId);
-  }
-
-  const { data } = await supabase
-    .from("guild_settings")
-    .select("enabled_channels")
-    .eq("guild_id", guildId)
-    .maybeSingle();
-
-  const channels = data?.enabled_channels || {};
-  channelCache.set(guildId, channels);
-
-  return channels;
-}
-
-// ================= MESSAGE SYNC ENGINE v3 =================
+// ================= 🌍 TRANSLATION ENGINE (HARDENED v3.1) =================
 client.on("messageCreate", async (message) => {
   try {
 
     if (!message.guild || message.author.bot) return;
 
-    // ================= LOOP PROTECTION =================
-    if (message.content.includes("UNI_CHAT_V3")) return;
+    // ================= FETCH SAFE CONFIG =================
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("enabled_channels")
+      .eq("guild_id", message.guild.id)
+      .maybeSingle();
 
-    const channels = await getChannels(message.guild.id);
-    if (!channels) return;
+    const channels = data?.enabled_channels;
 
-    // ================= DETECT SOURCE LANGUAGE =================
+    // ================= SAFETY CHECK (IMPORTANT) =================
+    if (!channels || typeof channels !== "object") return;
+
+    // OPTIONAL STRONG RECOMMENDED GUARD
+    if (Object.keys(channels).length === 0) {
+      console.log(`⚠️ No channels configured for guild ${message.guild.id}`);
+      return;
+    }
+
+    // ================= FIND SOURCE LANGUAGE =================
     let sourceLang = null;
 
-    for (const [lang, id] of Object.entries(channels)) {
-      if (message.channel.id === id) {
+    for (const [lang, channelId] of Object.entries(channels)) {
+      if (message.channel.id === channelId) {
         sourceLang = lang;
         break;
       }
@@ -84,111 +74,41 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= SYNC ID =================
-    const syncId =
-      message.id + "-" + Date.now().toString(36);
-
-    messageMap.set(syncId, {});
-
-    // ================= TRANSLATE TO ALL =================
+    // ================= TRANSLATE TO ALL OTHER CHANNELS =================
     for (const [lang, channelId] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
 
-      const channel = await message.guild.channels.fetch(channelId)
-        .catch(() => null);
+      try {
 
-      if (!channel) continue;
+        const channel = await message.guild.channels.fetch(channelId)
+          .catch(() => null);
 
-      const translated = await translateCached(message.content, lang);
-      if (!translated) continue;
+        if (!channel) {
+          console.log(`⚠️ Missing channel for ${lang} in guild ${message.guild.id}`);
+          continue;
+        }
 
-      const sent = await channel.send({
-        content: `🌍 UNI_CHAT_V3 ${sourceLang} → ${lang}: ${translated}`
-      }).catch(() => null);
+        const translated = await translateCached(message.content, lang);
+        if (!translated) continue;
 
-      if (sent) {
-        messageMap.get(syncId)[lang] = sent.id;
+        await channel.send({
+          content: `🌍 ${sourceLang} → ${lang}: ${translated}`
+        }).catch((err) => {
+          console.log(`SEND ERROR (${lang}):`, err.message);
+        });
+
+      } catch (err) {
+        console.log(`CHANNEL ERROR (${lang}):`, err.message);
       }
     }
 
   } catch (err) {
-    console.log("MESSAGE ERROR:", err.message);
+    console.log("TRANSLATION ENGINE CRASH SAFE:", err.message);
   }
 });
 
-// ================= EDIT SYNC =================
-client.on("messageUpdate", async (oldMsg, newMsg) => {
-  try {
-
-    if (!newMsg.guild || newMsg.author?.bot) return;
-
-    const channels = await getChannels(newMsg.guild.id);
-    if (!channels) return;
-
-    let sourceLang = null;
-
-    for (const [lang, id] of Object.entries(channels)) {
-      if (newMsg.channel.id === id) {
-        sourceLang = lang;
-        break;
-      }
-    }
-
-    if (!sourceLang) return;
-
-    for (const [lang, channelId] of Object.entries(channels)) {
-
-      if (lang === sourceLang) continue;
-
-      const translated = await translateCached(newMsg.content, lang);
-      if (!translated) continue;
-
-      const channel = await newMsg.guild.channels.fetch(channelId)
-        .catch(() => null);
-
-      if (!channel) continue;
-
-      await channel.send({
-        content: `✏️ UPDATED 🌍 ${sourceLang} → ${lang}: ${translated}`
-      }).catch(() => {});
-    }
-
-  } catch (err) {
-    console.log("EDIT SYNC ERROR:", err.message);
-  }
-});
-
-// ================= DELETE SYNC =================
-client.on("messageDelete", async (message) => {
-  try {
-
-    if (!message.guild) return;
-
-    const channels = await getChannels(message.guild.id);
-    if (!channels) return;
-
-    for (const channelId of Object.values(channels)) {
-
-      const channel = await message.guild.channels.fetch(channelId)
-        .catch(() => null);
-
-      if (!channel) continue;
-
-      // we cannot reliably fetch old messages without cache,
-      // so we just notify deletion (safe fallback)
-
-      await channel.send({
-        content: `🗑️ A message was deleted in another language channel.`
-      }).catch(() => {});
-    }
-
-  } catch (err) {
-    console.log("DELETE SYNC ERROR:", err.message);
-  }
-});
-
-// ================= COMMAND HANDLER =================
+// ================= COMMANDS =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
