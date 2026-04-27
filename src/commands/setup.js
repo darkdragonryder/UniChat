@@ -1,5 +1,8 @@
 import { supabase } from "../services/supabase.js";
-import { ChannelType, PermissionsBitField } from "discord.js";
+import {
+  ChannelType,
+  PermissionsBitField
+} from "discord.js";
 
 const languages = {
   ES: "🇪🇸",
@@ -27,13 +30,13 @@ export default async function setupCommand(interaction, client) {
   const guild = interaction.guild;
 
   try {
+
     await guild.channels.fetch();
     await guild.roles.fetch();
 
-    // ================= BASE CHANNEL (ENGLISH) =================
+    // ================= BASE CHANNEL =================
     const baseChannel = interaction.channel;
-    const baseChannelId = baseChannel.id;
-    const parentCategory = baseChannel.parent;
+    const baseCategory = baseChannel.parent;
 
     let baseName = baseChannel.name
       .toLowerCase()
@@ -43,26 +46,37 @@ export default async function setupCommand(interaction, client) {
 
     if (!baseName) baseName = "chat";
 
-    // ================= CREATE / FIND UNICHAT CATEGORY =================
+    // ================= CREATE UNI CHAT CATEGORY =================
     let category = guild.channels.cache.find(
-      c =>
-        c.name === "🌍 UniChat" &&
-        c.type === ChannelType.GuildCategory &&
-        c.parentId === parentCategory?.id
+      c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
     );
 
     if (!category) {
       category = await guild.channels.create({
         name: "🌍 UniChat",
-        type: ChannelType.GuildCategory,
-        parent: parentCategory?.id || null
+        type: ChannelType.GuildCategory
       });
     }
 
-    // ================= CREATE LANGUAGE ROLES =================
+    // ================= POSITION CATEGORY UNDER BASE =================
+    if (baseCategory && category) {
+      const sorted = guild.channels.cache
+        .filter(c => c.type === ChannelType.GuildCategory)
+        .sort((a, b) => a.position - b.position)
+        .map(c => c.id);
+
+      const baseIndex = sorted.indexOf(baseCategory.id);
+
+      if (baseIndex !== -1) {
+        await category.setPosition(baseIndex + 1).catch(() => {});
+      }
+    }
+
+    // ================= CREATE ROLES =================
     const roles = {};
 
     for (const [lang, name] of Object.entries(roleNames)) {
+
       let role = guild.roles.cache.find(r => r.name === name);
 
       if (!role) {
@@ -86,14 +100,16 @@ export default async function setupCommand(interaction, client) {
       }
     ]);
 
+    // ================= DB STRUCTURE =================
     const enabled_channels = {
-      EN: baseChannelId // 🔥 STILL REQUIRED FOR TRANSLATION ENGINE
+      EN: baseChannel.id
     };
 
     // ================= CREATE LANGUAGE CHANNELS =================
     for (const [lang, emoji] of Object.entries(languages)) {
 
       const role = roles[lang];
+
       const channelName = `${baseName}-${emoji}`;
 
       let channel = guild.channels.cache.find(
@@ -108,7 +124,7 @@ export default async function setupCommand(interaction, client) {
         });
       }
 
-      // 🔥 LOCK CHANNEL TO ROLE
+      // LOCK CHANNEL
       await channel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id,
@@ -131,13 +147,13 @@ export default async function setupCommand(interaction, client) {
       guild_id: guild.id,
       enabled_channels,
       base_channel_name: baseName,
-      default_channel: baseChannelId,
-      active_channel: baseChannelId
+      default_channel: baseChannel.id,
+      active_channel: baseChannel.id
     });
 
     if (error) {
       console.log("DB ERROR:", error.message);
-      return interaction.editReply("❌ Failed to save setup.");
+      return interaction.editReply("❌ DB save failed");
     }
 
     // ================= BOT ROLE =================
@@ -155,7 +171,7 @@ export default async function setupCommand(interaction, client) {
     const botMember = await guild.members.fetch(client.user.id);
     await botMember.roles.add(botRole).catch(() => {});
 
-    // ================= DONE =================
+    // ================= COMPLETE =================
     return interaction.editReply("✅ UniChat setup complete!");
 
   } catch (err) {
