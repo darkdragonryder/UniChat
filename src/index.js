@@ -11,8 +11,10 @@ import {
   TextInputStyle
 } from "discord.js";
 
+import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
+// Commands
 import setupCommand, { runFinalSetup } from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
@@ -20,10 +22,8 @@ import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
 import migrateCommand from "./commands/migrate.js";
 
-import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
-
-import { supabase } from "./services/supabase.js";
+import guildMemberAdd from "./events/guildMemberAdd.js";
 
 const client = new Client({
   intents: [
@@ -34,30 +34,7 @@ const client = new Client({
   ]
 });
 
-// ================= DB HELPERS =================
-async function getSetup(guildId) {
-  const { data } = await supabase
-    .from("guild_setup_sessions")
-    .select("*")
-    .eq("guild_id", guildId)
-    .maybeSingle();
-  return data;
-}
-
-async function saveSetup(guildId, payload) {
-  await supabase.from("guild_setup_sessions").upsert({
-    guild_id: guildId,
-    ...payload,
-    updated_at: new Date().toISOString()
-  });
-}
-
-async function deleteSetup(guildId) {
-  await supabase
-    .from("guild_setup_sessions")
-    .delete()
-    .eq("guild_id", guildId);
-}
+client.tempSetup = {};
 
 // ================= READY =================
 client.once("ready", () => {
@@ -79,21 +56,35 @@ client.on("messageCreate", async (message) => {
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    const map = data?.enabled_channels;
-    if (!map) return;
+    const channels = data?.enabled_channels;
 
-    let lang = null;
+    if (!channels) return;
 
-    for (const [l, id] of Object.entries(map)) {
-      if (id === message.channel.id) lang = l;
+    let sourceLang = null;
+
+    for (const [lang, id] of Object.entries(channels)) {
+      if (message.channel.id === id) {
+        sourceLang = lang;
+        break;
+      }
     }
 
-    if (!lang) return;
+    if (!sourceLang) return;
 
-    const translated = await translateCached(message.content, lang);
-    if (!translated || translated === message.content) return;
+    // ================= TRANSLATE TO ALL OTHER CHANNELS =================
+    for (const [lang, id] of Object.entries(channels)) {
+      if (lang === sourceLang) continue;
 
-    await message.channel.send(`🌍 ${translated}`);
+      const translated = await translateCached(message.content, lang);
+      if (!translated) continue;
+
+      const channel = await message.guild.channels.fetch(id).catch(() => null);
+      if (!channel) continue;
+
+      await channel.send({
+        content: `🌍 ${sourceLang} → ${lang}: ${translated}`
+      }).catch(() => {});
+    }
 
   } catch (err) {
     console.log("TRANSLATION ERROR:", err.message);
@@ -115,13 +106,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ================= STEP 1 =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
-
-      await saveSetup(interaction.guild.id, {
-        user_id: interaction.user.id,
-        step: "langs"
-      });
 
       const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -145,13 +130,10 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= LANG SELECT =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
-
-      await saveSetup(interaction.guild.id, {
-        langs: interaction.values,
-        step: "preview"
-      });
+      client.tempSetup[interaction.guild.id] = {
+        langs: interaction.values
+      };
 
       const modal = new ModalBuilder()
         .setCustomId("setup_preview_input")
@@ -167,80 +149,44 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // ================= PREVIEW =================
     if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
 
+      const setup = client.tempSetup[interaction.guild.id];
       const text = interaction.fields.getTextInputValue("preview_text");
 
-      await saveSetup(interaction.guild.id, {
-        preview_text: text
-      });
-
-      const setup = await getSetup(interaction.guild.id);
-      if (!setup?.langs) {
-        return interaction.reply({ content: "Setup expired", ephemeral: true });
-      }
-
       const results = await Promise.all(
-        setup.langs.map(async (l) => {
-          const t = await translateCached(text, l);
-          return `${l}: ${t}`;
-        })
-      );
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("setup_confirm")
-          .setLabel("Confirm")
-          .setStyle(ButtonStyle.Success)
+        setup.langs.map(l => translateCached(text, l))
       );
 
       return interaction.reply({
         content: results.join("\n"),
-        components: [row],
         ephemeral: true
       });
     }
 
-    // ================= CONFIRM =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
-      const setup = await getSetup(interaction.guild.id);
+      const setup = client.tempSetup[interaction.guild.id];
 
-      if (!setup?.langs) {
-        return interaction.reply({
-          content: "❌ Setup expired",
-          ephemeral: true
-        });
-      }
+      await interaction.update({
+        content: "⚙️ Setting up...",
+        components: []
+      });
 
-    // 🔥 STEP 1: update loading message
-    await interaction.update({
-      content: "⚙️ Setting up UniChat...",
-      components: []
-    });
+      await runFinalSetup(interaction.guild, client, setup.langs, interaction);
 
-    // 🔥 STEP 2: run setup
-    await runFinalSetup(
-      interaction.guild,
-      client,
-      setup.langs,
-      interaction
-    );
+      delete client.tempSetup[interaction.guild.id];
 
-    // 🔥 STEP 3: cleanup
-    await deleteSetup(interaction.guild.id);
-
-    // 🔥 STEP 4: FINAL CONFIRM MESSAGE (THIS WAS MISSING)
-    return interaction.followUp({
-      content: "✅ Setup complete! UniChat is now active.",
-      ephemeral: true
-    });
-  }
+      return interaction.followUp({
+        content: "✅ Setup complete!",
+        ephemeral: true
+      });
+    }
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err);
+    console.log("INTERACTION ERROR:", err.message);
   }
 });
 
+// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
