@@ -20,6 +20,7 @@ import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
+import migrateCommand from "./commands/migrate.js";
 
 // Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
