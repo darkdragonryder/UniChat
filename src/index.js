@@ -19,7 +19,6 @@ import migrateCommand from "./commands/migrate.js";
 import guildCreate from "./events/guildCreate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
-// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -31,18 +30,21 @@ const client = new Client({
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat v2 ONLINE: ${client.user.tag}`);
 });
 
 // ================= EVENTS =================
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🌍 TRANSLATION ENGINE (FIXED CORE) =================
+// ================= 🌍 TRANSLATION ENGINE v2 =================
 client.on("messageCreate", async (message) => {
   try {
 
     if (!message.guild || message.author.bot) return;
+
+    // ================= LOOP PROTECTION =================
+    if (message.content.includes("🌍 UNI_CHAT_V2")) return;
 
     const { data } = await supabase
       .from("guild_settings")
@@ -64,13 +66,11 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // Not a UniChat channel → ignore
     if (!sourceLang) return;
 
-    // ================= BROADCAST TRANSLATIONS =================
+    // ================= TRANSLATE TO ALL CHANNELS =================
     for (const [lang, channelId] of Object.entries(channels)) {
 
-      // skip same language
       if (lang === sourceLang) continue;
 
       const targetChannel = await message.guild.channels.fetch(channelId)
@@ -82,7 +82,7 @@ client.on("messageCreate", async (message) => {
       if (!translated) continue;
 
       await targetChannel.send({
-        content: `🌍 ${sourceLang} → ${lang}: ${translated}`
+        content: `🌍 UNI_CHAT_V2 ${sourceLang} → ${lang}: ${translated}`
       }).catch((err) => {
         console.log(`SEND ERROR (${lang}):`, err.message);
       });
@@ -118,9 +118,6 @@ client.on("interactionCreate", async (interaction) => {
 
       case "migrate":
         return migrateCommand(interaction);
-
-      default:
-        return;
     }
 
   } catch (err) {
