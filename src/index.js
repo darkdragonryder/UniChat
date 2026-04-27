@@ -23,13 +23,13 @@ const client = new Client({
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
+  console.log(`🚀 UniChat Bot is ONLINE: ${client.user.tag} (${client.user.id})`);
 });
 
 // ================= GUILD MEMBER JOIN =================
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= GUILD CREATE (BOT ROLE FALLBACK) =================
+// ================= GUILD CREATE =================
 client.on("guildCreate", async (guild) => {
   try {
     const botMember = await guild.members.fetch(client.user.id).catch(() => null);
@@ -37,7 +37,6 @@ client.on("guildCreate", async (guild) => {
 
     const keywords = ["bots only", "bots", "bot", "system"];
 
-    // Try find existing bot role
     let role =
       guild.roles.cache.find(r =>
         keywords.includes(r.name.toLowerCase())
@@ -46,23 +45,16 @@ client.on("guildCreate", async (guild) => {
         keywords.some(k => r.name.toLowerCase().includes(k))
       );
 
-    // Create fallback role if none exists
     if (!role) {
       role = await guild.roles.create({
         name: "🤖 UniChat Bot",
         color: 0x5865f2,
-
-        // 👇 shows separately in member list (important fix)
         hoist: true,
-
-        // 👇 prevents @everyone spam
         mentionable: false,
-
-        reason: "Fallback UniChat bot role"
+        reason: "Fallback bot role"
       });
     }
 
-    // Assign role to bot
     await botMember.roles.add(role).catch(() => {});
 
     console.log(`🤖 Bot role ensured in ${guild.name}`);
@@ -76,67 +68,31 @@ client.on("guildCreate", async (guild) => {
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= SLASH COMMANDS =================
-    if (interaction.isChatInputCommand()) {
+    if (!interaction.isChatInputCommand()) return;
 
-      switch (interaction.commandName) {
+    switch (interaction.commandName) {
 
-        case "setup":
-          return setupCommand(interaction);
+      case "setup":
+        return setupCommand(interaction);
 
-        case "uninstall":
-          return uninstallCommand(interaction);
+      case "uninstall":
+        return uninstallCommand(interaction);
 
-        case "setlanguage":
-          return setLanguageCommand(interaction);
+      case "setlanguage":
+        return setLanguageCommand(interaction);
 
-        case "help":
-          return helpCommand(interaction);
+      case "help":
+        return helpCommand(interaction);
 
-        case "info":
-          return infoCommand(interaction);
-      }
-    }
+      case "info":
+        return infoCommand(interaction);
 
-    // ================= LANGUAGE SELECT MENU =================
-    if (interaction.isStringSelectMenu()) {
-      if (interaction.customId === "select_language") {
-
-        const lang = interaction.values[0];
-        const guild = interaction.guild;
-        const member = await guild.members.fetch(interaction.user.id);
-
-        const roleNames = {
-          EN: "English",
-          ES: "Spanish",
-          DE: "German",
-          IT: "Italian",
-          KO: "Korean",
-          RU: "Russian",
-          JA: "Japanese"
-        };
-
-        // REMOVE OLD LANGUAGE ROLES
-        for (const name of Object.values(roleNames)) {
-          const role = guild.roles.cache.find(r => r.name === name);
-          if (role) await member.roles.remove(role).catch(() => {});
-        }
-
-        // ADD NEW ROLE
-        const newRole = guild.roles.cache.find(r => r.name === roleNames[lang]);
-        if (newRole) await member.roles.add(newRole).catch(() => {});
-
-        // SAVE TO DATABASE
-        await supabase.from("user_settings").upsert({
-          user_id: interaction.user.id,
-          language: lang
-        });
-
+      // ================= OWNER ANNOUNCE =================
+      case "announce-owner":
         return interaction.reply({
-          content: `🌍 Language set to ${roleNames[lang]}`,
-          ephemeral: true
+          content: "🌏 UniChat created and maintained by **Dr4gonwolf**",
+          ephemeral: false
         });
-      }
     }
 
   } catch (err) {
