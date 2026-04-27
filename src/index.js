@@ -1,6 +1,14 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits } from "discord.js";
-import { supabase } from "./services/supabase.js";
+import {
+  Client,
+  GatewayIntentBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder
+} from "discord.js";
+
+import { runFinalSetup } from "./commands/setup.js";
 
 // Commands
 import setupCommand from "./commands/setup.js";
@@ -17,82 +25,101 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages // ✅ REQUIRED for tracking
+    GatewayIntentBits.GuildMessages
   ]
 });
 
-// ================= READY =================
+// TEMP STORAGE
+client.tempSetup = {};
+
+// READY
 client.once("ready", () => {
-  console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
+  console.log(`🚀 UniChat Bot is ONLINE: ${client.user.tag}`);
 });
 
-// ================= GUILD JOIN =================
+// EVENTS
 client.on("guildCreate", guildCreate(client));
-
-// ================= MEMBER JOIN =================
 client.on("guildMemberAdd", guildMemberAdd(client));
-
-// ================= 📊 ACTIVITY TRACKER =================
-// (THIS replaces needing a separate file)
-client.on("messageCreate", async (message) => {
-  try {
-    if (!message.guild) return;
-    if (message.author.bot) return;
-
-    await supabase.from("guild_settings").upsert({
-      guild_id: message.guild.id,
-      active_channel: message.channel.id
-    });
-
-  } catch (err) {
-    console.log("ACTIVITY TRACK ERROR:", err.message);
-  }
-});
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= SLASH COMMANDS =================
+    // ================= SLASH =================
     if (interaction.isChatInputCommand()) {
-
       switch (interaction.commandName) {
-
-        case "setup":
-          return setupCommand(interaction);
-
-        case "uninstall":
-          return uninstallCommand(interaction);
-
-        case "setlanguage":
-          return setLanguageCommand(interaction);
-
-        case "help":
-          return helpCommand(interaction);
-
-        case "info":
-          return infoCommand(interaction, client);
-
+        case "setup": return setupCommand(interaction);
+        case "uninstall": return uninstallCommand(interaction);
+        case "setlanguage": return setLanguageCommand(interaction);
+        case "help": return helpCommand(interaction);
+        case "info": return infoCommand(interaction, client);
         case "announce-owner":
-          return interaction.reply({
-            content: "🌏 UniChat created by **Dr4gonwolf**",
-            ephemeral: false
-          });
+          return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
       }
     }
 
-    // ================= SETUP WIZARD BUTTON =================
-    if (interaction.isButton()) {
-      if (interaction.customId === "setup_start") {
+    // ================= STEP 1 =================
+    if (interaction.isButton() && interaction.customId === "setup_start") {
 
-        await interaction.update({
-          content: "🌍 Step 1: Initializing UniChat system...",
-          embeds: [],
-          components: []
-        });
+      const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("setup_languages")
+          .setPlaceholder("Select languages")
+          .setMinValues(1)
+          .setMaxValues(5)
+          .addOptions([
+            { label: "Spanish", value: "ES" },
+            { label: "German", value: "DE" },
+            { label: "Italian", value: "IT" },
+            { label: "Japanese", value: "JA" },
+            { label: "Korean", value: "KO" }
+          ])
+      );
 
-        return setupCommand(interaction);
+      return interaction.update({
+        content: "🌍 Select languages",
+        components: [row],
+        embeds: []
+      });
+    }
+
+    // ================= STEP 2 =================
+    if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
+
+      client.tempSetup[interaction.guild.id] = interaction.values;
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("setup_confirm")
+          .setLabel("Confirm Setup")
+          .setStyle(ButtonStyle.Success)
+      );
+
+      return interaction.update({
+        content: `🌐 Selected: ${interaction.values.join(", ")}`,
+        components: [row]
+      });
+    }
+
+    // ================= FINAL =================
+    if (interaction.isButton() && interaction.customId === "setup_confirm") {
+
+      const langs = client.tempSetup[interaction.guild.id];
+
+      if (!langs) {
+        return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
       }
+
+      await interaction.update({
+        content: "⚙️ Creating UniChat...",
+        components: []
+      });
+
+      await runFinalSetup(interaction.guild, client, langs);
+
+      delete client.tempSetup[interaction.guild.id];
+
+      return interaction.followUp("✅ UniChat setup complete!");
     }
 
   } catch (err) {
@@ -100,5 +127,5 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ================= LOGIN =================
+// LOGIN
 client.login(process.env.DISCORD_TOKEN);
