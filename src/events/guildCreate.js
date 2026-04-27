@@ -3,52 +3,44 @@ import { supabase } from "../services/supabase.js";
 
 export default (client) => async (guild) => {
   try {
-    console.log("🔥 GUILD CREATE TRIGGERED:", guild.name);
 
     const me = guild.members.me;
 
     const canSend = (c) =>
-      c.permissionsFor(me).has(PermissionsBitField.Flags.SendMessages);
+      c?.permissionsFor(me)?.has(PermissionsBitField.Flags.SendMessages);
 
-    // ================= 1️⃣ CHECK SAVED ACTIVE CHANNEL =================
+    // ================= BASE CHANNEL FIX =================
     const { data } = await supabase
       .from("guild_settings")
-      .select("active_channel")
+      .select("active_channel, base_channel_name")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
     let channel = null;
+    let baseChannel = data?.base_channel_name || "chat";
 
-    if (data?.active_channel) {
-      const saved = guild.channels.cache.get(data.active_channel);
-      if (saved && saved.type === ChannelType.GuildText && canSend(saved)) {
-        channel = saved;
-        console.log("📍 Using saved active channel:", saved.name);
-      }
-    }
+    const saved = guild.channels.cache.get(data?.active_channel);
 
-    // ================= 2️⃣ SYSTEM CHANNEL =================
-    if (!channel && guild.systemChannel && canSend(guild.systemChannel)) {
+    if (saved?.name) {
+      channel = saved;
+      baseChannel = saved.name;
+    } else if (guild.systemChannel && canSend(guild.systemChannel)) {
       channel = guild.systemChannel;
-      console.log("📍 Using system channel:", channel.name);
+      baseChannel = guild.systemChannel.name;
     }
 
-    // ================= 3️⃣ SMART NAME MATCH =================
+    baseChannel = baseChannel
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
     if (!channel) {
       const textChannels = guild.channels.cache.filter(
         c => c.type === ChannelType.GuildText && canSend(c)
       );
 
-      const keywords = [
-        "general",
-        "chat",
-        "talk",
-        "main",
-        "lobby",
-        "jibber",
-        "server",
-        "welcome"
-      ];
+      const keywords = ["general", "chat", "main", "welcome"];
 
       let best = null;
       let score = 0;
@@ -67,23 +59,17 @@ export default (client) => async (guild) => {
         }
       }
 
-      if (best) {
-        channel = best;
-        console.log("📍 Using smart match channel:", best.name);
-      } else {
-        channel = textChannels.first();
-        console.log("📍 Using fallback channel:", channel?.name);
-      }
+      channel = best || textChannels.first();
     }
 
-    if (!channel) return console.log("❌ No valid channel found");
+    if (!channel) return;
 
-    // ================= 🎬 ANIMATION =================
+    // ================= JOIN ANIMATION =================
     const frames = [
-      "🌐 UniChat is joining your server...",
-      "⚙️ Initializing translation engine...",
+      "🌐 UniChat is joining...",
+      "⚙️ Initializing system...",
       "🌍 Connecting languages...",
-      "✅ UniChat is ready!"
+      "✅ Ready!"
     ];
 
     const msg = await channel.send({ content: frames[0] });
@@ -95,106 +81,38 @@ export default (client) => async (guild) => {
       await msg.edit({ content: frames[i] });
     }, 900);
 
-    // ================= FINAL EMBED =================
     const embed = new EmbedBuilder()
       .setColor(0x00bfff)
       .setTitle("🌐 UniChat Installed")
-      .setDescription(
-        "Thanks for adding UniChat!\n\n" +
-        "Run `/setup` to configure language channels."
-      );
+      .setDescription("Run `/setup` to configure your server.");
 
     setTimeout(() => {
       channel.send({ embeds: [embed] }).catch(() => {});
     }, 4500);
 
-    // ================= 🤖 AUTO ROLE SYSTEM =================
+    // ================= ROLE SYSTEM =================
+    await guild.roles.fetch();
 
-    await guild.roles.fetch(); // 🔥 FORCE CACHE REFRESH
+    const botMember = await guild.members.fetch(client.user.id);
 
-    const botMember =
-      guild.members.me ||
-      await guild.members.fetch(client.user.id).catch(err => {
-        console.log("❌ Failed to fetch bot member:", err.message);
-        return null;
-      });
+    let role = guild.roles.cache.find(r =>
+      r.name.toLowerCase().includes("unichat") ||
+      r.name.toLowerCase().includes("bot")
+    );
 
-    if (!botMember) return console.log("❌ botMember is null");
-
-    const perms = guild.members.me.permissions;
-    console.log("🔐 Permissions:", perms.toArray());
-
-    if (!perms.has(PermissionsBitField.Flags.ManageRoles)) {
-      return console.log("❌ Missing ManageRoles permission");
-    }
-
-    // ================= 🔍 FIND ROLE =================
-    let role =
-      guild.roles.cache.find(r =>
-        ["bot", "bots", "bots-only"].some(k =>
-          r.name.toLowerCase().includes(k)
-        )
-      ) ||
-      guild.roles.cache.find(r =>
-        r.name.toLowerCase().includes("unichat")
-      );
-
-    console.log("🔍 Found role:", role?.name || "NONE");
-
-    // ================= 🆕 CREATE ROLE =================
     if (!role) {
-      try {
-        role = await guild.roles.create({
-          name: "🤖 UniChat Bot",
-          color: 0x5865f2,
-          hoist: true,
-          mentionable: false,
-          reason: "Auto-created UniChat role"
-        });
-
-        console.log("✅ Created role:", role.name);
-
-      } catch (err) {
-        return console.log("❌ ROLE CREATE FAILED:", err.message);
-      }
+      role = await guild.roles.create({
+        name: "🤖 UniChat Bot",
+        color: 0x5865f2,
+        mentionable: false
+      });
     }
 
-    // ================= 🔧 AUTO FIX POSITION =================
-    try {
-      const botHighest = botMember.roles.highest;
-
-      console.log("📊 Bot highest:", botHighest.position);
-      console.log("📊 Role position:", role.position);
-
-      if (role.position >= botHighest.position) {
-        console.log("⚠️ Role above bot — attempting fix...");
-
-        await role.setPosition(botHighest.position - 1);
-
-        console.log("🔧 Role position fixed");
-      }
-    } catch (err) {
-      console.log("⚠️ Could not auto-move role:", err.message);
+    if (role.position >= botMember.roles.highest.position) {
+      await role.setPosition(botMember.roles.highest.position - 1).catch(() => {});
     }
 
-    // ================= 🔁 GUARANTEED ASSIGN =================
-    let assigned = false;
-
-    for (let i = 0; i < 3; i++) {
-      try {
-        await botMember.roles.add(role);
-        console.log("✅ ROLE ASSIGNED:", role.name);
-        assigned = true;
-        break;
-      } catch (err) {
-        console.log(`❌ Assign attempt ${i + 1} failed:`, err.message);
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    if (!assigned) {
-      console.log("❌ FINAL ROLE ASSIGN FAILED — check hierarchy manually");
-    }
+    await botMember.roles.add(role).catch(() => {});
 
   } catch (err) {
     console.log("GUILD CREATE ERROR:", err.message);
