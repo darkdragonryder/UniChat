@@ -16,17 +16,19 @@ const languages = {
   JA: "🇯🇵"
 };
 
+// ================= SAFE BOT ROLE =================
 async function ensureBotRole(guild, client) {
   const botMember = await guild.members.fetch(client.user.id);
 
   let role = guild.roles.cache.find(r =>
-    r.name.toLowerCase().includes("bot")
+    (r.name || "").toLowerCase().includes("bot")
   );
 
   if (!role) {
     role = await guild.roles.create({
       name: "🤖 UniChat Bot",
-      color: 0x5865f2
+      color: 0x5865f2,
+      reason: "UniChat bot role"
     });
   }
 
@@ -34,11 +36,13 @@ async function ensureBotRole(guild, client) {
   return role;
 }
 
+// ================= FINAL SETUP =================
 export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   await guild.channels.fetch();
   await guild.roles.fetch();
 
+  // ================= BASE CHANNEL =================
   let baseChannel =
     interaction.channel?.name ||
     guild.systemChannel?.name ||
@@ -52,38 +56,69 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   if (!baseChannel) baseChannel = "chat";
 
+  // ================= CATEGORY =================
   const category = await guild.channels.create({
     name: "🌍 UniChat",
-    type: 4
+    type: 4,
+    reason: "UniChat setup"
   });
 
   const enabled_channels = {};
 
+  // ================= CREATE CHANNELS =================
   for (const lang of selectedLangs) {
     const channel = await guild.channels.create({
       name: `${baseChannel}-${languages[lang]}`,
       type: 0,
-      parent: category.id
+      parent: category.id,
+      reason: "UniChat language channel"
     });
 
     enabled_channels[lang] = channel.id;
   }
 
-  // 🔥 SAVE DB
-  await supabase.from("guild_settings").upsert({
+  // ================= PICK DEFAULT CHANNEL SAFELY =================
+  const firstChannelId = Object.values(enabled_channels).find(Boolean);
+
+  // ================= SAVE DATABASE =================
+  const { error } = await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
     enabled_channels,
     base_channel_name: baseChannel,
-    default_channel: Object.values(enabled_channels)[0],
-    active_channel: Object.values(enabled_channels)[0]
+    default_channel: firstChannelId,
+    active_channel: firstChannelId,
+    auto_translate: true
   });
 
-  // 🔥 SAVE CACHE (THIS WAS YOUR MISSING LINK)
-  client.guildChannels[guild.id] = enabled_channels;
+  if (error) {
+    console.log("❌ Supabase save error:", error.message);
+  }
 
+  // ================= ROLE SETUP =================
+  for (const lang of selectedLangs) {
+    const emoji = languages[lang];
+
+    const roleName = Object.keys(languages).includes(lang)
+      ? lang
+      : null;
+
+    const name = lang;
+
+    if (!guild.roles.cache.find(r => r.name === name)) {
+      await guild.roles.create({
+        name,
+        reason: "UniChat language role"
+      }).catch(() => {});
+    }
+  }
+
+  // ================= BOT ROLE =================
   await ensureBotRole(guild, client);
+
+  console.log(`✅ UniChat setup complete for guild ${guild.id}`);
 }
 
+// ================= SETUP COMMAND =================
 export default async function setupCommand(interaction) {
 
   const embed = new EmbedBuilder()
