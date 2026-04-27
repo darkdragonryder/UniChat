@@ -3,99 +3,98 @@ import { Client, GatewayIntentBits } from "discord.js";
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
-// Commands
+// ================= COMMANDS =================
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
-import announceOwner from "./commands/announceOwner.js";
 
-// Events
+// ================= EVENTS =================
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers
   ]
 });
 
+// ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat Bot is ONLINE: ${client.user.tag}`);
+  console.log(`✅ ONLINE: ${client.user.tag} (${client.user.id})`);
 });
 
+// ================= GUILD MEMBER JOIN =================
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= MESSAGE ENGINE =================
-client.on("messageCreate", async (message) => {
+// ================= GUILD CREATE (SAFE BOT ROLE FALLBACK) =================
+client.on("guildCreate", async (guild) => {
   try {
-    if (!message.guild || message.author.bot) return;
+    const botMember = await guild.members.fetch(client.user.id).catch(() => null);
+    if (!botMember) return;
 
-    const content = message.content?.trim();
-    if (!content || content.startsWith("/")) return;
+    const keywords = ["bots only", "bots", "bot", "system"];
 
-    const { data: user } = await supabase
-      .from("user_settings")
-      .select("*")
-      .eq("user_id", message.author.id)
-      .maybeSingle();
+    let role =
+      guild.roles.cache.find(r =>
+        keywords.includes(r.name.toLowerCase())
+      ) ||
+      guild.roles.cache.find(r =>
+        keywords.some(k => r.name.toLowerCase().includes(k))
+      );
 
-    if (!user?.language) return;
-
-    const sourceLang = user.language.toUpperCase();
-
-    const { data: settings } = await supabase
-      .from("guild_settings")
-      .select("*")
-      .eq("guild_id", message.guild.id)
-      .maybeSingle();
-
-    const channelsData = settings?.enabled_channels || {};
-    if (!Object.keys(channelsData).length) return;
-
-    const channels = await message.guild.channels.fetch();
-
-    for (const [lang, channelId] of Object.entries(channelsData)) {
-      if (lang.toUpperCase() === sourceLang) continue;
-
-      const channel = channels.get(channelId);
-      if (!channel) continue;
-
-      const translated = await translateCached(content, lang);
-      if (!translated) continue;
-
-      await channel.send({
-        content: `🌍 ${translated}`,
-        allowedMentions: { parse: [] }
-      }).catch(() => {});
+    if (!role) {
+      role = await guild.roles.create({
+        name: "🤖 UniChat Bot",
+        color: 0x5865f2,
+        mentionable: false,
+        reason: "Fallback bot role on guild join"
+      });
     }
 
+    await botMember.roles.add(role).catch(() => {});
+
+    console.log(`🤖 Bot role ensured in ${guild.name}`);
+
   } catch (err) {
-    console.log("MESSAGE ERROR:", err.message);
+    console.log("GUILD CREATE ERROR:", err.message);
   }
 });
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
+    // ================= SLASH COMMANDS =================
     if (interaction.isChatInputCommand()) {
 
-      if (interaction.commandName === "setup") return setupCommand(interaction);
-      if (interaction.commandName === "uninstall") return uninstallCommand(interaction);
-      if (interaction.commandName === "setlanguage") return setLanguageCommand(interaction);
-      if (interaction.commandName === "help") return helpCommand(interaction);
-      if (interaction.commandName === "info") return infoCommand(interaction);
-      if (interaction.commandName === "announce-owner") return announceOwner(interaction);
+      switch (interaction.commandName) {
+
+        case "setup":
+          return setupCommand(interaction);
+
+        case "uninstall":
+          return uninstallCommand(interaction);
+
+        case "setlanguage":
+          return setLanguageCommand(interaction);
+
+        case "help":
+          return helpCommand(interaction);
+
+        case "info":
+          return infoCommand(interaction);
+      }
     }
 
+    // ================= LANGUAGE SELECT MENU =================
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "select_language") {
 
         const lang = interaction.values[0];
-        const member = await interaction.guild.members.fetch(interaction.user.id);
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(interaction.user.id);
 
         const roleNames = {
           EN: "English",
@@ -107,23 +106,23 @@ client.on("interactionCreate", async (interaction) => {
           JA: "Japanese"
         };
 
+        // REMOVE OLD ROLES
         for (const name of Object.values(roleNames)) {
-          const role = interaction.guild.roles.cache.find(r => r.name === name);
+          const role = guild.roles.cache.find(r => r.name === name);
           if (role) await member.roles.remove(role).catch(() => {});
         }
 
-        const newRole = interaction.guild.roles.cache.find(
-          r => r.name === roleNames[lang]
-        );
-
+        // ADD NEW ROLE
+        const newRole = guild.roles.cache.find(r => r.name === roleNames[lang]);
         if (newRole) await member.roles.add(newRole).catch(() => {});
 
+        // SAVE TO DB
         await supabase.from("user_settings").upsert({
           user_id: interaction.user.id,
           language: lang
         });
 
-        await interaction.reply({
+        return interaction.reply({
           content: `🌍 Language set to ${roleNames[lang]}`,
           ephemeral: true
         });
@@ -135,4 +134,5 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
