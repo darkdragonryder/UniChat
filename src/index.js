@@ -11,21 +11,21 @@ import {
   TextInputStyle
 } from "discord.js";
 
-// ================= FIXED IMPORT PATHS =================
-import { supabase } from "../services/supabase.js";
-import { translateCached } from "../services/cacheTranslate.js";
+// ================= FIXED PATHS (ROOT MODE) =================
+import { supabase } from "./services/supabase.js";
+import { translateCached } from "./services/cacheTranslate.js";
 
 // Commands
-import setupCommand, { runFinalSetup } from "../commands/setup.js";
-import uninstallCommand from "../commands/uninstall.js";
-import setLanguageCommand from "../commands/setlanguage.js";
-import helpCommand from "../commands/help.js";
-import infoCommand from "../commands/info.js";
-import migrateCommand from "../commands/migrate.js";
+import setupCommand, { runFinalSetup } from "./commands/setup.js";
+import uninstallCommand from "./commands/uninstall.js";
+import setLanguageCommand from "./commands/setlanguage.js";
+import helpCommand from "./commands/help.js";
+import infoCommand from "./commands/info.js";
+import migrateCommand from "./commands/migrate.js";
 
 // Events
-import guildCreate from "../events/guildCreate.js";
-import guildMemberAdd from "../events/guildMemberAdd.js";
+import guildCreate from "./events/guildCreate.js";
+import guildMemberAdd from "./events/guildMemberAdd.js";
 
 // ================= CLIENT =================
 const client = new Client({
@@ -48,27 +48,20 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= TRANSLATION ENGINE (FIXED & SAFE) =================
+// ================= TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    if (error) {
-      console.log("DB ERROR:", error.message);
-      return;
-    }
-
     const channels = data?.enabled_channels;
-
     if (!channels || typeof channels !== "object") return;
 
-    // ================= FIND SOURCE LANGUAGE =================
     let sourceLang = null;
 
     for (const [lang, id] of Object.entries(channels)) {
@@ -80,14 +73,14 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= BROADCAST TRANSLATION =================
-    for (const [lang, channelId] of Object.entries(channels)) {
+    // ================= TRANSLATE TO OTHER CHANNELS =================
+    for (const [lang, id] of Object.entries(channels)) {
       if (lang === sourceLang) continue;
 
       const translated = await translateCached(message.content, lang);
       if (!translated) continue;
 
-      const channel = await message.guild.channels.fetch(channelId).catch(() => null);
+      const channel = await message.guild.channels.fetch(id).catch(() => null);
       if (!channel) continue;
 
       await channel.send({
@@ -129,7 +122,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ================= SETUP START =================
+    // ================= SETUP FLOW =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
 
       const row = new ActionRowBuilder().addComponents(
@@ -187,10 +180,7 @@ client.on("interactionCreate", async (interaction) => {
       const text = interaction.fields.getTextInputValue("preview_text");
 
       const results = await Promise.all(
-        setup.langs.map(async (lang) => {
-          const translated = await translateCached(text, lang);
-          return `${lang}: ${translated}`;
-        })
+        setup.langs.map(l => translateCached(text, l))
       );
 
       return interaction.reply({
@@ -203,7 +193,6 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
       const setup = client.tempSetup[interaction.guild.id];
-
       if (!setup?.langs) {
         return interaction.reply({ content: "❌ Setup expired", ephemeral: true });
       }
