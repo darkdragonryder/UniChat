@@ -51,12 +51,8 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
   await guild.channels.fetch();
   await guild.roles.fetch();
 
-  // ================= BASE CHANNEL FIX =================
-  let baseChannel = "chat";
-
-  if (interaction?.channel?.name) {
-    baseChannel = interaction.channel.name;
-  }
+  // ================= BASE CHANNEL =================
+  let baseChannel = interaction.channel?.name || "chat";
 
   baseChannel = baseChannel
     .toLowerCase()
@@ -74,7 +70,6 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
 
   const enabled_channels = {};
 
-  // ================= CHANNELS =================
   for (const lang of selectedLangs) {
     const emoji = languages[lang];
 
@@ -87,16 +82,21 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
     enabled_channels[lang] = channel.id;
   }
 
+  // ================= DB FIX (IMPORTANT) =================
   await supabase.from("guild_settings").upsert({
     guild_id: guild.id,
     enabled_channels,
-    base_channel_name: baseChannel
+    base_channel_name: baseChannel,
+
+    // 🔥 PRIMARY SOURCE
+    default_channel: interaction.channelId,
+
+    // 📊 TRACKING
+    active_channel: interaction.channelId
   });
 
-  // ================= ROLES =================
   for (const lang of selectedLangs) {
     const name = roleNames[lang];
-
     if (!guild.roles.cache.find(r => r.name === name)) {
       await guild.roles.create({ name });
     }
@@ -112,8 +112,8 @@ export async function runFinalSetup(guild, client, selectedLangs, interaction) {
   }
 
   const botRole = await ensureBotRole(guild, client);
-
   const botMember = await guild.members.fetch(client.user.id);
+
   let pos = botMember.roles.highest.position - 1;
 
   await ownerRole.setPosition(pos--).catch(() => {});
