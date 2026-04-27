@@ -3,18 +3,21 @@ import { supabase } from "../services/supabase.js";
 
 export default (client) => async (guild) => {
   try {
+    console.log("🔥 GUILD CREATE:", guild.name);
 
     const me = guild.members.me;
 
     const canSend = (c) =>
       c?.permissionsFor(me)?.has(PermissionsBitField.Flags.SendMessages);
 
+    // ================= FETCH SETTINGS =================
     const { data } = await supabase
       .from("guild_settings")
       .select("active_channel, default_channel, base_channel_name")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
+    // ================= BASE CHANNEL NAME FIX =================
     let baseChannel =
       data?.base_channel_name ||
       guild.channels.cache.get(data?.default_channel)?.name ||
@@ -28,15 +31,44 @@ export default (client) => async (guild) => {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
 
-    let channel =
-      guild.channels.cache.get(data?.active_channel) ||
-      guild.systemChannel ||
-      guild.channels.cache.find(c =>
-        c.type === ChannelType.GuildText && canSend(c)
+    // ================= PICK CHANNEL SAFELY =================
+    let channel = null;
+
+    if (data?.active_channel) {
+      const saved = guild.channels.cache.get(data.active_channel);
+
+      if (
+        saved &&
+        saved.type === ChannelType.GuildText &&
+        canSend(saved)
+      ) {
+        channel = saved;
+      }
+    }
+
+    if (!channel && guild.systemChannel && canSend(guild.systemChannel)) {
+      channel = guild.systemChannel;
+    }
+
+    if (!channel) {
+      channel = guild.channels.cache.find(
+        c =>
+          c.type === ChannelType.GuildText &&
+          canSend(c)
       );
+    }
 
-    if (!channel) return;
+    if (!channel) return console.log("❌ No valid channel");
 
+    // ================= SAVE BASE CHANNEL FOR MIGRATION =================
+    await supabase.from("guild_settings").upsert({
+      guild_id: guild.id,
+      base_channel_name: baseChannel,
+      active_channel: channel.id,
+      default_channel: channel.id
+    });
+
+    // ================= ANIMATION =================
     const frames = [
       "🌐 UniChat is joining...",
       "⚙️ Initializing system...",
@@ -62,6 +94,7 @@ export default (client) => async (guild) => {
       channel.send({ embeds: [embed] }).catch(() => {});
     }, 4500);
 
+    // ================= ROLE SYSTEM FIX =================
     await guild.roles.fetch();
 
     const botMember = await guild.members.fetch(client.user.id);
@@ -75,15 +108,21 @@ export default (client) => async (guild) => {
       role = await guild.roles.create({
         name: "🤖 UniChat Bot",
         color: 0x5865f2,
-        mentionable: false
+        mentionable: false,
+        reason: "Auto create bot role"
       });
     }
 
-    if (role.position >= botMember.roles.highest.position) {
-      await role.setPosition(botMember.roles.highest.position - 1).catch(() => {});
+    // FIX HIERARCHY SAFETY
+    const botTop = botMember.roles.highest;
+
+    if (role.position >= botTop.position) {
+      await role.setPosition(botTop.position - 1).catch(() => {});
     }
 
-    await botMember.roles.add(role).catch(() => {});
+    await botMember.roles.add(role).catch((err) => {
+      console.log("ROLE ASSIGN FAILED:", err.message);
+    });
 
   } catch (err) {
     console.log("GUILD CREATE ERROR:", err.message);
