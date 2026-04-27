@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
-import { commandData as setLanguageData } from "./commands/setlanguage.js";
+
+import setLanguageData from "./commands/setlanguage.js"; // ✅ FIXED
 
 const commands = [
   new SlashCommandBuilder().setName("info").setDescription("Show bot information"),
@@ -14,8 +15,16 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
-  await rest.put(
-    Routes.applicationCommands(process.env.CLIENT_ID),
-    { body: commands }
-  );
+  try {
+    console.log("🚀 Registering slash commands...");
+
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+
+    console.log("✅ Slash commands registered");
+  } catch (err) {
+    console.error("❌ Command registration failed:", err);
+  }
 })();
