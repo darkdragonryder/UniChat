@@ -33,10 +33,12 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent // 🔥 REQUIRED
+    GatewayIntentBits.MessageContent
   ]
 });
 
+// 🔥 GLOBAL CACHE
+client.guildChannels = {};
 client.tempSetup = {};
 
 // ================= READY =================
@@ -54,37 +56,29 @@ client.on("messageCreate", async (message) => {
     if (!message.guild) return;
     if (message.author.bot) return;
 
-    // ================= GET SETTINGS =================
-    const { data, error } = await supabase
-      .from("guild_settings")
-      .select("enabled_channels")
-      .eq("guild_id", message.guild.id)
-      .maybeSingle();
+    let channels = client.guildChannels[message.guild.id];
 
-    if (error) {
-      console.log("❌ DB READ ERROR:", error.message);
-      return;
+    // 🔥 FALLBACK TO DB
+    if (!channels) {
+      const { data } = await supabase
+        .from("guild_settings")
+        .select("enabled_channels")
+        .eq("guild_id", message.guild.id)
+        .maybeSingle();
+
+      channels = data?.enabled_channels;
+
+      if (channels) {
+        client.guildChannels[message.guild.id] = channels;
+      }
     }
-
-    // 🔥 AUTO CREATE ROW IF MISSING (CRITICAL FIX)
-    if (!data) {
-      console.log("⚠️ No DB row found — creating one...");
-      await supabase.from("guild_settings").upsert({
-        guild_id: message.guild.id,
-        enabled_channels: {}
-      });
-      return;
-    }
-
-    const channels = data.enabled_channels;
 
     if (!channels || typeof channels !== "object") return;
 
-    // ================= FIND TARGET LANGUAGE =================
     let targetLang = null;
 
     for (const [lang, channelId] of Object.entries(channels)) {
-      if (message.channel.id === channelId) {
+      if (String(message.channel.id) === String(channelId)) {
         targetLang = lang;
         break;
       }
@@ -92,12 +86,9 @@ client.on("messageCreate", async (message) => {
 
     if (!targetLang) return;
 
-    // ================= TRANSLATE =================
     const translated = await translateCached(message.content, targetLang);
 
     if (!translated) return;
-
-    // prevent spam for identical short messages
     if (translated === message.content && message.content.length < 10) return;
 
     await message.channel.send({
@@ -113,36 +104,20 @@ client.on("messageCreate", async (message) => {
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= SLASH COMMANDS =================
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-
-        case "setup":
-          return setupCommand(interaction);
-
-        case "uninstall":
-          return uninstallCommand(interaction);
-
-        case "setlanguage":
-          return setLanguageCommand(interaction);
-
-        case "help":
-          return helpCommand(interaction);
-
-        case "info":
-          return infoCommand(interaction, client);
-
-        case "migrate":
-          return migrateCommand(interaction);
-
+        case "setup": return setupCommand(interaction);
+        case "uninstall": return uninstallCommand(interaction);
+        case "setlanguage": return setLanguageCommand(interaction);
+        case "help": return helpCommand(interaction);
+        case "info": return infoCommand(interaction, client);
+        case "migrate": return migrateCommand(interaction);
         case "announce-owner":
           return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
       }
     }
 
-    // ================= SETUP START =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
-
       const row = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId("setup_languages")
@@ -165,9 +140,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= LANGUAGE SELECT =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
-
       client.tempSetup[interaction.guild.id] = {
         langs: interaction.values
       };
@@ -179,15 +152,13 @@ client.on("interactionCreate", async (interaction) => {
       const input = new TextInputBuilder()
         .setCustomId("preview_text")
         .setLabel("Enter preview message")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
+        .setStyle(TextInputStyle.Paragraph);
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
 
       return interaction.showModal(modal);
     }
 
-    // ================= PREVIEW =================
     if (interaction.isModalSubmit() && interaction.customId === "setup_preview_input") {
 
       const previewText = interaction.fields.getTextInputValue("preview_text");
@@ -218,7 +189,6 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= FINAL SETUP =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
       const setup = client.tempSetup[interaction.guild.id];
