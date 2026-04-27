@@ -24,15 +24,15 @@ import migrateCommand from "./commands/migrate.js";
 // Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
-
 import { supabase } from "./services/supabase.js";
 
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent // 🔥 REQUIRED FOR TRANSLATION
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -47,13 +47,12 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🌍 TRANSLATION ENGINE =================
+// ================= 🌍 TRANSLATION ENGINE (FIXED) =================
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild) return;
     if (message.author.bot) return;
 
-    // ================= GET GUILD SETTINGS =================
     const { data } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
@@ -61,7 +60,7 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     const channels = data?.enabled_channels;
-    if (!channels) return;
+    if (!channels || typeof channels !== "object") return;
 
     // ================= FIND LANGUAGE =================
     let targetLang = null;
@@ -78,9 +77,11 @@ client.on("messageCreate", async (message) => {
     // ================= TRANSLATE =================
     const translated = await translateCached(message.content, targetLang);
 
-    if (!translated || translated === message.content) return;
+    if (!translated) return;
 
-    // ================= SEND TRANSLATION =================
+    // prevent useless spam duplicates
+    if (translated === message.content && message.content.length < 10) return;
+
     await message.channel.send({
       content: `🌍 **Translated:** ${translated}`
     });
@@ -107,7 +108,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ================= SETUP FLOW =================
+    // ================= SETUP START =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
 
       const row = new ActionRowBuilder().addComponents(
@@ -146,8 +147,7 @@ client.on("interactionCreate", async (interaction) => {
       const input = new TextInputBuilder()
         .setCustomId("preview_text")
         .setLabel("Enter preview message")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
+        .setStyle(TextInputStyle.Paragraph);
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
 
@@ -210,7 +210,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err);
+    console.log("INTERACTION ERROR:", err.message);
   }
 });
 
