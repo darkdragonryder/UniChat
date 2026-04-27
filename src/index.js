@@ -11,7 +11,7 @@ import {
   TextInputStyle
 } from "discord.js";
 
-// IMPORTANT FIX: named import
+// FIXED IMPORT
 import { translateCached } from "./services/cacheTranslate.js";
 
 // Commands
@@ -25,13 +25,17 @@ import migrateCommand from "./commands/migrate.js";
 // Events
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
+import { supabase } from "./services/supabase.js";
 
 // ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+
+    // 🔥 REQUIRED FOR TRANSLATION
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -46,11 +50,53 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
+// ================= 🔥 TRANSLATION ENGINE =================
+client.on("messageCreate", async (message) => {
+  try {
+    if (!message.guild) return;
+    if (message.author.bot) return;
+    if (!message.content) return;
+
+    // ================= GET SERVER SETTINGS =================
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("enabled_channels")
+      .eq("guild_id", message.guild.id)
+      .maybeSingle();
+
+    if (!data?.enabled_channels) return;
+
+    const enabled = data.enabled_channels;
+
+    // ================= FIND LANGUAGE CHANNEL =================
+    for (const [lang, channelId] of Object.entries(enabled)) {
+      if (message.channel.id === channelId) continue;
+
+      const translated = await translateCached(message.content, lang);
+
+      const targetChannel = message.guild.channels.cache.get(channelId);
+      if (!targetChannel) continue;
+
+      await targetChannel.send({
+        content: `**${message.author.username}:** ${translated}`
+      });
+    }
+
+    // ================= TRACK ACTIVE CHANNEL =================
+    await supabase.from("guild_settings").upsert({
+      guild_id: message.guild.id,
+      active_channel: message.channel.id
+    });
+
+  } catch (err) {
+    console.log("TRANSLATION ERROR:", err.message);
+  }
+});
+
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
-    // ================= SLASH COMMANDS =================
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
 
@@ -77,7 +123,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // ================= SETUP FLOW =================
+    // ================= SETUP =================
     if (interaction.isButton() && interaction.customId === "setup_start") {
 
       const row = new ActionRowBuilder().addComponents(
