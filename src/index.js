@@ -25,6 +25,7 @@ import migrateCommand from "./commands/migrate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 import guildCreate from "./events/guildCreate.js";
 
+// Supabase
 import { supabase } from "./services/supabase.js";
 
 // ================= CLIENT =================
@@ -33,7 +34,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent // 🔥 REQUIRED
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -48,79 +49,67 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-
-// ================= 🌍 TRANSLATION ENGINE (FULL DEBUG + FIXED) =================
+// ================= 🌍 TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild) return;
     if (message.author.bot) return;
 
-    console.log("📨 MESSAGE:", message.content);
-    console.log("📍 CHANNEL:", message.channel.id);
-    console.log("🏠 GUILD:", message.guild.id);
-
-    // ================= FETCH SETTINGS =================
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    if (error) {
-      console.log("❌ SUPABASE ERROR:", error.message);
-      return;
-    }
-
-    console.log("🗄️ DB DATA:", data);
-
     const channels = data?.enabled_channels;
+    if (!channels || typeof channels !== "object") return;
 
-    // 🔥 HARD CHECK
-    if (!channels || typeof channels !== "object") {
-      console.log("❌ NO VALID CHANNEL MAP");
-      return;
-    }
-
-    console.log("📡 CHANNEL MAP:", channels);
-
-    // ================= FIND MATCH =================
-    let targetLang = null;
+    // ================= FIND SOURCE LANGUAGE =================
+    let sourceLang = null;
 
     for (const [lang, channelId] of Object.entries(channels)) {
-      console.log(`🔍 CHECKING ${lang}: ${channelId}`);
-
-      if (String(message.channel.id) === String(channelId)) {
-        targetLang = lang;
+      if (channelId === message.channel.id) {
+        sourceLang = lang;
         break;
       }
     }
 
-    console.log("🎯 TARGET LANG:", targetLang);
+    if (!sourceLang) return;
 
-    if (!targetLang) return;
+    // ================= TRANSLATE TO ALL OTHER LANGS =================
+    for (const [lang, channelId] of Object.entries(channels)) {
+      if (lang === sourceLang) continue;
 
-    // ================= TRANSLATE =================
-    const translated = await translateCached(message.content, targetLang);
+      const targetChannel = message.guild.channels.cache.get(channelId);
+      if (!targetChannel) continue;
 
-    console.log("🌍 TRANSLATED:", translated);
+      const translated = await translateCached(message.content, lang);
+      if (!translated || translated === message.content) continue;
 
-    if (!translated) return;
-
-    if (translated === message.content && message.content.length < 10) {
-      console.log("⚠️ SKIPPED (same/short)");
-      return;
+      await targetChannel.send({
+        content: `🌍 **${sourceLang} → ${lang}**\n${translated}`
+      });
     }
 
-    // ================= SEND =================
-    await message.channel.send({
-      content: `🌍 **Translated:** ${translated}`
-    });
+    // ================= FORCE ENGLISH OUTPUT =================
+    if (sourceLang !== "EN" && channels.EN) {
+      const enChannel = message.guild.channels.cache.get(channels.EN);
+
+      if (enChannel) {
+        const english = await translateCached(message.content, "EN");
+
+        if (english && english !== message.content) {
+          await enChannel.send({
+            content: `🌍 **${sourceLang} → EN**\n${english}`
+          });
+        }
+      }
+    }
 
   } catch (err) {
-    console.log("💥 TRANSLATION ERROR:", err.message);
+    console.log("TRANSLATION ERROR:", err.message);
   }
 });
-
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
@@ -128,12 +117,24 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-        case "setup": return setupCommand(interaction);
-        case "uninstall": return uninstallCommand(interaction);
-        case "setlanguage": return setLanguageCommand(interaction);
-        case "help": return helpCommand(interaction);
-        case "info": return infoCommand(interaction, client);
-        case "migrate": return migrateCommand(interaction);
+        case "setup":
+          return setupCommand(interaction);
+
+        case "uninstall":
+          return uninstallCommand(interaction);
+
+        case "setlanguage":
+          return setLanguageCommand(interaction);
+
+        case "help":
+          return helpCommand(interaction);
+
+        case "info":
+          return infoCommand(interaction, client);
+
+        case "migrate":
+          return migrateCommand(interaction);
+
         case "announce-owner":
           return interaction.reply("🌏 UniChat created by **Dr4gonwolf**");
       }
@@ -167,6 +168,8 @@ client.on("interactionCreate", async (interaction) => {
     // ================= LANGUAGE SELECT =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
 
+      if (!client.tempSetup) client.tempSetup = {};
+
       client.tempSetup[interaction.guild.id] = {
         langs: interaction.values
       };
@@ -178,7 +181,8 @@ client.on("interactionCreate", async (interaction) => {
       const input = new TextInputBuilder()
         .setCustomId("preview_text")
         .setLabel("Enter preview message")
-        .setStyle(TextInputStyle.Paragraph);
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
 
@@ -216,7 +220,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= FINAL =================
+    // ================= FINAL SETUP =================
     if (interaction.isButton() && interaction.customId === "setup_confirm") {
 
       const setup = client.tempSetup[interaction.guild.id];
@@ -241,7 +245,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
   } catch (err) {
-    console.log("💥 INTERACTION ERROR:", err.message);
+    console.log("INTERACTION ERROR:", err.message);
   }
 });
 
