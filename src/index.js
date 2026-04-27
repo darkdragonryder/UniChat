@@ -29,7 +29,7 @@ client.once("ready", () => {
 // ================= GUILD MEMBER JOIN =================
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= GUILD CREATE (SAFE BOT ROLE FALLBACK) =================
+// ================= GUILD CREATE (BOT ROLE FALLBACK) =================
 client.on("guildCreate", async (guild) => {
   try {
     const botMember = await guild.members.fetch(client.user.id).catch(() => null);
@@ -37,6 +37,7 @@ client.on("guildCreate", async (guild) => {
 
     const keywords = ["bots only", "bots", "bot", "system"];
 
+    // Try find existing bot role
     let role =
       guild.roles.cache.find(r =>
         keywords.includes(r.name.toLowerCase())
@@ -45,15 +46,23 @@ client.on("guildCreate", async (guild) => {
         keywords.some(k => r.name.toLowerCase().includes(k))
       );
 
+    // Create fallback role if none exists
     if (!role) {
       role = await guild.roles.create({
         name: "🤖 UniChat Bot",
         color: 0x5865f2,
+
+        // 👇 shows separately in member list (important fix)
+        hoist: true,
+
+        // 👇 prevents @everyone spam
         mentionable: false,
-        reason: "Fallback bot role on guild join"
+
+        reason: "Fallback UniChat bot role"
       });
     }
 
+    // Assign role to bot
     await botMember.roles.add(role).catch(() => {});
 
     console.log(`🤖 Bot role ensured in ${guild.name}`);
@@ -66,6 +75,7 @@ client.on("guildCreate", async (guild) => {
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
   try {
+
     // ================= SLASH COMMANDS =================
     if (interaction.isChatInputCommand()) {
 
@@ -106,7 +116,7 @@ client.on("interactionCreate", async (interaction) => {
           JA: "Japanese"
         };
 
-        // REMOVE OLD ROLES
+        // REMOVE OLD LANGUAGE ROLES
         for (const name of Object.values(roleNames)) {
           const role = guild.roles.cache.find(r => r.name === name);
           if (role) await member.roles.remove(role).catch(() => {});
@@ -116,7 +126,7 @@ client.on("interactionCreate", async (interaction) => {
         const newRole = guild.roles.cache.find(r => r.name === roleNames[lang]);
         if (newRole) await member.roles.add(newRole).catch(() => {});
 
-        // SAVE TO DB
+        // SAVE TO DATABASE
         await supabase.from("user_settings").upsert({
           user_id: interaction.user.id,
           language: lang
