@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 
 import { runFinalSetup } from "./commands/setup.js";
+import { translateCached } from "./services/cacheTranslate.js";
 
 // Commands
 import setupCommand from "./commands/setup.js";
@@ -31,6 +32,16 @@ const client = new Client({
 
 // TEMP STORAGE
 client.tempSetup = {};
+
+// LANGUAGE EMOJIS
+const langEmojis = {
+  ES: "🇪🇸",
+  DE: "🇩🇪",
+  IT: "🇮🇹",
+  KO: "🇰🇷",
+  RU: "🇷🇺",
+  JA: "🇯🇵"
+};
 
 // READY
 client.once("ready", () => {
@@ -83,10 +94,29 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ================= STEP 2 =================
+    // ================= STEP 2 (LIVE PREVIEW) =================
     if (interaction.isStringSelectMenu() && interaction.customId === "setup_languages") {
 
-      client.tempSetup[interaction.guild.id] = interaction.values;
+      const langs = interaction.values;
+
+      client.tempSetup[interaction.guild.id] = langs;
+
+      const previewText = "Hello everyone";
+
+      let preview = "🌐 **Live Translation Preview**\n\n";
+
+      const results = await Promise.all(
+        langs.map(async (lang) => {
+          try {
+            const translated = await translateCached(previewText, lang);
+            return `${langEmojis[lang] || lang} ${translated}`;
+          } catch {
+            return `${langEmojis[lang] || lang} ❌ failed`;
+          }
+        })
+      );
+
+      preview += results.join("\n");
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -96,7 +126,7 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       return interaction.update({
-        content: `🌐 Selected: ${interaction.values.join(", ")}`,
+        content: preview,
         components: [row]
       });
     }
