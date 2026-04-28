@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { REST, Routes, SlashCommandBuilder } from "discord.js";
+import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
 const commands = [
 
@@ -61,7 +61,13 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("repair")
-    .setDescription("Fix channel permissions without reinstalling setup")
+    .setDescription("Fix channel permissions without reinstalling setup"),
+
+  // ✅ ADD THIS
+  new SlashCommandBuilder()
+    .setName("unlock")
+    .setDescription("Make this channel visible to everyone")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ];
 
 // ================= REST =================
