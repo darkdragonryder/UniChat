@@ -1,7 +1,8 @@
 import "dotenv/config";
 import {
   Client,
-  GatewayIntentBits
+  GatewayIntentBits,
+  EmbedBuilder
 } from "discord.js";
 
 import { supabase } from "./services/supabase.js";
@@ -31,7 +32,7 @@ const client = new Client({
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat STABLE v3.1 ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat v3.2 ONLINE: ${client.user.tag}`);
 });
 
 // ================= EVENTS =================
@@ -54,8 +55,6 @@ client.on("messageCreate", async (message) => {
 
     if (!channels || typeof channels !== "object") return;
 
-    if (Object.keys(channels).length === 0) return;
-
     let sourceLang = null;
 
     for (const [lang, id] of Object.entries(channels)) {
@@ -71,20 +70,25 @@ client.on("messageCreate", async (message) => {
 
       if (lang === sourceLang) continue;
 
-      try {
-        const channel = await message.guild.channels.fetch(id).catch(() => null);
-        if (!channel) continue;
+      const channel = await message.guild.channels.fetch(id).catch(() => null);
+      if (!channel) continue;
 
-        const translated = await translateCached(message.content, lang);
-        if (!translated) continue;
+      const translated = await translateCached(message.content, lang);
+      if (!translated) continue;
 
-        await channel.send({
-          content: `🌍 ${sourceLang} → ${lang}: ${translated}`
-        }).catch(() => {});
+      const embed = new EmbedBuilder()
+        .setColor(0x00bfff)
+        .setAuthor({
+          name: message.member?.displayName || message.author.username,
+          iconURL: message.author.displayAvatarURL({ dynamic: true })
+        })
+        .setDescription(translated)
+        .setFooter({
+          text: `🌍 ${sourceLang} → ${lang}`
+        })
+        .setTimestamp();
 
-      } catch (err) {
-        console.log(`SEND ERROR (${lang}):`, err.message);
-      }
+      await channel.send({ embeds: [embed] }).catch(() => {});
     }
 
   } catch (err) {
@@ -92,7 +96,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ================= COMMANDS =================
+// ================= COMMAND HANDLER =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
