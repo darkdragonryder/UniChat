@@ -1,6 +1,11 @@
 import { EmbedBuilder } from "discord.js";
 import { supabase } from "../services/supabase.js";
-import pkg from "../package.json" assert { type: "json" };
+import fs from "fs";
+
+// 🧠 Read version safely
+const packageJson = JSON.parse(
+  fs.readFileSync(new URL("../package.json", import.meta.url))
+);
 
 export default async function infoCommand(interaction, client) {
   try {
@@ -19,6 +24,7 @@ export default async function infoCommand(interaction, client) {
     const baseChannelId = data?.base_channel_id;
 
     const totalLanguages = Object.keys(channels).length;
+
     const baseChannel = baseChannelId
       ? await guild.channels.fetch(baseChannelId).catch(() => null)
       : null;
@@ -30,7 +36,7 @@ export default async function infoCommand(interaction, client) {
       .addFields(
         {
           name: "📦 Version",
-          value: `v${pkg.version}`,
+          value: `v${packageJson.version}`,
           inline: true
         },
         {
