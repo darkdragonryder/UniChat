@@ -45,7 +45,30 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("announce-owner")
-    .setDescription("Show bot creator info")
+    .setDescription("Show bot creator info"),
+
+  // ================= NEW COMMAND ADDED =================
+  new SlashCommandBuilder()
+    .setName("addlanguage")
+    .setDescription("Add a new language to UniChat")
+    .addStringOption(option =>
+      option
+        .setName("code")
+        .setDescription("Language code (FR, ES, DE, etc)")
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("name")
+        .setDescription("Language name (French, German...)")
+        .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName("emoji")
+        .setDescription("Flag emoji (🇫🇷)")
+        .setRequired(true)
+    )
 ];
 
 // ================= REST CLIENT =================
