@@ -16,6 +16,7 @@ import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
 import migrateCommand from "./commands/migrate.js";
 import addLanguageCommand from "./commands/addlanguage.js";
+import repairCommand from "./commands/repair.js";
 
 // Events
 import guildCreate from "./events/guildCreate.js";
@@ -32,7 +33,7 @@ const client = new Client({
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`🚀 UniChat v3.2 ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat v4 ONLINE: ${client.user.tag}`);
 });
 
 // ================= EVENTS =================
@@ -52,7 +53,6 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     const channels = data?.enabled_channels;
-
     if (!channels || typeof channels !== "object") return;
 
     let sourceLang = null;
@@ -96,7 +96,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ================= COMMAND HANDLER =================
+// ================= COMMANDS =================
 client.on("interactionCreate", async (interaction) => {
   try {
 
@@ -124,6 +124,9 @@ client.on("interactionCreate", async (interaction) => {
 
       case "addlanguage":
         return addLanguageCommand(interaction);
+
+      case "repair":
+        return repairCommand(interaction);
     }
 
   } catch (err) {
