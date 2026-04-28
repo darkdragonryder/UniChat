@@ -1,63 +1,76 @@
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-
-// simple preview system (inline to avoid extra imports issues)
-function getPreview(text) {
-  return {
-    EN: text,
-    ES: "Hola a todos",
-    DE: "Hallo zusammen",
-    IT: "Ciao a tutti",
-    KO: "안녕하세요 여러분",
-    RU: "Всем привет",
-    JA: "みなさんこんにちは"
-  };
-}
+import { EmbedBuilder } from "discord.js";
+import { supabase } from "../services/supabase.js";
+import pkg from "../package.json" assert { type: "json" };
 
 export default async function infoCommand(interaction, client) {
+  try {
 
-  const preview = getPreview("Hello everyone");
+    await interaction.deferReply({ ephemeral: true });
 
-  const embed = new EmbedBuilder()
-    .setColor(0x00bfff)
-    .setTitle("🌐 UniChat Dashboard")
-    .setDescription(
-      "Clutterless Auto Translator System\n\n" +
-      "Real-time translation for every message in your server."
-    )
-    .addFields(
-      {
-        name: "📊 Stats",
-        value:
-          `Servers: ${client.guilds.cache.size}\n` +
-          `Users: ${client.users.cache.size}`,
-        inline: true
-      },
-      {
-        name: "⚡ Status",
-        value: "Online & Translating",
-        inline: true
-      },
-      {
-        name: "🌍 Live Translation Preview",
-        value:
-          `EN: ${preview.EN}\n` +
-          `ES: ${preview.ES}\n` +
-          `DE: ${preview.DE}\n` +
-          `IT: ${preview.IT}`,
-        inline: false
-      }
-    )
-    .setFooter({ text: "UniChat • Global communication made simple" });
+    const guild = interaction.guild;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel("🚀 Invite UniChat")
-      .setStyle(ButtonStyle.Link)
-      .setURL("https://discord.com/oauth2/authorize?client_id=1493079688904704180&permissions=378762546288&scope=bot+applications.commands")
-  );
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("enabled_channels, base_channel_id")
+      .eq("guild_id", guild.id)
+      .maybeSingle();
 
-  return interaction.reply({
-    embeds: [embed],
-    components: [row]
-  });
+    const channels = data?.enabled_channels || {};
+    const baseChannelId = data?.base_channel_id;
+
+    const totalLanguages = Object.keys(channels).length;
+    const baseChannel = baseChannelId
+      ? await guild.channels.fetch(baseChannelId).catch(() => null)
+      : null;
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00bfff)
+      .setTitle("🌏 UniChat v4 Dashboard")
+      .setDescription("Global communication system is active.")
+      .addFields(
+        {
+          name: "📦 Version",
+          value: `v${pkg.version}`,
+          inline: true
+        },
+        {
+          name: "🏠 Server",
+          value: guild.name,
+          inline: true
+        },
+        {
+          name: "🌐 Languages Active",
+          value: `${totalLanguages}`,
+          inline: true
+        },
+        {
+          name: "💬 Base Channel",
+          value: baseChannel
+            ? `<#${baseChannel.id}>`
+            : "Not configured",
+          inline: false
+        },
+        {
+          name: "⚙️ Status",
+          value: "🟢 Online & Operational",
+          inline: false
+        }
+      )
+      .setFooter({
+        text: "UniChat • Real-time translation system"
+      })
+      .setTimestamp();
+
+    return interaction.editReply({ embeds: [embed] });
+
+  } catch (err) {
+    console.log("INFO ERROR:", err);
+
+    if (!interaction.replied && !interaction.deferred) {
+      return interaction.reply({
+        content: "❌ Failed to load info.",
+        ephemeral: true
+      });
+    }
+  }
 }
