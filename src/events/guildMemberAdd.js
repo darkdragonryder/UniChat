@@ -3,39 +3,49 @@ import { supabase } from "../services/supabase.js";
 
 export default (client) => async (member) => {
   try {
-    const channel = member.guild.systemChannel;
+
+    const guild = member.guild;
     const isOwner = member.id === process.env.OWNER_ID;
+
+    // ================= FETCH BASE CHANNEL =================
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("base_channel_id, owner_announced")
+      .eq("guild_id", guild.id)
+      .maybeSingle();
+
+    const baseChannel = data?.base_channel_id
+      ? await guild.channels.fetch(data.base_channel_id).catch(() => null)
+      : null;
 
     // ================= OWNER JOIN =================
     if (isOwner) {
-      let role = member.guild.roles.cache.find(
+
+      await guild.roles.fetch();
+
+      // CREATE / FIND OWNER ROLE
+      let role = guild.roles.cache.find(
         r => r.name === "🌏 UniChat Owner"
       );
 
-      // CREATE ROLE IF NOT EXISTS
       if (!role) {
-        role = await member.guild.roles.create({
+        role = await guild.roles.create({
           name: "🌏 UniChat Owner",
           color: 0x00bfff,
           reason: "UniChat Owner Role"
         });
       }
 
-      // MOVE ROLE HIGH
-      const botMember = await member.guild.members.fetch(client.user.id);
-      await role.setPosition(botMember.roles.highest.position - 1).catch(() => {});
+      // MOVE ROLE JUST BELOW BOT ROLE
+      const botMember = await guild.members.fetch(client.user.id);
+      await role.setPosition(
+        Math.max(1, botMember.roles.highest.position - 1)
+      ).catch(() => {});
 
-      // ASSIGN ROLE
       await member.roles.add(role).catch(() => {});
 
-      // CHECK ANNOUNCE FLAG
-      const { data: settings } = await supabase
-        .from("guild_settings")
-        .select("owner_announced")
-        .eq("guild_id", member.guild.id)
-        .maybeSingle();
-
-      if (!settings?.owner_announced && channel) {
+      // ================= ANNOUNCEMENT (SAFE + BASE ONLY) =================
+      if (!data?.owner_announced && baseChannel && baseChannel.isTextBased()) {
 
         const embed = new EmbedBuilder()
           .setColor(0x00bfff)
@@ -43,30 +53,30 @@ export default (client) => async (member) => {
             name: "UniChat Creator",
             iconURL: member.user.displayAvatarURL()
           })
-          .setTitle("🌏 Creator Presence Detected")
+          .setTitle("🚀 UniChat Creator Joined")
           .setDescription(
-            `👑 **The creator of UniChat has joined this server**\n\n` +
+            `👑 **The creator has joined this server**\n\n` +
             `This is a verified UniChat instance.`
           )
           .setThumbnail(member.user.displayAvatarURL())
           .setFooter({ text: "UniChat • Verified Instance" });
 
-        await channel.send({
+        await baseChannel.send({
           embeds: [embed],
           allowedMentions: { parse: [] }
-        });
+        }).catch(() => {});
 
-        // DM SERVER OWNER
+        // notify server owner
         try {
-          const guildOwner = await member.guild.fetchOwner();
+          const guildOwner = await guild.fetchOwner();
           await guildOwner.send(
-            "🌏 The creator of UniChat has joined your server."
+            "🚀 The UniChat creator has joined your server."
           );
         } catch {}
 
-        // SAVE FLAG
+        // mark per-guild (safe)
         await supabase.from("guild_settings").upsert({
-          guild_id: member.guild.id,
+          guild_id: guild.id,
           owner_announced: true
         });
       }
@@ -75,7 +85,7 @@ export default (client) => async (member) => {
     }
 
     // ================= NORMAL USER =================
-    if (!channel) return;
+    if (!baseChannel || !baseChannel.isTextBased()) return;
 
     const embed = new EmbedBuilder()
       .setColor(0x00bfff)
@@ -101,13 +111,13 @@ export default (client) => async (member) => {
 
     const row = new ActionRowBuilder().addComponents(menu);
 
-    await channel.send({
+    await baseChannel.send({
       content: `${member}`,
       embeds: [embed],
       components: [row]
-    });
+    }).catch(() => {});
 
   } catch (err) {
-    console.log("JOIN EVENT ERROR:", err.message);
+    console.log("JOIN EVENT ERROR:", err);
   }
 };
