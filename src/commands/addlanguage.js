@@ -3,13 +3,13 @@ import { supabase } from "../services/supabase.js";
 export default async function addLanguageCommand(interaction) {
   try {
 
-    const code = interaction.options.getString("code");   // e.g. FR
-    const name = interaction.options.getString("name");   // e.g. French
-    const emoji = interaction.options.getString("emoji"); // e.g. 🇫🇷
+    const code = interaction.options.getString("code");
+    const name = interaction.options.getString("name");
+    const emoji = interaction.options.getString("emoji");
 
     if (!code || !name || !emoji) {
       return interaction.reply({
-        content: "❌ Missing code, name or emoji.",
+        content: "❌ Missing code, name or emoji",
         ephemeral: true
       });
     }
@@ -26,6 +26,7 @@ export default async function addLanguageCommand(interaction) {
       .maybeSingle();
 
     const channels = data?.enabled_channels || {};
+    const base = data?.base_channel_name || "chat";
 
     // ================= CATEGORY =================
     let category = guild.channels.cache.find(
@@ -39,31 +40,28 @@ export default async function addLanguageCommand(interaction) {
       });
     }
 
-    // ================= BASE NAME =================
-    const base = data?.base_channel_name || "chat";
-
-    // ================= CREATE ROLE =================
-    let role = guild.roles.cache.find(r =>
-      r.name.toLowerCase() === name.toLowerCase()
+    // ================= ROLE =================
+    let role = guild.roles.cache.find(
+      r => r.name.toLowerCase() === name.toLowerCase()
     );
 
     if (!role) {
       role = await guild.roles.create({
         name,
-        mentionable: false,
         reason: "UniChat dynamic language role"
       });
     }
 
-    // ================= CREATE CHANNEL =================
+    // ================= CHANNEL =================
     const channel = await guild.channels.create({
       name: `${base}-${emoji}`,
       type: 0,
       parent: category.id
     });
 
-    // ================= UPDATE DATABASE (SAFE MERGE) =================
-    channels[code.toUpperCase()] = channel.id;
+    // ================= UPDATE DB (SAFE MERGE) =================
+    const langCode = code.trim().toUpperCase();
+    channels[langCode] = channel.id;
 
     await supabase.from("guild_settings").upsert({
       guild_id: guild.id,
@@ -71,16 +69,15 @@ export default async function addLanguageCommand(interaction) {
       base_channel_name: base
     });
 
-    // ================= SUCCESS =================
     return interaction.editReply(
-      `✅ Added language **${name} (${code})** successfully!\nChannel: ${channel}`
+      `✅ Added language **${name} (${langCode})**\nChannel: ${channel}`
     );
 
   } catch (err) {
     console.log("ADD LANGUAGE ERROR:", err.message);
 
     return interaction.reply({
-      content: "❌ Failed to add language.",
+      content: "❌ Failed to add language",
       ephemeral: true
     });
   }
