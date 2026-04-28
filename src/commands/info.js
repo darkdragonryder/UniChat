@@ -2,9 +2,9 @@ import { EmbedBuilder } from "discord.js";
 import { supabase } from "../services/supabase.js";
 import fs from "fs";
 
-// 🧠 Read version safely
+// 🧠 Correct path (go up 2 levels)
 const packageJson = JSON.parse(
-  fs.readFileSync(new URL("../package.json", import.meta.url))
+  fs.readFileSync(new URL("../../package.json", import.meta.url))
 );
 
 export default async function infoCommand(interaction, client) {
