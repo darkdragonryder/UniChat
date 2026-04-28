@@ -3,7 +3,7 @@ import { EmbedBuilder } from "discord.js";
 export default async function announceOwner(interaction) {
   try {
 
-    // 🔐 permission check first
+    // 🔐 permission check FIRST
     if (interaction.user.id !== process.env.OWNER_ID) {
       return interaction.reply({
         content: "❌ You are not allowed to use this.",
@@ -11,7 +11,7 @@ export default async function announceOwner(interaction) {
       });
     }
 
-    // ⏳ prevent "application did not respond"
+    // ⏳ prevent timeout
     await interaction.deferReply({ ephemeral: true });
 
     const embed = new EmbedBuilder()
@@ -20,24 +20,23 @@ export default async function announceOwner(interaction) {
         name: "UniChat Creator",
         iconURL: interaction.user.displayAvatarURL()
       })
-      .setTitle("🌏 Creator Announcement")
+      .setTitle("🚀 Creator Announcement")
       .setDescription(
-        "👑 The creator of UniChat is active in this server.\n\n" +
-        "System is running at full capability."
+        "👑 The UniChat creator is active in this server.\n\n" +
+        "This is a verified UniChat instance."
       )
-      .setFooter({ text: "UniChat • Verified Instance" });
+      .setFooter({ text: "UniChat • Verified Instance" })
+      .setTimestamp();
 
-    // 📢 send to channel
     await interaction.channel.send({
       embeds: [embed],
       allowedMentions: { parse: [] }
     });
 
-    // ✅ respond to interaction safely
     return interaction.editReply("✅ Announcement sent");
 
   } catch (err) {
-    console.log("ANNOUNCE ERROR:", err);
+    console.log("ANNOUNCE OWNER ERROR:", err);
 
     if (!interaction.replied && !interaction.deferred) {
       return interaction.reply({
