@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
 
-// ================= COMMAND DEFINITIONS =================
 const commands = [
 
   new SlashCommandBuilder()
@@ -41,52 +40,47 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("migrate")
-    .setDescription("Migrate old channels to new naming system"),
+    .setDescription("Fix old channel structure"),
 
   new SlashCommandBuilder()
     .setName("announce-owner")
     .setDescription("Show bot creator info"),
 
-  // ================= NEW COMMAND ADDED =================
   new SlashCommandBuilder()
     .setName("addlanguage")
-    .setDescription("Add a new language to UniChat")
-    .addStringOption(option =>
-      option
-        .setName("code")
-        .setDescription("Language code (FR, ES, DE, etc)")
-        .setRequired(true)
+    .setDescription("Add a new language channel + role")
+    .addStringOption(o =>
+      o.setName("code").setDescription("Language code").setRequired(true)
     )
-    .addStringOption(option =>
-      option
-        .setName("name")
-        .setDescription("Language name (French, German...)")
-        .setRequired(true)
+    .addStringOption(o =>
+      o.setName("name").setDescription("Language name").setRequired(true)
     )
-    .addStringOption(option =>
-      option
-        .setName("emoji")
-        .setDescription("Flag emoji (🇫🇷)")
-        .setRequired(true)
-    )
+    .addStringOption(o =>
+      o.setName("emoji").setDescription("Flag emoji").setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("repair")
+    .setDescription("Fix channel permissions without reinstalling setup")
 ];
 
-// ================= REST CLIENT =================
+// ================= REST =================
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 // ================= DEPLOY =================
 (async () => {
   try {
+
     console.log("🚀 Deploying slash commands...");
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commands.map(cmd => cmd.toJSON()) }
+      { body: commands.map(c => c.toJSON()) }
     );
 
     console.log("✅ Slash commands successfully deployed");
 
   } catch (err) {
-    console.error("❌ Failed to deploy commands:", err);
+    console.error("❌ Deploy failed:", err);
   }
 })();
