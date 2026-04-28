@@ -8,7 +8,7 @@ import {
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
-// Commands
+// ================= COMMANDS =================
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
@@ -20,7 +20,7 @@ import repairCommand from "./commands/repair.js";
 import unlockCommand from "./commands/channel/unlock.js";
 import announceOwnerCommand from "./commands/announce-owner.js";
 
-// Events
+// ================= EVENTS =================
 import guildCreate from "./events/guildCreate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
@@ -33,23 +33,21 @@ const client = new Client({
   ]
 });
 
+// ================= READY =================
 client.once("ready", () => {
   console.log(`🚀 UniChat v4 ONLINE: ${client.user.tag}`);
 });
 
+// ================= EVENTS =================
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= DEBUG TRANSLATION ENGINE =================
+// ================= TRANSLATION + ROLE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
 
     if (!message.guild || message.author.bot) return;
-
-    if (!message.content || message.content.trim() === "") {
-      console.log("❌ Empty message");
-      return;
-    }
+    if (!message.content || message.content.trim() === "") return;
 
     const { data } = await supabase
       .from("guild_settings")
@@ -58,53 +56,64 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     const channels = data?.enabled_channels;
-
-    console.log("📊 DB CHANNELS:", channels);
-    console.log("📨 MESSAGE CHANNEL:", message.channel.id);
-
-    if (!channels || typeof channels !== "object") {
-      console.log("❌ No channels found in DB");
-      return;
-    }
+    if (!channels || typeof channels !== "object") return;
 
     let sourceLang = null;
 
-    console.log("🔍 Checking channel match...");
-
     for (const [lang, id] of Object.entries(channels)) {
-      console.log(`Comparing ${message.channel.id} === ${id} (${lang})`);
-
       if (String(message.channel.id) === String(id)) {
-        console.log("✅ MATCH FOUND:", lang);
         sourceLang = lang;
+        break;
       }
     }
 
-    if (!sourceLang) {
-      console.log("❌ No source language detected");
-      return;
+    if (!sourceLang) return;
+
+    // ================= AUTO ROLE ASSIGN =================
+    const roleMap = {
+      EN: "English",
+      ES: "Spanish",
+      DE: "German",
+      IT: "Italian",
+      KO: "Korean",
+      RU: "Russian",
+      JA: "Japanese"
+    };
+
+    const roleName = roleMap[sourceLang];
+
+    if (roleName && message.member) {
+
+      const role = message.guild.roles.cache.find(r => r.name === roleName);
+
+      if (role && !message.member.roles.cache.has(role.id)) {
+
+        const allLangRoles = Object.values(roleMap);
+
+        for (const r of message.member.roles.cache.values()) {
+          if (allLangRoles.includes(r.name)) {
+            await message.member.roles.remove(r).catch(() => {});
+          }
+        }
+
+        await message.member.roles.add(role).catch(() => {});
+
+        await message.channel.send({
+          content: `🌐 ${message.author}, you've been assigned the **${roleName}** role.`
+        }).catch(() => {});
+      }
     }
 
+    // ================= TRANSLATION =================
     for (const [lang, id] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
 
       const channel = await message.guild.channels.fetch(id).catch(() => null);
-      if (!channel) {
-        console.log("❌ Target channel missing:", id);
-        continue;
-      }
-
-      console.log(`🌐 Translating to ${lang}:`, message.content);
+      if (!channel) continue;
 
       const translated = await translateCached(message.content, lang);
-
-      console.log("📥 Result:", translated);
-
-      if (!translated) {
-        console.log("❌ Translation failed");
-        continue;
-      }
+      if (!translated) continue;
 
       const embed = new EmbedBuilder()
         .setColor(0x00bfff)
@@ -122,7 +131,7 @@ client.on("messageCreate", async (message) => {
     }
 
   } catch (err) {
-    console.log("TRANSLATION ERROR:", err);
+    console.log("TRANSLATION ERROR:", err.message);
   }
 });
 
@@ -131,8 +140,6 @@ client.on("interactionCreate", async (interaction) => {
   try {
 
     if (!interaction.isChatInputCommand()) return;
-
-    console.log("COMMAND RUN:", interaction.commandName);
 
     switch (interaction.commandName) {
 
@@ -168,8 +175,9 @@ client.on("interactionCreate", async (interaction) => {
     }
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err);
+    console.log("INTERACTION ERROR:", err.message);
   }
 });
 
+// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
