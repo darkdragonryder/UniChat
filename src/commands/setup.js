@@ -88,7 +88,7 @@ export default async function setupCommand(interaction, client) {
       roles[lang] = role;
     }
 
-    // ================= ENABLE BASE CHANNEL =================
+    // ================= 🟢 BASE CHANNEL (HARD PROTECTED) =================
     await baseChannel.permissionOverwrites.set([
       {
         id: guild.roles.everyone.id,
@@ -98,7 +98,7 @@ export default async function setupCommand(interaction, client) {
         ]
       },
       {
-        id: client.user.id, // 🔥 BOT ACCESS FIX
+        id: client.user.id,
         allow: [
           PermissionsBitField.Flags.ViewChannel,
           PermissionsBitField.Flags.SendMessages,
@@ -106,6 +106,14 @@ export default async function setupCommand(interaction, client) {
         ]
       }
     ]);
+
+    // 🔒 Ensure category cannot hide base channel
+    if (baseCategory) {
+      await baseCategory.permissionOverwrites.edit(
+        guild.roles.everyone,
+        { ViewChannel: true }
+      ).catch(() => {});
+    }
 
     const enabled_channels = {
       EN: baseChannel.id
@@ -129,7 +137,7 @@ export default async function setupCommand(interaction, client) {
         });
       }
 
-      // ================= FIXED PERMISSIONS =================
+      // ================= LANGUAGE PERMISSIONS =================
       await channel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id,
@@ -144,7 +152,7 @@ export default async function setupCommand(interaction, client) {
           ]
         },
         {
-          id: client.user.id, // 🔥 CRITICAL FIX (Missing Access)
+          id: client.user.id,
           allow: [
             PermissionsBitField.Flags.ViewChannel,
             PermissionsBitField.Flags.SendMessages,
