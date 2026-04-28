@@ -14,12 +14,12 @@ import setLanguageCommand from "./commands/setlanguage.js";
 import helpCommand from "./commands/help.js";
 import infoCommand from "./commands/info.js";
 import migrateCommand from "./commands/migrate.js";
+import addLanguageCommand from "./commands/addlanguage.js";
 
 // Events
 import guildCreate from "./events/guildCreate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
-// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -38,13 +38,12 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
-// ================= 🌍 TRANSLATION ENGINE (HARDENED v3.1) =================
+// ================= TRANSLATION ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
 
     if (!message.guild || message.author.bot) return;
 
-    // ================= FETCH SAFE CONFIG =================
     const { data } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
@@ -53,20 +52,14 @@ client.on("messageCreate", async (message) => {
 
     const channels = data?.enabled_channels;
 
-    // ================= SAFETY CHECK (IMPORTANT) =================
     if (!channels || typeof channels !== "object") return;
 
-    // OPTIONAL STRONG RECOMMENDED GUARD
-    if (Object.keys(channels).length === 0) {
-      console.log(`⚠️ No channels configured for guild ${message.guild.id}`);
-      return;
-    }
+    if (Object.keys(channels).length === 0) return;
 
-    // ================= FIND SOURCE LANGUAGE =================
     let sourceLang = null;
 
-    for (const [lang, channelId] of Object.entries(channels)) {
-      if (message.channel.id === channelId) {
+    for (const [lang, id] of Object.entries(channels)) {
+      if (message.channel.id === id) {
         sourceLang = lang;
         break;
       }
@@ -74,37 +67,28 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= TRANSLATE TO ALL OTHER CHANNELS =================
-    for (const [lang, channelId] of Object.entries(channels)) {
+    for (const [lang, id] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
 
       try {
-
-        const channel = await message.guild.channels.fetch(channelId)
-          .catch(() => null);
-
-        if (!channel) {
-          console.log(`⚠️ Missing channel for ${lang} in guild ${message.guild.id}`);
-          continue;
-        }
+        const channel = await message.guild.channels.fetch(id).catch(() => null);
+        if (!channel) continue;
 
         const translated = await translateCached(message.content, lang);
         if (!translated) continue;
 
         await channel.send({
           content: `🌍 ${sourceLang} → ${lang}: ${translated}`
-        }).catch((err) => {
-          console.log(`SEND ERROR (${lang}):`, err.message);
-        });
+        }).catch(() => {});
 
       } catch (err) {
-        console.log(`CHANNEL ERROR (${lang}):`, err.message);
+        console.log(`SEND ERROR (${lang}):`, err.message);
       }
     }
 
   } catch (err) {
-    console.log("TRANSLATION ENGINE CRASH SAFE:", err.message);
+    console.log("TRANSLATION ERROR:", err.message);
   }
 });
 
@@ -133,6 +117,9 @@ client.on("interactionCreate", async (interaction) => {
 
       case "migrate":
         return migrateCommand(interaction);
+
+      case "addlanguage":
+        return addLanguageCommand(interaction);
     }
 
   } catch (err) {
