@@ -8,7 +8,7 @@ import {
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
-// Commands
+// ================= COMMANDS =================
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
@@ -17,9 +17,11 @@ import infoCommand from "./commands/info.js";
 import migrateCommand from "./commands/migrate.js";
 import addLanguageCommand from "./commands/addlanguage.js";
 import repairCommand from "./commands/repair.js";
-import unlockCommand from "./commands/channel/unlock.js"; // ✅ ADDED
 
-// Events
+import unlockCommand from "./commands/channel/unlock.js"; // unlock
+import announceOwnerCommand from "./commands/announce-owner.js"; // 👑 FIXED ADD
+
+// ================= EVENTS =================
 import guildCreate from "./events/guildCreate.js";
 import guildMemberAdd from "./events/guildMemberAdd.js";
 
@@ -129,8 +131,11 @@ client.on("interactionCreate", async (interaction) => {
       case "repair":
         return repairCommand(interaction);
 
-      case "unlock": // ✅ ADDED
+      case "unlock":
         return unlockCommand(interaction);
+
+      case "announce-owner":
+        return announceOwnerCommand(interaction, client); // 👑 FIXED
     }
 
   } catch (err) {
