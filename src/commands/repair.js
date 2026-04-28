@@ -1,4 +1,5 @@
 import { supabase } from "../services/supabase.js";
+import { PermissionsBitField } from "discord.js";
 
 export default async function repairCommand(interaction) {
   try {
@@ -9,7 +10,7 @@ export default async function repairCommand(interaction) {
 
     const { data } = await supabase
       .from("guild_settings")
-      .select("enabled_channels")
+      .select("enabled_channels, base_channel_id")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
@@ -24,7 +25,23 @@ export default async function repairCommand(interaction) {
 
     let fixed = 0;
 
+    // ================= 🟢 PROTECT BASE CHANNEL =================
+    const baseChannel = data?.base_channel_id
+      ? await guild.channels.fetch(data.base_channel_id).catch(() => null)
+      : null;
+
+    if (baseChannel) {
+      await baseChannel.permissionOverwrites.edit(guild.roles.everyone, {
+        ViewChannel: true,
+        SendMessages: true
+      }).catch(() => {});
+    }
+
+    // ================= 🔒 REPAIR LANGUAGE CHANNELS ONLY =================
     for (const [lang, channelId] of Object.entries(channels)) {
+
+      // 🚫 SKIP BASE CHANNEL SAFETY CHECK
+      if (data?.base_channel_id === channelId) continue;
 
       const channel = guild.channels.cache.get(channelId);
       if (!channel) continue;
@@ -38,15 +55,23 @@ export default async function repairCommand(interaction) {
       await channel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id,
-          deny: ["ViewChannel"]
+          deny: [PermissionsBitField.Flags.ViewChannel]
         },
         {
           id: role.id,
-          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
         },
         {
           id: guild.members.me.id,
-          allow: ["ViewChannel", "SendMessages", "ManageMessages"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ManageMessages
+          ]
         }
       ]);
 
@@ -54,7 +79,7 @@ export default async function repairCommand(interaction) {
     }
 
     return interaction.editReply(
-      `✅ Repair complete: fixed ${fixed} channels`
+      `✅ Repair complete: fixed ${fixed} language channels`
     );
 
   } catch (err) {
