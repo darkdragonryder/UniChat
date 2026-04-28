@@ -17,6 +17,7 @@ import infoCommand from "./commands/info.js";
 import migrateCommand from "./commands/migrate.js";
 import addLanguageCommand from "./commands/addlanguage.js";
 import repairCommand from "./commands/repair.js";
+import unlockCommand from "./commands/channel/unlock.js"; // ✅ ADDED
 
 // Events
 import guildCreate from "./events/guildCreate.js";
@@ -127,6 +128,9 @@ client.on("interactionCreate", async (interaction) => {
 
       case "repair":
         return repairCommand(interaction);
+
+      case "unlock": // ✅ ADDED
+        return unlockCommand(interaction);
     }
 
   } catch (err) {
