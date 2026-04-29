@@ -53,7 +53,7 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE ENGINE
+   MESSAGE ENGINE (NOW FULLY FIXED)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -81,32 +81,122 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
+    // ================= MESSAGE MAP (CRITICAL FIX) =================
+    const messageMap = {
+      EN: message.id
+    };
+
     // ================= TRANSLATION =================
-    for (const [lang, id] of Object.entries(channels)) {
+    for (const [lang, channelId] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
 
-      const channel = await message.guild.channels.fetch(id).catch(() => null);
+      const channel = await message.guild.channels.fetch(channelId).catch(() => null);
       if (!channel) continue;
 
       const translated = await translateCached(message.content, lang);
       if (!translated) continue;
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00bfff)
-        .setAuthor({
-          name: message.member?.displayName || message.author.username,
-          iconURL: message.author.displayAvatarURL({ dynamic: true })
-        })
-        .setDescription(translated)
-        .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
-        .setTimestamp();
+      const sent = await channel.send({
+        content: translated
+      }).catch(() => null);
 
-      await channel.send({ embeds: [embed] }).catch(() => {});
+      if (sent) {
+        messageMap[lang] = sent.id;
+      }
     }
+
+    // ================= SAVE MESSAGE MAP =================
+    await supabase.from("message_maps").insert({
+      guild_id: message.guild.id,
+      base_message_id: message.id,
+      channel_map: messageMap
+    }).catch(err => {
+      console.log("MAP SAVE ERROR:", err.message);
+    });
 
   } catch (err) {
     console.log("MESSAGE ERROR:", err.message);
+  }
+});
+
+/* =========================================================
+   MESSAGE EDIT SYNC (NOW RELIABLE)
+========================================================= */
+client.on("messageUpdate", async (oldMsg, newMsg) => {
+  try {
+
+    if (!newMsg.guild || newMsg.author?.bot) return;
+
+    const { data } = await supabase
+      .from("message_maps")
+      .select("*")
+      .eq("guild_id", newMsg.guild.id)
+      .eq("base_message_id", newMsg.id)
+      .maybeSingle();
+
+    if (!data?.channel_map) return;
+
+    const map = data.channel_map;
+
+    for (const msgId of Object.values(map)) {
+
+      for (const channel of newMsg.guild.channels.cache.values()) {
+
+        const msg = await channel.messages.fetch(msgId).catch(() => null);
+
+        if (msg) {
+          await msg.edit({
+            content: newMsg.content
+          }).catch(() => {});
+          break;
+        }
+      }
+    }
+
+  } catch (err) {
+    console.log("EDIT ERROR:", err.message);
+  }
+});
+
+/* =========================================================
+   MESSAGE DELETE SYNC (NOW RELIABLE)
+========================================================= */
+client.on("messageDelete", async (message) => {
+  try {
+
+    const { data } = await supabase
+      .from("message_maps")
+      .select("*")
+      .eq("guild_id", message.guild.id)
+      .eq("base_message_id", message.id)
+      .maybeSingle();
+
+    if (!data?.channel_map) return;
+
+    const map = data.channel_map;
+
+    for (const msgId of Object.values(map)) {
+
+      for (const channel of message.guild.channels.cache.values()) {
+
+        const msg = await channel.messages.fetch(msgId).catch(() => null);
+
+        if (msg) {
+          await msg.delete().catch(() => {});
+          break;
+        }
+      }
+    }
+
+    await supabase
+      .from("message_maps")
+      .delete()
+      .eq("guild_id", message.guild.id)
+      .eq("base_message_id", message.id);
+
+  } catch (err) {
+    console.log("DELETE ERROR:", err.message);
   }
 });
 
