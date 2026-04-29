@@ -37,7 +37,7 @@ const client = new Client({
 
 // ================= READY =================
 client.once("ready", async () => {
-  console.log(`🚀 UniChat v4.0.1 ONLINE: ${client.user.tag}`);
+  console.log(`🚀 UniChat v4.1 ONLINE: ${client.user.tag}`);
 
   for (const guild of client.guilds.cache.values()) {
     await systemHealth({ guild }).catch(() => {});
@@ -49,7 +49,7 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE (FIXED)
+   MESSAGE CREATE (WITH FULL MAPPING)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -107,7 +107,6 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // ================= SAVE MAP (WITH DEBUG) =================
     const { error } = await supabase.from("message_maps").insert({
       guild_id: message.guild.id,
       base_message_id: message.id,
@@ -115,9 +114,7 @@ client.on("messageCreate", async (message) => {
     });
 
     if (error) {
-      console.log("❌ MAP SAVE ERROR FULL:", error);
-    } else {
-      console.log("✅ MAP SAVED:", message.id);
+      console.log("❌ MAP SAVE ERROR:", error);
     }
 
   } catch (err) {
@@ -126,35 +123,53 @@ client.on("messageCreate", async (message) => {
 });
 
 /* =========================================================
-   MESSAGE EDIT
+   MESSAGE UPDATE (BIDIRECTIONAL)
 ========================================================= */
 client.on("messageUpdate", async (oldMsg, newMsg) => {
   try {
 
     if (!newMsg.guild || newMsg.author?.bot) return;
+    if (!newMsg.content) return;
+
+    const { data: maps } = await supabase
+      .from("message_maps")
+      .select("*")
+      .eq("guild_id", newMsg.guild.id);
+
+    const record = maps?.find(m =>
+      Object.values(m.channel_map || {}).includes(newMsg.id)
+    );
+
+    if (!record) return;
+
+    const map = record.channel_map;
 
     const { data } = await supabase
-      .from("message_maps")
-      .select("channel_map")
+      .from("guild_settings")
+      .select("enabled_channels")
       .eq("guild_id", newMsg.guild.id)
-      .eq("base_message_id", newMsg.id)
       .maybeSingle();
 
-    if (!data?.channel_map) return;
+    const channels = data?.enabled_channels;
+    if (!channels) return;
 
-    const map = data.channel_map;
+    for (const [lang, msgId] of Object.entries(map)) {
 
-    for (const msgId of Object.values(map)) {
+      if (msgId === newMsg.id) continue;
 
-      for (const channel of newMsg.guild.channels.cache.values()) {
+      const channelId = channels[lang];
+      if (!channelId) continue;
 
-        const msg = await channel.messages.fetch(msgId).catch(() => null);
+      const channel = await newMsg.guild.channels.fetch(channelId).catch(() => null);
+      if (!channel) continue;
 
-        if (msg) {
-          await msg.edit({ content: newMsg.content }).catch(() => {});
-          break;
-        }
-      }
+      const msg = await channel.messages.fetch(msgId).catch(() => null);
+      if (!msg) continue;
+
+      const translated = await translateCached(newMsg.content, lang);
+      if (!translated) continue;
+
+      await msg.edit({ content: translated }).catch(() => {});
     }
 
   } catch (err) {
@@ -163,39 +178,53 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 });
 
 /* =========================================================
-   MESSAGE DELETE
+   MESSAGE DELETE (BIDIRECTIONAL)
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
 
-    const { data } = await supabase
+    if (!message.guild || !message.id) return;
+
+    const { data: maps } = await supabase
       .from("message_maps")
-      .select("channel_map")
+      .select("*")
+      .eq("guild_id", message.guild.id);
+
+    const record = maps?.find(m =>
+      Object.values(m.channel_map || {}).includes(message.id)
+    );
+
+    if (!record) return;
+
+    const map = record.channel_map;
+
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("enabled_channels")
       .eq("guild_id", message.guild.id)
-      .eq("base_message_id", message.id)
       .maybeSingle();
 
-    if (!data?.channel_map) return;
+    const channels = data?.enabled_channels;
+    if (!channels) return;
 
-    const map = data.channel_map;
+    for (const [lang, msgId] of Object.entries(map)) {
 
-    for (const msgId of Object.values(map)) {
+      const channelId = channels[lang];
+      if (!channelId) continue;
 
-      for (const channel of message.guild.channels.cache.values()) {
+      const channel = await message.guild.channels.fetch(channelId).catch(() => null);
+      if (!channel) continue;
 
-        const msg = await channel.messages.fetch(msgId).catch(() => null);
-        if (msg) {
-          await msg.delete().catch(() => {});
-          break;
-        }
-      }
+      const msg = await channel.messages.fetch(msgId).catch(() => null);
+      if (!msg) continue;
+
+      await msg.delete().catch(() => {});
     }
 
     await supabase
       .from("message_maps")
       .delete()
-      .eq("guild_id", message.guild.id)
-      .eq("base_message_id", message.id);
+      .eq("id", record.id);
 
   } catch (err) {
     console.log("DELETE ERROR:", err.message);
