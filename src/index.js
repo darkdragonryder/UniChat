@@ -8,6 +8,7 @@ import {
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 import { enqueue } from "./services/queue.js";
+import { autoHeal } from "./services/autoHeal.js";
 
 // ================= COMMANDS =================
 import setupCommand from "./commands/setup.js";
@@ -45,7 +46,7 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE → QUEUE SYSTEM
+   MESSAGE ENGINE (TRANSLATION + AUTO ROLE)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -73,9 +74,8 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= ROLE AUTO ASSIGN =================
+    /* ================= ROLE AUTO ASSIGN (NO ENGLISH ROLE) ================= */
     const roleMap = {
-      EN: "English",
       ES: "Spanish",
       DE: "German",
       IT: "Italian",
@@ -94,7 +94,7 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // ================= ENTERPRISE QUEUE =================
+    /* ================= QUEUE TRANSLATION ================= */
     enqueue({
       message,
       channels,
@@ -113,8 +113,6 @@ client.on("messageCreate", async (message) => {
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
-
-    if (!message.guild) return;
 
     const { data } = await supabase
       .from("message_maps")
@@ -184,7 +182,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 });
 
 /* =========================================================
-   COMMAND HANDLER
+   INTERACTION COMMANDS
 ========================================================= */
 client.on("interactionCreate", async (interaction) => {
   try {
@@ -229,6 +227,19 @@ client.on("interactionCreate", async (interaction) => {
 
   } catch (err) {
     console.log("INTERACTION ERROR:", err.message);
+  }
+});
+
+/* =========================================================
+   STARTUP AUTO HEAL (SAFE CHECK ONLY)
+========================================================= */
+client.once("ready", async () => {
+  try {
+    for (const guild of client.guilds.cache.values()) {
+      await autoHeal({ guild, client });
+    }
+  } catch (err) {
+    console.log("AUTO HEAL INIT ERROR:", err.message);
   }
 });
 
