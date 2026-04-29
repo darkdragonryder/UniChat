@@ -1,11 +1,5 @@
 import { EmbedBuilder } from "discord.js";
 import { supabase } from "../services/supabase.js";
-import fs from "fs";
-
-// 🧠 Correct path (go up 2 levels)
-const packageJson = JSON.parse(
-  fs.readFileSync(new URL("../../package.json", import.meta.url))
-);
 
 export default async function infoCommand(interaction, client) {
   try {
@@ -16,27 +10,39 @@ export default async function infoCommand(interaction, client) {
 
     const { data } = await supabase
       .from("guild_settings")
-      .select("enabled_channels, base_channel_id")
+      .select("*")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
-    const channels = data?.enabled_channels || {};
-    const baseChannelId = data?.base_channel_id;
+    const enabled = data?.enabled_channels || {};
 
-    const totalLanguages = Object.keys(channels).length;
+    // ================= BASE CHANNEL =================
+    const baseChannel =
+      data?.default_channel ||
+      data?.active_channel ||
+      null;
 
-    const baseChannel = baseChannelId
-      ? await guild.channels.fetch(baseChannelId).catch(() => null)
+    const baseChannelObj = baseChannel
+      ? guild.channels.cache.get(baseChannel)
       : null;
 
+    // ================= LANGUAGE COUNT =================
+    const languageCount = Object.keys(enabled).length;
+
+    // ================= STATUS =================
+    const status =
+      client.ws.ping < 200
+        ? "🟢 Online & Operational"
+        : "🟡 Degraded Performance";
+
+    // ================= EMBED =================
     const embed = new EmbedBuilder()
       .setColor(0x00bfff)
-      .setTitle("🌏 UniChat v4 Dashboard")
-      .setDescription("Global communication system is active.")
+      .setTitle("🌏 UniChat System Info")
       .addFields(
         {
           name: "📦 Version",
-          value: `v${packageJson.version}`,
+          value: "4.0",
           inline: true
         },
         {
@@ -45,38 +51,35 @@ export default async function infoCommand(interaction, client) {
           inline: true
         },
         {
-          name: "🌐 Languages Active",
-          value: `${totalLanguages}`,
+          name: "🌍 Active Languages",
+          value: String(languageCount),
           inline: true
         },
         {
-          name: "💬 Base Channel",
-          value: baseChannel
-            ? `<#${baseChannel.id}>`
-            : "Not configured",
+          name: "📍 Base Channel",
+          value: baseChannelObj
+            ? `#${baseChannelObj.name}`
+            : "❌ Not configured",
           inline: false
         },
         {
-          name: "⚙️ Status",
-          value: "🟢 Online & Operational",
+          name: "📡 Status",
+          value: status,
           inline: false
         }
       )
       .setFooter({
-        text: "UniChat • Real-time translation system"
+        text: "UniChat • Enterprise Mode"
       })
       .setTimestamp();
 
     return interaction.editReply({ embeds: [embed] });
 
   } catch (err) {
-    console.log("INFO ERROR:", err);
+    console.log("INFO ERROR:", err.message);
 
-    if (!interaction.replied && !interaction.deferred) {
-      return interaction.reply({
-        content: "❌ Failed to load info.",
-        ephemeral: true
-      });
-    }
+    return interaction.editReply({
+      content: "❌ Failed to load system info."
+    });
   }
 }
