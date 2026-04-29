@@ -20,6 +20,7 @@ import addLanguageCommand from "./commands/addlanguage.js";
 import repairCommand from "./commands/repair.js";
 import unlockCommand from "./commands/channel/unlock.js";
 import announceOwnerCommand from "./commands/announce-owner.js";
+import diagnoseCommand from "./commands/diagnose.js";
 
 // ================= EVENTS =================
 import guildCreate from "./events/guildCreate.js";
@@ -44,7 +45,7 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE → QUEUE SYSTEM (ENTERPRISE CORE)
+   MESSAGE CREATE → QUEUE SYSTEM
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -72,7 +73,7 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= ROLE SYSTEM =================
+    // ================= ROLE AUTO ASSIGN =================
     const roleMap = {
       EN: "English",
       ES: "Spanish",
@@ -103,7 +104,7 @@ client.on("messageCreate", async (message) => {
     });
 
   } catch (err) {
-    console.log("MESSAGE CREATE ERROR:", err.message);
+    console.log("MESSAGE ERROR:", err.message);
   }
 });
 
@@ -112,6 +113,7 @@ client.on("messageCreate", async (message) => {
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
+
     if (!message.guild) return;
 
     const { data } = await supabase
@@ -123,9 +125,7 @@ client.on("messageDelete", async (message) => {
 
     if (!data?.channel_map) return;
 
-    const channelMap = data.channel_map;
-
-    for (const msgId of Object.values(channelMap)) {
+    for (const msgId of Object.values(data.channel_map)) {
       for (const channel of message.guild.channels.cache.values()) {
         const msg = await channel.messages.fetch(msgId).catch(() => null);
         if (msg) {
@@ -142,7 +142,7 @@ client.on("messageDelete", async (message) => {
       .eq("base_message_id", message.id);
 
   } catch (err) {
-    console.log("DELETE SYNC ERROR:", err.message);
+    console.log("DELETE ERROR:", err.message);
   }
 });
 
@@ -163,9 +163,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 
     if (!data?.channel_map) return;
 
-    const channelMap = data.channel_map;
-
-    for (const [lang, msgId] of Object.entries(channelMap)) {
+    for (const [lang, msgId] of Object.entries(data.channel_map)) {
       if (lang === "EN") continue;
 
       const translated = await translateCached(newMsg.content, lang);
@@ -181,7 +179,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
     }
 
   } catch (err) {
-    console.log("EDIT SYNC ERROR:", err.message);
+    console.log("EDIT ERROR:", err.message);
   }
 });
 
@@ -224,6 +222,9 @@ client.on("interactionCreate", async (interaction) => {
 
       case "announce-owner":
         return announceOwnerCommand(interaction, client);
+
+      case "diagnose":
+        return diagnoseCommand(interaction, client);
     }
 
   } catch (err) {
