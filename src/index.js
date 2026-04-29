@@ -42,12 +42,89 @@ client.once("ready", () => {
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
+/* =========================================================
+   MESSAGE DELETE SYNC
+========================================================= */
+client.on("messageDelete", async (message) => {
+  try {
+    if (!message.guild) return;
+
+    const { data } = await supabase
+      .from("message_maps")
+      .select("*")
+      .eq("guild_id", message.guild.id)
+      .eq("base_message_id", message.id)
+      .maybeSingle();
+
+    if (!data) return;
+
+    const map = data.channel_map;
+
+    for (const msgId of Object.values(map)) {
+      const channels = message.guild.channels.cache;
+
+      for (const channel of channels.values()) {
+        const msg = await channel.messages.fetch(msgId).catch(() => null);
+        if (msg) await msg.delete().catch(() => {});
+      }
+    }
+
+    await supabase
+      .from("message_maps")
+      .delete()
+      .eq("base_message_id", message.id);
+
+  } catch (err) {
+    console.log("DELETE SYNC ERROR:", err.message);
+  }
+});
+
+/* =========================================================
+   MESSAGE UPDATE SYNC
+========================================================= */
+client.on("messageUpdate", async (oldMsg, newMsg) => {
+  try {
+
+    if (!newMsg.guild || newMsg.author?.bot) return;
+
+    const { data } = await supabase
+      .from("message_maps")
+      .select("*")
+      .eq("guild_id", newMsg.guild.id)
+      .eq("base_message_id", newMsg.id)
+      .maybeSingle();
+
+    if (!data) return;
+
+    const map = data.channel_map;
+
+    for (const [lang, msgId] of Object.entries(map)) {
+
+      if (lang === "EN") continue;
+
+      const translated = await translateCached(newMsg.content, lang);
+
+      for (const channel of newMsg.guild.channels.cache.values()) {
+        const msg = await channel.messages.fetch(msgId).catch(() => null);
+        if (!msg) continue;
+
+        await msg.edit({
+          content: translated
+        }).catch(() => {});
+      }
+    }
+
+  } catch (err) {
+    console.log("EDIT SYNC ERROR:", err.message);
+  }
+});
+
 // ================= TRANSLATION + ROLE ENGINE =================
 client.on("messageCreate", async (message) => {
   try {
 
     if (!message.guild || message.author.bot) return;
-    if (!message.content || message.content.trim() === "") return;
+    if (!message.content?.trim()) return;
 
     const { data } = await supabase
       .from("guild_settings")
@@ -56,7 +133,7 @@ client.on("messageCreate", async (message) => {
       .maybeSingle();
 
     const channels = data?.enabled_channels;
-    if (!channels || typeof channels !== "object") return;
+    if (!channels) return;
 
     let sourceLang = null;
 
@@ -69,7 +146,7 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= AUTO ROLE ASSIGN =================
+    // ================= AUTO ROLE =================
     const roleMap = {
       EN: "English",
       ES: "Spanish",
@@ -88,23 +165,21 @@ client.on("messageCreate", async (message) => {
 
       if (role && !message.member.roles.cache.has(role.id)) {
 
-        const allLangRoles = Object.values(roleMap);
-
         for (const r of message.member.roles.cache.values()) {
-          if (allLangRoles.includes(r.name)) {
+          if (Object.values(roleMap).includes(r.name)) {
             await message.member.roles.remove(r).catch(() => {});
           }
         }
 
         await message.member.roles.add(role).catch(() => {});
-
-        await message.channel.send({
-          content: `🌐 ${message.author}, you've been assigned the **${roleName}** role.`
-        }).catch(() => {});
       }
     }
 
-    // ================= TRANSLATION =================
+    // ================= TRANSLATION + MAP STORE =================
+    const channelMap = {
+      [sourceLang]: message.id
+    };
+
     for (const [lang, id] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
@@ -115,20 +190,21 @@ client.on("messageCreate", async (message) => {
       const translated = await translateCached(message.content, lang);
       if (!translated) continue;
 
-      const embed = new EmbedBuilder()
-        .setColor(0x00bfff)
-        .setAuthor({
-          name: message.member?.displayName || message.author.username,
-          iconURL: message.author.displayAvatarURL({ dynamic: true })
-        })
-        .setDescription(translated)
-        .setFooter({
-          text: `🌍 ${sourceLang} → ${lang}`
-        })
-        .setTimestamp();
+      const sent = await channel.send({
+        content: translated
+      }).catch(() => null);
 
-      await channel.send({ embeds: [embed] }).catch(() => {});
+      if (sent) {
+        channelMap[lang] = sent.id;
+      }
     }
+
+    // SAVE MESSAGE MAP
+    await supabase.from("message_maps").insert({
+      guild_id: message.guild.id,
+      base_message_id: message.id,
+      channel_map: channelMap
+    });
 
   } catch (err) {
     console.log("TRANSLATION ERROR:", err.message);
