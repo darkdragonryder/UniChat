@@ -8,7 +8,7 @@ import {
 import { supabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 
-// ================= COMMANDS =================
+// Commands
 import setupCommand from "./commands/setup.js";
 import uninstallCommand from "./commands/uninstall.js";
 import setLanguageCommand from "./commands/setlanguage.js";
@@ -19,10 +19,6 @@ import addLanguageCommand from "./commands/addlanguage.js";
 import repairCommand from "./commands/repair.js";
 import unlockCommand from "./commands/channel/unlock.js";
 import announceOwnerCommand from "./commands/announce-owner.js";
-
-// ================= EVENTS =================
-import guildCreate from "./events/guildCreate.js";
-import guildMemberAdd from "./events/guildMemberAdd.js";
 
 const client = new Client({
   intents: [
@@ -39,11 +35,14 @@ client.once("ready", () => {
 });
 
 // ================= EVENTS =================
+import guildCreate from "./events/guildCreate.js";
+import guildMemberAdd from "./events/guildMemberAdd.js";
+
 client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE DELETE SYNC
+   DELETE SYNC (OPTIMIZED)
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
@@ -51,27 +50,31 @@ client.on("messageDelete", async (message) => {
 
     const { data } = await supabase
       .from("message_maps")
-      .select("*")
+      .select("channel_map")
       .eq("guild_id", message.guild.id)
       .eq("base_message_id", message.id)
       .maybeSingle();
 
-    if (!data) return;
+    if (!data?.channel_map) return;
 
-    const map = data.channel_map;
+    const channelMap = data.channel_map;
 
-    for (const msgId of Object.values(map)) {
-      const channels = message.guild.channels.cache;
+    const channels = message.guild.channels.cache;
 
+    for (const msgId of Object.values(channelMap)) {
       for (const channel of channels.values()) {
         const msg = await channel.messages.fetch(msgId).catch(() => null);
-        if (msg) await msg.delete().catch(() => {});
+        if (msg) {
+          msg.delete().catch(() => {});
+          break; // stop searching once found
+        }
       }
     }
 
     await supabase
       .from("message_maps")
       .delete()
+      .eq("guild_id", message.guild.id)
       .eq("base_message_id", message.id);
 
   } catch (err) {
@@ -80,7 +83,7 @@ client.on("messageDelete", async (message) => {
 });
 
 /* =========================================================
-   MESSAGE UPDATE SYNC
+   EDIT SYNC (OPTIMIZED)
 ========================================================= */
 client.on("messageUpdate", async (oldMsg, newMsg) => {
   try {
@@ -89,28 +92,30 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 
     const { data } = await supabase
       .from("message_maps")
-      .select("*")
+      .select("channel_map")
       .eq("guild_id", newMsg.guild.id)
       .eq("base_message_id", newMsg.id)
       .maybeSingle();
 
-    if (!data) return;
+    if (!data?.channel_map) return;
 
-    const map = data.channel_map;
+    const channelMap = data.channel_map;
 
-    for (const [lang, msgId] of Object.entries(map)) {
+    const channels = newMsg.guild.channels.cache;
+
+    for (const [lang, msgId] of Object.entries(channelMap)) {
 
       if (lang === "EN") continue;
 
       const translated = await translateCached(newMsg.content, lang);
 
-      for (const channel of newMsg.guild.channels.cache.values()) {
+      for (const channel of channels.values()) {
         const msg = await channel.messages.fetch(msgId).catch(() => null);
-        if (!msg) continue;
 
-        await msg.edit({
-          content: translated
-        }).catch(() => {});
+        if (msg) {
+          msg.edit({ content: translated }).catch(() => {});
+          break;
+        }
       }
     }
 
@@ -119,7 +124,9 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
   }
 });
 
-// ================= TRANSLATION + ROLE ENGINE =================
+/* =========================================================
+   MESSAGE CREATE (OPTIMIZED CORE ENGINE)
+========================================================= */
 client.on("messageCreate", async (message) => {
   try {
 
@@ -138,7 +145,7 @@ client.on("messageCreate", async (message) => {
     let sourceLang = null;
 
     for (const [lang, id] of Object.entries(channels)) {
-      if (String(message.channel.id) === String(id)) {
+      if (message.channel.id === id) {
         sourceLang = lang;
         break;
       }
@@ -146,7 +153,7 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= AUTO ROLE =================
+    // ================= ROLE SYSTEM =================
     const roleMap = {
       EN: "English",
       ES: "Spanish",
@@ -160,58 +167,66 @@ client.on("messageCreate", async (message) => {
     const roleName = roleMap[sourceLang];
 
     if (roleName && message.member) {
-
       const role = message.guild.roles.cache.find(r => r.name === roleName);
 
       if (role && !message.member.roles.cache.has(role.id)) {
-
-        for (const r of message.member.roles.cache.values()) {
-          if (Object.values(roleMap).includes(r.name)) {
-            await message.member.roles.remove(r).catch(() => {});
-          }
-        }
-
         await message.member.roles.add(role).catch(() => {});
       }
     }
 
-    // ================= TRANSLATION + MAP STORE =================
+    // ================= CHANNEL CACHE (OPTIMIZATION) =================
+    const guildChannels = message.guild.channels.cache;
+
     const channelMap = {
       [sourceLang]: message.id
     };
+
+    // ================= TRANSLATION =================
+    const sendPromises = [];
 
     for (const [lang, id] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
 
-      const channel = await message.guild.channels.fetch(id).catch(() => null);
+      const channel = guildChannels.get(id);
       if (!channel) continue;
 
-      const translated = await translateCached(message.content, lang);
-      if (!translated) continue;
+      sendPromises.push(
+        (async () => {
+          const translated = await translateCached(message.content, lang);
+          if (!translated) return null;
 
-      const sent = await channel.send({
-        content: translated
-      }).catch(() => null);
+          const sent = await channel.send({
+            content: translated
+          }).catch(() => null);
 
-      if (sent) {
-        channelMap[lang] = sent.id;
-      }
+          if (sent) channelMap[lang] = sent.id;
+          return sent;
+        })()
+      );
     }
 
-    // SAVE MESSAGE MAP
-    await supabase.from("message_maps").insert({
-      guild_id: message.guild.id,
-      base_message_id: message.id,
-      channel_map: channelMap
-    });
+    await Promise.all(sendPromises);
+
+    // ================= UPSERT (FAST DB WRITE) =================
+    await supabase
+      .from("message_maps")
+      .upsert({
+        guild_id: message.guild.id,
+        base_message_id: message.id,
+        channel_map: channelMap
+      }, {
+        onConflict: "guild_id,base_message_id"
+      });
 
   } catch (err) {
     console.log("TRANSLATION ERROR:", err.message);
   }
 });
 
-// ================= COMMANDS =================
+/* =========================================================
+   COMMANDS
+========================================================= */
 client.on("interactionCreate", async (interaction) => {
   try {
 
@@ -219,35 +234,16 @@ client.on("interactionCreate", async (interaction) => {
 
     switch (interaction.commandName) {
 
-      case "setup":
-        return setupCommand(interaction, client);
-
-      case "uninstall":
-        return uninstallCommand(interaction);
-
-      case "setlanguage":
-        return setLanguageCommand(interaction);
-
-      case "help":
-        return helpCommand(interaction);
-
-      case "info":
-        return infoCommand(interaction, client);
-
-      case "migrate":
-        return migrateCommand(interaction);
-
-      case "addlanguage":
-        return addLanguageCommand(interaction);
-
-      case "repair":
-        return repairCommand(interaction);
-
-      case "unlock":
-        return unlockCommand(interaction);
-
-      case "announce-owner":
-        return announceOwnerCommand(interaction, client);
+      case "setup": return setupCommand(interaction, client);
+      case "uninstall": return uninstallCommand(interaction);
+      case "setlanguage": return setLanguageCommand(interaction);
+      case "help": return helpCommand(interaction);
+      case "info": return infoCommand(interaction, client);
+      case "migrate": return migrateCommand(interaction);
+      case "addlanguage": return addLanguageCommand(interaction);
+      case "repair": return repairCommand(interaction);
+      case "unlock": return unlockCommand(interaction);
+      case "announce-owner": return announceOwnerCommand(interaction, client);
     }
 
   } catch (err) {
