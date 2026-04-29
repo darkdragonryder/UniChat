@@ -39,12 +39,8 @@ const client = new Client({
 client.once("ready", async () => {
   console.log(`🚀 UniChat v4.0.1 ONLINE: ${client.user.tag}`);
 
-  try {
-    for (const guild of client.guilds.cache.values()) {
-      await systemHealth({ guild });
-    }
-  } catch (err) {
-    console.log("HEALTH INIT ERROR:", err.message);
+  for (const guild of client.guilds.cache.values()) {
+    await systemHealth({ guild }).catch(() => {});
   }
 });
 
@@ -53,7 +49,7 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE ENGINE (NOW FULLY FIXED)
+   MESSAGE CREATE (FIXED)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
@@ -81,12 +77,9 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // ================= MESSAGE MAP (CRITICAL FIX) =================
-    const messageMap = {
-      EN: message.id
-    };
+    const messageMap = {};
+    messageMap[sourceLang] = message.id;
 
-    // ================= TRANSLATION =================
     for (const [lang, channelId] of Object.entries(channels)) {
 
       if (lang === sourceLang) continue;
@@ -97,23 +90,35 @@ client.on("messageCreate", async (message) => {
       const translated = await translateCached(message.content, lang);
       if (!translated) continue;
 
-      const sent = await channel.send({
-        content: translated
-      }).catch(() => null);
+      const embed = new EmbedBuilder()
+        .setColor(0x00bfff)
+        .setAuthor({
+          name: message.member?.displayName || message.author.username,
+          iconURL: message.author.displayAvatarURL({ dynamic: true })
+        })
+        .setDescription(translated)
+        .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
+        .setTimestamp();
+
+      const sent = await channel.send({ embeds: [embed] }).catch(() => null);
 
       if (sent) {
         messageMap[lang] = sent.id;
       }
     }
 
-    // ================= SAVE MESSAGE MAP =================
-    await supabase.from("message_maps").insert({
+    // ================= SAVE MAP (WITH DEBUG) =================
+    const { error } = await supabase.from("message_maps").insert({
       guild_id: message.guild.id,
       base_message_id: message.id,
       channel_map: messageMap
-    }).catch(err => {
-      console.log("MAP SAVE ERROR:", err.message);
     });
+
+    if (error) {
+      console.log("❌ MAP SAVE ERROR FULL:", error);
+    } else {
+      console.log("✅ MAP SAVED:", message.id);
+    }
 
   } catch (err) {
     console.log("MESSAGE ERROR:", err.message);
@@ -121,7 +126,7 @@ client.on("messageCreate", async (message) => {
 });
 
 /* =========================================================
-   MESSAGE EDIT SYNC (NOW RELIABLE)
+   MESSAGE EDIT
 ========================================================= */
 client.on("messageUpdate", async (oldMsg, newMsg) => {
   try {
@@ -130,7 +135,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 
     const { data } = await supabase
       .from("message_maps")
-      .select("*")
+      .select("channel_map")
       .eq("guild_id", newMsg.guild.id)
       .eq("base_message_id", newMsg.id)
       .maybeSingle();
@@ -146,9 +151,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
         const msg = await channel.messages.fetch(msgId).catch(() => null);
 
         if (msg) {
-          await msg.edit({
-            content: newMsg.content
-          }).catch(() => {});
+          await msg.edit({ content: newMsg.content }).catch(() => {});
           break;
         }
       }
@@ -160,14 +163,14 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 });
 
 /* =========================================================
-   MESSAGE DELETE SYNC (NOW RELIABLE)
+   MESSAGE DELETE
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
 
     const { data } = await supabase
       .from("message_maps")
-      .select("*")
+      .select("channel_map")
       .eq("guild_id", message.guild.id)
       .eq("base_message_id", message.id)
       .maybeSingle();
@@ -181,7 +184,6 @@ client.on("messageDelete", async (message) => {
       for (const channel of message.guild.channels.cache.values()) {
 
         const msg = await channel.messages.fetch(msgId).catch(() => null);
-
         if (msg) {
           await msg.delete().catch(() => {});
           break;
@@ -201,7 +203,7 @@ client.on("messageDelete", async (message) => {
 });
 
 /* =========================================================
-   COMMAND HANDLER
+   COMMANDS
 ========================================================= */
 client.on("interactionCreate", async (interaction) => {
   try {
@@ -209,39 +211,17 @@ client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     switch (interaction.commandName) {
-
-      case "setup":
-        return setupCommand(interaction, client);
-
-      case "uninstall":
-        return uninstallCommand(interaction);
-
-      case "setlanguage":
-        return setLanguageCommand(interaction);
-
-      case "help":
-        return helpCommand(interaction);
-
-      case "info":
-        return infoCommand(interaction, client);
-
-      case "migrate":
-        return migrateCommand(interaction);
-
-      case "addlanguage":
-        return addLanguageCommand(interaction);
-
-      case "repair":
-        return repairCommand(interaction);
-
-      case "unlock":
-        return unlockCommand(interaction);
-
-      case "announce-owner":
-        return announceOwnerCommand(interaction, client);
-
-      case "diagnose":
-        return diagnoseCommand(interaction, client);
+      case "setup": return setupCommand(interaction, client);
+      case "uninstall": return uninstallCommand(interaction);
+      case "setlanguage": return setLanguageCommand(interaction);
+      case "help": return helpCommand(interaction);
+      case "info": return infoCommand(interaction, client);
+      case "migrate": return migrateCommand(interaction);
+      case "addlanguage": return addLanguageCommand(interaction);
+      case "repair": return repairCommand(interaction);
+      case "unlock": return unlockCommand(interaction);
+      case "announce-owner": return announceOwnerCommand(interaction, client);
+      case "diagnose": return diagnoseCommand(interaction, client);
     }
 
   } catch (err) {
@@ -249,5 +229,4 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ================= LOGIN =================
 client.login(process.env.DISCORD_TOKEN);
