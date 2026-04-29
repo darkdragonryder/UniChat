@@ -1,5 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 import { supabase } from "../services/supabase.js";
+import { autoHeal } from "../services/autoHeal.js";
 
 export default async function diagnoseCommand(interaction, client) {
   try {
@@ -8,8 +9,7 @@ export default async function diagnoseCommand(interaction, client) {
 
     const guild = interaction.guild;
 
-    // ================= DB LOAD =================
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("guild_settings")
       .select("*")
       .eq("guild_id", guild.id)
@@ -17,119 +17,78 @@ export default async function diagnoseCommand(interaction, client) {
 
     const enabled = data?.enabled_channels || {};
 
-    // ================= BASE CHANNEL =================
-    const baseId =
-      data?.default_channel ||
-      data?.active_channel ||
-      null;
+    const baseId = data?.default_channel || data?.active_channel;
+    const baseChannel = baseId ? guild.channels.cache.get(baseId) : null;
 
-    const baseChannel = baseId
-      ? guild.channels.cache.get(baseId)
-      : null;
+    await guild.roles.fetch();
+    await guild.channels.fetch();
 
-    // ================= ROLE CHECK =================
-    const roleNames = [
-      "English",
-      "Spanish",
-      "German",
-      "Italian",
-      "Korean",
-      "Russian",
-      "Japanese"
-    ];
+    /* ================================
+       ROLE CHECK (SKIP ENGLISH)
+    =================================*/
+    const roleMap = {
+      ES: "Spanish",
+      DE: "German",
+      IT: "Italian",
+      KO: "Korean",
+      RU: "Russian",
+      JA: "Japanese"
+    };
 
-    const missingRoles = roleNames.filter(
+    const missingRoles = Object.values(roleMap).filter(
       r => !guild.roles.cache.some(role => role.name === r)
     );
 
-    // ================= CHANNEL CHECK =================
+    /* ================================
+       CHANNEL CHECK (SKIP ENGLISH)
+    =================================*/
     const missingChannels = [];
 
     for (const [lang, id] of Object.entries(enabled)) {
-      const exists = guild.channels.cache.get(id);
-      if (!exists) {
-        missingChannels.push(`${lang}: missing`);
+      if (lang === "EN") continue;
+
+      if (!guild.channels.cache.get(id)) {
+        missingChannels.push(lang);
       }
     }
 
-    // ================= HEALTH STATUS =================
-    const dbStatus = error ? "❌ DB ERROR" : "🟢 OK";
+    /* ================================
+       AUTO HEAL TRIGGER
+    =================================*/
+    const healResult = await autoHeal({ guild, client });
 
-    const channelStatus =
-      Object.keys(enabled).length > 0
-        ? "🟢 OK"
-        : "❌ No channels configured";
-
-    const roleStatus =
-      missingRoles.length > 0
-        ? `⚠️ Missing (${missingRoles.length})`
-        : "🟢 OK";
-
-    const baseStatus =
-      baseChannel ? "🟢 OK" : "❌ Not configured";
-
-    const ping = client.ws.ping;
-
-    const status =
-      ping < 200 ? "🟢 Healthy" :
-      ping < 500 ? "🟡 Slow" :
-      "🔴 Poor";
-
-    // ================= EMBED =================
     const embed = new EmbedBuilder()
       .setColor(0xffcc00)
       .setTitle("🧪 UniChat Diagnose Report")
       .addFields(
         {
-          name: "📊 Bot Status",
-          value: `${status} (${ping}ms)`,
-          inline: false
-        },
-        {
-          name: "🗄️ Database",
-          value: dbStatus,
-          inline: true
-        },
-        {
-          name: "🌍 Channels Config",
-          value: channelStatus,
-          inline: true
-        },
-        {
-          name: "🏠 Base Channel",
-          value: baseStatus,
+          name: "🏠 Base Channel (EN)",
+          value: baseChannel ? "🟢 OK" : "❌ Missing",
           inline: true
         },
         {
           name: "👥 Roles",
-          value: roleStatus,
+          value: missingRoles.length ? `⚠️ ${missingRoles.length} missing` : "🟢 OK",
+          inline: true
+        },
+        {
+          name: "🌍 Channels",
+          value: missingChannels.length ? `⚠️ ${missingChannels.length} missing` : "🟢 OK",
+          inline: true
+        },
+        {
+          name: "🔧 Auto-Heal",
+          value: healResult?.fixed ? "🟢 Fixed issues" : "ℹ️ Checked",
           inline: false
         }
       )
-      .setFooter({
-        text: "UniChat • Diagnose System"
-      })
+      .setFooter({ text: "UniChat • Enterprise Diagnostics" })
       .setTimestamp();
-
-    // Add warnings if needed
-    if (missingRoles.length > 0 || missingChannels.length > 0) {
-      embed.addFields({
-        name: "⚠️ Issues Found",
-        value:
-          [
-            ...missingRoles.map(r => `Missing role: ${r}`),
-            ...missingChannels
-          ].join("\n") || "None"
-      });
-    }
 
     return interaction.editReply({ embeds: [embed] });
 
   } catch (err) {
     console.log("DIAGNOSE ERROR:", err.message);
-
-    return interaction.editReply({
-      content: "❌ Diagnose failed"
-    });
+    return interaction.editReply("❌ Diagnose failed");
   }
 }
