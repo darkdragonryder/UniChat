@@ -1,27 +1,15 @@
-import { supabase } from "../services/supabase.js";
+import { systemHealth } from "../services/systemHealth.js";
 
 export default (client) => async (guild) => {
   try {
 
-    console.log("🔥 JOINED:", guild.name);
+    console.log(`📥 New guild joined: ${guild.name}`);
 
-    // 🔥 AUTO REPAIR DB ROW
-    const { data } = await supabase
-      .from("guild_settings")
-      .select("*")
-      .eq("guild_id", guild.id)
-      .maybeSingle();
+    // ================= AUTO HEALTH CHECK =================
+    await systemHealth({ guild });
 
-    if (!data) {
-      await supabase.from("guild_settings").upsert({
-        guild_id: guild.id,
-        enabled_channels: {},
-        default_channel: null,
-        active_channel: null
-      });
-
-      console.log("🔧 Self-healed DB row for:", guild.id);
-    }
+    // OPTIONAL: could auto-run setup later if you want full automation
+    // (kept disabled to avoid unwanted channel creation)
 
   } catch (err) {
     console.log("GUILD CREATE ERROR:", err.message);
