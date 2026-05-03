@@ -1,24 +1,30 @@
 import { createClient } from "@supabase/supabase-js";
-import "dotenv/config";
 
-let supabase = null;
+let supabaseClient = null;
 
 export function db() {
-  if (supabase) return supabase;
+  // Return cached client if already created
+  if (supabaseClient) return supabaseClient;
 
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_KEY?.trim();
 
+  // 🔒 Hard fail if env is missing
   if (!url || !key) {
-    console.error("SUPABASE_URL:", url);
-    console.error("SUPABASE_KEY exists:", !!key);
-    throw new Error("Missing or invalid Supabase environment variables");
+    console.error("❌ SUPABASE_URL:", url);
+    console.error("❌ SUPABASE_KEY exists:", !!key);
+    throw new Error("Missing Supabase environment variables");
   }
 
-  if (!url.startsWith("http")) {
+  // 🔒 Validate URL format
+  if (!url.startsWith("https://")) {
     throw new Error(`Invalid SUPABASE_URL: ${url}`);
   }
 
-  supabase = createClient(url, key);
-  return supabase;
+  // Create and cache client
+  supabaseClient = createClient(url, key);
+
+  console.log("✅ Supabase client initialised");
+
+  return supabaseClient;
 }
