@@ -1,13 +1,10 @@
-import "dotenv/config";
-
-
 import {
   Client,
   GatewayIntentBits,
   EmbedBuilder
 } from "discord.js";
 
-import { supabase } from "./services/supabase.js";
+import { getSupabase } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 import { systemHealth } from "./services/systemHealth.js";
 
@@ -55,9 +52,10 @@ client.on("guildMemberAdd", guildMemberAdd(client));
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
-
     if (!message.guild || message.author.bot) return;
     if (!message.content?.trim()) return;
+
+    const supabase = getSupabase();
 
     const { data } = await supabase
       .from("guild_settings")
@@ -83,7 +81,6 @@ client.on("messageCreate", async (message) => {
     messageMap[sourceLang] = message.id;
 
     for (const [lang, channelId] of Object.entries(channels)) {
-
       if (lang === sourceLang) continue;
 
       const channel = await message.guild.channels.fetch(channelId).catch(() => null);
@@ -96,7 +93,7 @@ client.on("messageCreate", async (message) => {
         .setColor(0x00bfff)
         .setAuthor({
           name: message.member?.displayName || message.author.username,
-          iconURL: message.author.displayAvatarURL({ dynamic: true })
+          iconURL: message.author.displayAvatarURL()
         })
         .setDescription(translated)
         .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
@@ -109,15 +106,11 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    const { error } = await supabase.from("message_maps").insert({
+    await supabase.from("message_maps").insert({
       guild_id: message.guild.id,
       base_message_id: message.id,
       channel_map: messageMap
     });
-
-    if (error) {
-      console.log("❌ MAP SAVE ERROR:", error);
-    }
 
   } catch (err) {
     console.log("MESSAGE ERROR:", err.message);
@@ -125,13 +118,14 @@ client.on("messageCreate", async (message) => {
 });
 
 /* =========================================================
-   MESSAGE UPDATE (BIDIRECTIONAL)
+   MESSAGE UPDATE
 ========================================================= */
 client.on("messageUpdate", async (oldMsg, newMsg) => {
   try {
-
     if (!newMsg.guild || newMsg.author?.bot) return;
     if (!newMsg.content) return;
+
+    const supabase = getSupabase();
 
     const { data: maps } = await supabase
       .from("message_maps")
@@ -156,7 +150,6 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
     if (!channels) return;
 
     for (const [lang, msgId] of Object.entries(map)) {
-
       if (msgId === newMsg.id) continue;
 
       const channelId = channels[lang];
@@ -180,12 +173,13 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 });
 
 /* =========================================================
-   MESSAGE DELETE (BIDIRECTIONAL)
+   MESSAGE DELETE
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
-
     if (!message.guild || !message.id) return;
+
+    const supabase = getSupabase();
 
     const { data: maps } = await supabase
       .from("message_maps")
@@ -210,7 +204,6 @@ client.on("messageDelete", async (message) => {
     if (!channels) return;
 
     for (const [lang, msgId] of Object.entries(map)) {
-
       const channelId = channels[lang];
       if (!channelId) continue;
 
@@ -238,7 +231,6 @@ client.on("messageDelete", async (message) => {
 ========================================================= */
 client.on("interactionCreate", async (interaction) => {
   try {
-
     if (!interaction.isChatInputCommand()) return;
 
     switch (interaction.commandName) {
