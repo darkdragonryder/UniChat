@@ -1,8 +1,9 @@
 import { PermissionsBitField, ChannelType } from "discord.js";
-import { supabase } from "./supabase.js";
+import { db } from "./supabase.js";
 
 export async function autoHeal({ guild, client }) {
   try {
+    const supabase = db();
 
     const { data } = await supabase
       .from("guild_settings")
@@ -18,9 +19,6 @@ export async function autoHeal({ guild, client }) {
     await guild.roles.fetch();
     await guild.channels.fetch();
 
-    /* ================================
-       1. FIX BASE CHANNEL (ENGLISH)
-    =================================*/
     const baseChannel = baseId
       ? guild.channels.cache.get(baseId)
       : null;
@@ -45,9 +43,6 @@ export async function autoHeal({ guild, client }) {
       ]).catch(() => {});
     }
 
-    /* ================================
-       2. LANGUAGE ROLES (SKIP EN)
-    =================================*/
     const roleMap = {
       ES: "Spanish",
       DE: "German",
@@ -58,7 +53,6 @@ export async function autoHeal({ guild, client }) {
     };
 
     for (const [lang, roleName] of Object.entries(roleMap)) {
-
       let role = guild.roles.cache.find(r => r.name === roleName);
 
       if (!role) {
@@ -68,18 +62,10 @@ export async function autoHeal({ guild, client }) {
         });
       }
 
-      enabled[lang] = enabled[lang]; // ensure exists
+      enabled[lang] = enabled[lang];
     }
 
-    /* ================================
-       3. LANGUAGE CHANNEL FIX (SKIP EN)
-    =================================*/
-    const category = guild.channels.cache.find(
-      c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
-    );
-
     for (const [lang, channelId] of Object.entries(enabled)) {
-
       if (lang === "EN") continue;
 
       const channel = guild.channels.cache.get(channelId);
@@ -115,10 +101,7 @@ export async function autoHeal({ guild, client }) {
       ]).catch(() => {});
     }
 
-    return {
-      status: "ok",
-      fixed: true
-    };
+    return { status: "ok", fixed: true };
 
   } catch (err) {
     console.log("AUTO HEAL ERROR:", err.message);
