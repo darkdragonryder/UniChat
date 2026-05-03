@@ -9,6 +9,7 @@ export function db() {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_KEY?.trim();
 
+  console.log("SUPABASE URL INSIDE NODE:", process.env.SUPABASE_URL);
   // 🔒 Hard fail if env is missing
   if (!url || !key) {
     console.error("❌ SUPABASE_URL:", url);
