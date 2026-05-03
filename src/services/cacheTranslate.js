@@ -37,7 +37,6 @@ export async function translateCached(text, lang) {
   });
 
   const json = await res.json();
-
   const translated = json?.translations?.[0]?.text || text;
 
   await supabase.from("translation_cache").upsert({
