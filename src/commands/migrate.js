@@ -1,4 +1,4 @@
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
 
 const emojis = {
   ES: "🇪🇸",
@@ -21,34 +21,42 @@ export default async function migrateCommand(interaction) {
 
   await interaction.reply("🔄 Migrating channels...");
 
-  const { data } = await supabase
-    .from("guild_settings")
-    .select("active_channel, default_channel, base_channel_name, enabled_channels")
-    .eq("guild_id", interaction.guild.id)
-    .maybeSingle();
+  try {
+    const supabase = db(); // ✅ FIX
 
-  let base =
-    data?.base_channel_name ||
-    interaction.guild.channels.cache.get(data?.default_channel)?.name ||
-    interaction.guild.channels.cache.get(data?.active_channel)?.name ||
-    "chat";
+    const { data } = await supabase
+      .from("guild_settings")
+      .select("active_channel, default_channel, base_channel_name, enabled_channels")
+      .eq("guild_id", interaction.guild.id)
+      .maybeSingle();
 
-  base = clean(base);
+    let base =
+      data?.base_channel_name ||
+      interaction.guild.channels.cache.get(data?.default_channel)?.name ||
+      interaction.guild.channels.cache.get(data?.active_channel)?.name ||
+      "chat";
 
-  let count = 0;
+    base = clean(base);
 
-  for (const [lang, id] of Object.entries(data?.enabled_channels || {})) {
+    let count = 0;
 
-    const channel = interaction.guild.channels.cache.get(id);
-    if (!channel) continue;
+    for (const [lang, id] of Object.entries(data?.enabled_channels || {})) {
 
-    const newName = `${base}-${emojis[lang]}`;
+      const channel = interaction.guild.channels.cache.get(id);
+      if (!channel) continue;
 
-    if (channel.name !== newName) {
-      await channel.setName(newName).catch(() => {});
-      count++;
+      const newName = `${base}-${emojis[lang]}`;
+
+      if (channel.name !== newName) {
+        await channel.setName(newName).catch(() => {});
+        count++;
+      }
     }
-  }
 
-  return interaction.editReply(`✅ Migrated ${count} channels`);
+    return interaction.editReply(`✅ Migrated ${count} channels`);
+
+  } catch (err) {
+    console.log("MIGRATE ERROR:", err);
+    return interaction.editReply("❌ Migration failed");
+  }
 }
