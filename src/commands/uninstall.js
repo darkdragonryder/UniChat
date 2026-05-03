@@ -1,4 +1,4 @@
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
 
 export default async function uninstallCommand(interaction) {
 
@@ -10,6 +10,7 @@ export default async function uninstallCommand(interaction) {
   const guild = interaction.guild;
 
   try {
+    const supabase = db(); // ✅ FIX
 
     const { data } = await supabase
       .from("guild_settings")
@@ -23,7 +24,6 @@ export default async function uninstallCommand(interaction) {
 
     const channels = data.enabled_channels || {};
 
-    // ================= 1. REMOVE ROLES FIRST =================
     const roleNames = [
       "Spanish",
       "German",
@@ -39,10 +39,7 @@ export default async function uninstallCommand(interaction) {
       }
     }
 
-    // ================= 2. DELETE LANGUAGE CHANNELS =================
     for (const [lang, channelId] of Object.entries(channels)) {
-
-      // 🚨 SAFETY: NEVER TOUCH BASE CHANNEL
       if (channelId === data.default_channel) continue;
 
       const channel = guild.channels.cache.get(channelId);
@@ -51,16 +48,12 @@ export default async function uninstallCommand(interaction) {
       await channel.delete("UniChat uninstall cleanup").catch(() => {});
     }
 
-    // ================= 3. DELETE CATEGORY =================
-    const category = guild.channels.cache.find(
-      c => c.name === "🌍 UniChat"
-    );
+    const category = guild.channels.cache.find(c => c.name === "🌍 UniChat");
 
     if (category) {
       await category.delete("UniChat uninstall").catch(() => {});
     }
 
-    // ================= 4. CLEAR DATABASE LAST =================
     await supabase
       .from("guild_settings")
       .delete()
@@ -69,7 +62,7 @@ export default async function uninstallCommand(interaction) {
     return interaction.editReply("✅ UniChat safely uninstalled.");
 
   } catch (err) {
-    console.log("UNINSTALL ERROR:", err.message);
+    console.log("UNINSTALL ERROR:", err);
     return interaction.editReply("❌ Uninstall failed safely.");
   }
 }
