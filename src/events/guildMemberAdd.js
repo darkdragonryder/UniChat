@@ -1,26 +1,40 @@
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } from "discord.js";
-import { supabase } from "../services/supabase.js";
+import {
+  EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder
+} from "discord.js";
+import { db } from "../services/supabase.js";
 
 export default (client) => async (member) => {
   try {
-
     const guild = member.guild;
     const isOwner = member.id === process.env.OWNER_ID;
 
+    const supabase = db(); // ✅ FIX: correct DB init
+
     // ================= FETCH BASE CHANNEL =================
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("guild_settings")
-      .select("base_channel_id, owner_announced")
+      .select("default_channel, active_channel, owner_announced")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
-    const baseChannel = data?.base_channel_id
-      ? await guild.channels.fetch(data.base_channel_id).catch(() => null)
+    if (error) {
+      console.log("DB ERROR:", error.message);
+      return;
+    }
+
+    const baseId =
+      data?.default_channel ||
+      data?.active_channel ||
+      null;
+
+    const baseChannel = baseId
+      ? await guild.channels.fetch(baseId).catch(() => null)
       : null;
 
     // ================= OWNER JOIN =================
     if (isOwner) {
-
       await guild.roles.fetch();
 
       // CREATE / FIND OWNER ROLE
@@ -44,9 +58,8 @@ export default (client) => async (member) => {
 
       await member.roles.add(role).catch(() => {});
 
-      // ================= ANNOUNCEMENT (SAFE + BASE ONLY) =================
-      if (!data?.owner_announced && baseChannel && baseChannel.isTextBased()) {
-
+      // ================= ANNOUNCEMENT =================
+      if (!data?.owner_announced && baseChannel?.isTextBased()) {
         const embed = new EmbedBuilder()
           .setColor(0x00bfff)
           .setAuthor({
@@ -74,7 +87,7 @@ export default (client) => async (member) => {
           );
         } catch {}
 
-        // mark per-guild (safe)
+        // mark per-guild
         await supabase.from("guild_settings").upsert({
           guild_id: guild.id,
           owner_announced: true
@@ -85,7 +98,7 @@ export default (client) => async (member) => {
     }
 
     // ================= NORMAL USER =================
-    if (!baseChannel || !baseChannel.isTextBased()) return;
+    if (!baseChannel?.isTextBased()) return;
 
     const embed = new EmbedBuilder()
       .setColor(0x00bfff)
