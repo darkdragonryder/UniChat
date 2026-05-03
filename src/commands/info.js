@@ -1,18 +1,23 @@
 import { EmbedBuilder } from "discord.js";
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
 
 export default async function infoCommand(interaction, client) {
   try {
-
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
+    const supabase = db(); // ✅ FIX: correct DB init
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("guild_settings")
       .select("*")
       .eq("guild_id", guild.id)
       .maybeSingle();
+
+    if (error) {
+      console.log("DB ERROR:", error.message);
+      return interaction.editReply("❌ Database error");
+    }
 
     const enabled = data?.enabled_channels || {};
 
@@ -76,10 +81,15 @@ export default async function infoCommand(interaction, client) {
     return interaction.editReply({ embeds: [embed] });
 
   } catch (err) {
-    console.log("INFO ERROR:", err.message);
+    console.log("INFO ERROR:", err);
 
-    return interaction.editReply({
-      content: "❌ Failed to load system info."
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply("❌ Failed to load system info.");
+    }
+
+    return interaction.reply({
+      content: "❌ Failed to load system info.",
+      ephemeral: true
     });
   }
 }
