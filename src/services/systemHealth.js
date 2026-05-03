@@ -13,40 +13,28 @@ export async function systemHealth({ guild }) {
     if (!data) {
       await supabase.from("guild_settings").insert({
         guild_id: guild.id,
-        enabled_channels: {
-          EN: null
-        },
+        enabled_channels: { EN: null },
         active_channel: null,
         default_channel: null
       });
 
-      return { fixed: true, reason: "created_missing_guild_settings" };
+      return { fixed: true };
     }
 
     let enabled = data.enabled_channels || {};
 
     if (!enabled.EN) {
-      const baseChannel =
-        data.default_channel ||
-        data.active_channel ||
-        null;
-
-      enabled.EN = baseChannel;
+      enabled.EN = data.default_channel || data.active_channel || null;
     }
 
     const cleaned = {};
-
-    for (const [lang, id] of Object.entries(enabled)) {
-      if (id) cleaned[lang] = id;
+    for (const [k, v] of Object.entries(enabled)) {
+      if (v) cleaned[k] = v;
     }
-
-    cleaned.EN = enabled.EN || data.default_channel || data.active_channel;
 
     await supabase
       .from("guild_settings")
-      .update({
-        enabled_channels: cleaned
-      })
+      .update({ enabled_channels: cleaned })
       .eq("guild_id", guild.id);
 
     return { fixed: true };
