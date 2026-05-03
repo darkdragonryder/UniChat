@@ -6,31 +6,44 @@ export const data = new SlashCommandBuilder()
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels);
 
 export default async function unlockCommand(interaction) {
-  const channel = interaction.channel;
-  const everyone = interaction.guild.roles.everyone;
-
   try {
-    await channel.permissionOverwrites.edit(everyone, {
-      ViewChannel: true,
-    });
+    await interaction.deferReply({ ephemeral: true }); // ✅ safer
 
-    if (channel.parent) {
-      await channel.parent.permissionOverwrites.edit(everyone, {
-        ViewChannel: true,
-      });
+    const channel = interaction.channel;
+    const guild = interaction.guild;
+
+    if (!channel || !guild) {
+      return interaction.editReply("❌ Invalid channel or guild.");
     }
 
-    await interaction.reply({
-      content: "✅ Channel is now visible to everyone.",
-      ephemeral: true,
-    });
+    const everyone = guild.roles.everyone;
+
+    // ================= CHECK BOT PERMISSIONS =================
+    if (!channel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.ManageChannels)) {
+      return interaction.editReply("❌ I don’t have permission to manage this channel.");
+    }
+
+    // ================= UNLOCK CHANNEL =================
+    await channel.permissionOverwrites.edit(everyone, {
+      ViewChannel: true
+    }).catch(() => {});
+
+    // ================= UNLOCK CATEGORY (IF EXISTS) =================
+    if (channel.parent) {
+      await channel.parent.permissionOverwrites.edit(everyone, {
+        ViewChannel: true
+      }).catch(() => {});
+    }
+
+    return interaction.editReply("✅ Channel is now visible to everyone.");
 
   } catch (err) {
-    console.log("UNLOCK ERROR:", err.message);
+    console.log("UNLOCK ERROR:", err);
 
-    await interaction.reply({
-      content: "❌ Failed to unlock channel.",
-      ephemeral: true,
-    });
+    try {
+      return interaction.editReply("❌ Failed to unlock channel.");
+    } catch {
+      return;
+    }
   }
 }
