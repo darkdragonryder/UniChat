@@ -1,4 +1,5 @@
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
+import { PermissionsBitField } from "discord.js";
 
 /**
  * Fixes ALL existing language channels without rerunning setup
@@ -6,14 +7,25 @@ import { supabase } from "../services/supabase.js";
 export async function syncLanguagePermissions(guild) {
   try {
 
-    const { data } = await supabase
+    const supabase = db(); // ✅ FIX: correct DB init
+
+    const { data, error } = await supabase
       .from("guild_settings")
-      .select("enabled_channels")
+      .select("enabled_channels, default_channel, active_channel")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
+    if (error) {
+      console.log("DB ERROR:", error.message);
+      return;
+    }
+
     const channels = data?.enabled_channels;
     if (!channels) return;
+
+    const baseId =
+      data?.default_channel ||
+      data?.active_channel;
 
     await guild.roles.fetch();
     await guild.channels.fetch();
@@ -23,27 +35,56 @@ export async function syncLanguagePermissions(guild) {
       const channel = guild.channels.cache.get(channelId);
       if (!channel) continue;
 
-      // find matching role by language name or code
-      const role =
-        guild.roles.cache.find(r =>
-          r.name.toLowerCase().includes(lang.toLowerCase())
-        );
+      // 🟢 BASE CHANNEL (EN) — keep open
+      if (channelId === baseId || lang === "EN") {
+        await channel.permissionOverwrites.set([
+          {
+            id: guild.roles.everyone.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages
+            ]
+          },
+          {
+            id: guild.members.me.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory
+            ]
+          }
+        ]);
+
+        continue;
+      }
+
+      // 🔒 LANGUAGE CHANNELS
+      const role = guild.roles.cache.find(r =>
+        r.name.toLowerCase().includes(lang.toLowerCase())
+      );
 
       if (!role) continue;
 
-      // ================= APPLY PERMISSIONS =================
       await channel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id,
-          deny: ["ViewChannel"]
+          deny: [PermissionsBitField.Flags.ViewChannel]
         },
         {
           id: role.id,
-          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
         },
         {
           id: guild.members.me.id,
-          allow: ["ViewChannel", "SendMessages", "ManageMessages"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ManageMessages
+          ]
         }
       ]);
 
@@ -51,6 +92,6 @@ export async function syncLanguagePermissions(guild) {
     }
 
   } catch (err) {
-    console.log("SYNC ERROR:", err.message);
+    console.log("SYNC ERROR:", err);
   }
 }
