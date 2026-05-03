@@ -1,7 +1,8 @@
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
 
 export default async function addLanguageCommand(interaction) {
   try {
+    const supabase = db(); // ✅ FIX
 
     const code = interaction.options.getString("code")?.trim().toUpperCase();
     const name = interaction.options.getString("name");
@@ -18,7 +19,6 @@ export default async function addLanguageCommand(interaction) {
 
     const guild = interaction.guild;
 
-    // ================= EN SAFETY (BASE LANGUAGE) =================
     if (code === "EN") {
       return interaction.editReply("❌ EN is the base language and cannot be added.");
     }
@@ -32,27 +32,20 @@ export default async function addLanguageCommand(interaction) {
     const channels = data?.enabled_channels || {};
     const base = data?.base_channel_name || "chat";
 
-    // ================= DUPLICATE CHECK =================
     if (channels[code]) {
       return interaction.editReply(`❌ Language **${code}** already exists.`);
     }
 
-    // ================= CATEGORY =================
-    let category = guild.channels.cache.find(c =>
-      c.name === "🌍 UniChat"
-    );
+    let category = guild.channels.cache.find(c => c.name === "🌍 UniChat");
 
-    if (!category || category.deleted) {
+    if (!category) {
       category = await guild.channels.create({
         name: "🌍 UniChat",
         type: 4
       });
     }
 
-    // ================= ROLE =================
-    let role = guild.roles.cache.find(r =>
-      r.name === `UniChat-${code}`
-    );
+    let role = guild.roles.cache.find(r => r.name === `UniChat-${code}`);
 
     if (!role) {
       role = await guild.roles.create({
@@ -61,14 +54,13 @@ export default async function addLanguageCommand(interaction) {
       });
     }
 
-    // ================= CHANNEL =================
     const channel = await guild.channels.create({
-      name: base, // 🔥 KEEP YOUR DESIGN (no emoji changes)
+      name: base,
       type: 0,
       parent: category.id,
       permissionOverwrites: [
         {
-          id: guild.roles.everyone,
+          id: guild.roles.everyone.id,
           deny: ["ViewChannel"]
         },
         {
@@ -78,7 +70,6 @@ export default async function addLanguageCommand(interaction) {
       ]
     });
 
-    // ================= UPDATE SUPABASE =================
     channels[code] = channel.id;
 
     const { error } = await supabase.from("guild_settings").upsert({
@@ -97,11 +88,15 @@ export default async function addLanguageCommand(interaction) {
     );
 
   } catch (err) {
-    console.log("ADD LANGUAGE ERROR:", err.message);
+    console.log("ADD LANGUAGE ERROR:", err);
 
-    return interaction.reply({
-      content: "❌ Failed to add language",
-      ephemeral: true
-    });
+    try {
+      return interaction.reply({
+        content: "❌ Failed to add language",
+        ephemeral: true
+      });
+    } catch {
+      return;
+    }
   }
 }
