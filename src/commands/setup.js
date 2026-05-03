@@ -1,4 +1,4 @@
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
 import {
   ChannelType,
   PermissionsBitField
