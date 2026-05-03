@@ -1,42 +1,39 @@
 import { createClient } from "@supabase/supabase-js";
 
-let supabase = null;
+let supabaseInstance = null;
 
+/**
+ * Primary DB initializer (recommended usage)
+ */
 export function db() {
-  if (supabase) return supabase;
+  if (supabaseInstance) return supabaseInstance;
 
-  const url = (process.env.SUPABASE_URL || "").trim();
-  const key = (process.env.SUPABASE_KEY || "").trim();
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = process.env.SUPABASE_KEY?.trim();
 
   if (!url || !key) {
-    throw new Error(
-      "Missing SUPABASE env vars (SUPABASE_URL / SUPABASE_KEY)"
-    );
+    throw new Error("Missing SUPABASE_URL or SUPABASE_KEY environment variables");
   }
 
-  supabase = createClient(url, key, {
+  supabaseInstance = createClient(url, key, {
     auth: {
       persistSession: false
     }
   });
 
-  return supabase;
+  return supabaseInstance;
 }
 
-/* Optional helper */
-export async function getGuildSettings(guildId) {
-  const client = db();
-
-  const { data, error } = await client
-    .from("guild_settings")
-    .select("*")
-    .eq("guild_id", guildId)
-    .maybeSingle();
-
-  if (error) {
-    console.log("DB ERROR:", error.message);
-    return null;
+/**
+ * Backwards compatibility export
+ * Allows: import { supabase } from "../services/supabase.js";
+ * without breaking existing code.
+ */
+export const supabase = new Proxy({}, {
+  get: (_, prop) => {
+    const client = db();
+    return typeof client[prop] === "function"
+      ? client[prop].bind(client)
+      : client[prop];
   }
-
-  return data;
-}
+});
