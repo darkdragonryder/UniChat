@@ -1,3 +1,5 @@
+import { db } from "./supabase.js";
+
 const queue = [];
 let active = 0;
 
@@ -9,7 +11,9 @@ export function enqueue(job) {
 }
 
 async function processJob(job) {
-  const { message, channels, sourceLang, translateCached, supabase } = job;
+  const supabase = db();
+
+  const { message, channels, sourceLang, translateCached } = job;
 
   const guildChannels = message.guild.channels.cache;
   const channelMap = { [sourceLang]: message.id };
