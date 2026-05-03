@@ -35,7 +35,7 @@ const client = new Client({
 });
 
 // ================= READY =================
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`🚀 UniChat v4.1 ONLINE: ${client.user.tag}`);
 
   for (const guild of client.guilds.cache.values()) {
