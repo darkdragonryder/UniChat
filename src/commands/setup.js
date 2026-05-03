@@ -31,6 +31,8 @@ export default async function setupCommand(interaction, client) {
 
   try {
 
+    const supabase = db(); // ✅ FIX: initialise DB client
+
     await guild.channels.fetch();
     await guild.roles.fetch();
 
@@ -88,7 +90,7 @@ export default async function setupCommand(interaction, client) {
       roles[lang] = role;
     }
 
-    // ================= 🟢 BASE CHANNEL (HARD PROTECTED) =================
+    // ================= BASE CHANNEL =================
     await baseChannel.permissionOverwrites.set([
       {
         id: guild.roles.everyone.id,
@@ -107,7 +109,6 @@ export default async function setupCommand(interaction, client) {
       }
     ]);
 
-    // 🔒 Ensure category cannot hide base channel
     if (baseCategory) {
       await baseCategory.permissionOverwrites.edit(
         guild.roles.everyone,
@@ -137,7 +138,6 @@ export default async function setupCommand(interaction, client) {
         });
       }
 
-      // ================= LANGUAGE PERMISSIONS =================
       await channel.permissionOverwrites.set([
         {
           id: guild.roles.everyone.id,
