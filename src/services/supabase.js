@@ -1,12 +1,26 @@
 import { createClient } from "@supabase/supabase-js";
 
-export const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+let supabase;
+
+function getSupabaseClient() {
+  if (!supabase) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_KEY;
+
+    if (!url || !key) {
+      throw new Error("Missing SUPABASE_URL or SUPABASE_KEY");
+    }
+
+    supabase = createClient(url, key);
+  }
+
+  return supabase;
+}
 
 export async function getGuildSettings(guildId) {
-  const { data, error } = await supabase
+  const client = getSupabaseClient();
+
+  const { data, error } = await client
     .from("guild_settings")
     .select("*")
     .eq("guild_id", guildId)
