@@ -39,7 +39,7 @@ client.once("ready", async () => {
   console.log(`🚀 UniChat v4.1 ONLINE: ${client.user.tag}`);
 
   for (const guild of client.guilds.cache.values()) {
-    await systemHealth({ guild }).catch(() => {});
+    systemHealth({ guild }).catch(() => {});
   }
 });
 
@@ -57,14 +57,15 @@ client.on("messageCreate", async (message) => {
 
     const supabase = db();
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("guild_settings")
       .select("enabled_channels")
       .eq("guild_id", message.guild.id)
       .maybeSingle();
 
-    const channels = data?.enabled_channels;
-    if (!channels) return;
+    if (error || !data?.enabled_channels) return;
+
+    const channels = data.enabled_channels;
 
     let sourceLang = null;
 
@@ -77,8 +78,7 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    const messageMap = {};
-    messageMap[sourceLang] = message.id;
+    const messageMap = { [sourceLang]: message.id };
 
     for (const [lang, channelId] of Object.entries(channels)) {
       if (lang === sourceLang) continue;
@@ -93,7 +93,7 @@ client.on("messageCreate", async (message) => {
         .setColor(0x00bfff)
         .setAuthor({
           name: message.member?.displayName || message.author.username,
-          iconURL: message.author.displayAvatarURL()
+          iconURL: message.author.displayAvatarURL?.() || null
         })
         .setDescription(translated)
         .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
@@ -101,9 +101,7 @@ client.on("messageCreate", async (message) => {
 
       const sent = await channel.send({ embeds: [embed] }).catch(() => null);
 
-      if (sent) {
-        messageMap[lang] = sent.id;
-      }
+      if (sent) messageMap[lang] = sent.id;
     }
 
     await supabase.from("message_maps").insert({
