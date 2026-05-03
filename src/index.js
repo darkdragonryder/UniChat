@@ -4,7 +4,7 @@ import {
   EmbedBuilder
 } from "discord.js";
 
-import { getSupabase } from "./services/supabase.js";
+import { db } from "./services/supabase.js";
 import { translateCached } from "./services/cacheTranslate.js";
 import { systemHealth } from "./services/systemHealth.js";
 
@@ -48,14 +48,14 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE (WITH FULL MAPPING)
+   MESSAGE CREATE
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
     if (!message.content?.trim()) return;
 
-    const supabase = getSupabase();
+    const supabase = db();
 
     const { data } = await supabase
       .from("guild_settings")
@@ -125,7 +125,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
     if (!newMsg.guild || newMsg.author?.bot) return;
     if (!newMsg.content) return;
 
-    const supabase = getSupabase();
+    const supabase = db();
 
     const { data: maps } = await supabase
       .from("message_maps")
@@ -179,7 +179,7 @@ client.on("messageDelete", async (message) => {
   try {
     if (!message.guild || !message.id) return;
 
-    const supabase = getSupabase();
+    const supabase = db();
 
     const { data: maps } = await supabase
       .from("message_maps")
