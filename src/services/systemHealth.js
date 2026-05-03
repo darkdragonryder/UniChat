@@ -1,7 +1,8 @@
-import { supabase } from "./supabase.js";
+import { db } from "./supabase.js";
 
 export async function systemHealth({ guild }) {
   try {
+    const supabase = db();
 
     const { data } = await supabase
       .from("guild_settings")
@@ -9,7 +10,6 @@ export async function systemHealth({ guild }) {
       .eq("guild_id", guild.id)
       .maybeSingle();
 
-    // ================= CREATE DEFAULT IF MISSING =================
     if (!data) {
       await supabase.from("guild_settings").insert({
         guild_id: guild.id,
@@ -25,7 +25,6 @@ export async function systemHealth({ guild }) {
 
     let enabled = data.enabled_channels || {};
 
-    // ================= ENSURE EN EXISTS =================
     if (!enabled.EN) {
       const baseChannel =
         data.default_channel ||
@@ -35,17 +34,14 @@ export async function systemHealth({ guild }) {
       enabled.EN = baseChannel;
     }
 
-    // ================= NORMALIZE STRUCTURE =================
     const cleaned = {};
 
     for (const [lang, id] of Object.entries(enabled)) {
       if (id) cleaned[lang] = id;
     }
 
-    // always ensure EN exists even if null
     cleaned.EN = enabled.EN || data.default_channel || data.active_channel;
 
-    // ================= SAVE BACK CLEAN DATA =================
     await supabase
       .from("guild_settings")
       .update({
