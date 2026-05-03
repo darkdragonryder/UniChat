@@ -95,7 +95,7 @@ client.on("messageCreate", async (message) => {
         .setColor(0x00bfff)
         .setAuthor({
           name: message.member?.displayName || message.author.username,
-          iconURL: message.author.displayAvatarURL?.() || null
+          iconURL: message.author.displayAvatarURL()
         })
         .setDescription(translated)
         .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
@@ -164,7 +164,8 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
       const translated = await translateCached(newMsg.content, lang);
       if (!translated) continue;
 
-      await msg.edit({ content: translated }).catch(() => {});
+      await msg.edit({ embeds: [new EmbedBuilder().setDescription(translated)] })
+        .catch(() => {});
     }
 
   } catch (err) {
