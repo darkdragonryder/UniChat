@@ -1,18 +1,23 @@
-import { supabase } from "../services/supabase.js";
+import { db } from "../services/supabase.js";
 import { PermissionsBitField } from "discord.js";
 
 export default async function repairCommand(interaction) {
   try {
-
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
+    const supabase = db(); // ✅ FIX: correct DB init
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("guild_settings")
       .select("enabled_channels, base_channel_id")
       .eq("guild_id", guild.id)
       .maybeSingle();
+
+    if (error) {
+      console.log("DB ERROR:", error.message);
+      return interaction.editReply("❌ Database error");
+    }
 
     const channels = data?.enabled_channels;
 
@@ -31,16 +36,19 @@ export default async function repairCommand(interaction) {
       : null;
 
     if (baseChannel) {
-      await baseChannel.permissionOverwrites.edit(guild.roles.everyone, {
-        ViewChannel: true,
-        SendMessages: true
-      }).catch(() => {});
+      await baseChannel.permissionOverwrites
+        .edit(guild.roles.everyone, {
+          ViewChannel: true,
+          SendMessages: true
+        })
+        .catch(() => {});
     }
 
-    // ================= 🔒 REPAIR LANGUAGE CHANNELS ONLY =================
+    // ================= 🔒 REPAIR LANGUAGE CHANNELS =================
     for (const [lang, channelId] of Object.entries(channels)) {
+      if (!channelId) continue;
 
-      // 🚫 SKIP BASE CHANNEL SAFETY CHECK
+      // 🚫 NEVER TOUCH BASE CHANNEL
       if (data?.base_channel_id === channelId) continue;
 
       const channel = guild.channels.cache.get(channelId);
