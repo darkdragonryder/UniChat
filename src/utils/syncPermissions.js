@@ -1,4 +1,4 @@
-import { db } from "../services/supabase.js";
+import { db } from "./supabase.js";
 import { PermissionsBitField } from "discord.js";
 
 /**
@@ -7,7 +7,7 @@ import { PermissionsBitField } from "discord.js";
 export async function syncLanguagePermissions(guild) {
   try {
 
-    const supabase = db(); // ✅ FIX: correct DB init
+    const supabase = db();
 
     const { data, error } = await supabase
       .from("guild_settings")
