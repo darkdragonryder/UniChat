@@ -6,7 +6,7 @@ export default async function infoCommand(interaction, client) {
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
-    const supabase = db(); // ✅ FIX: correct DB init
+    const supabase = db();
 
     const { data, error } = await supabase
       .from("guild_settings")
@@ -35,10 +35,12 @@ export default async function infoCommand(interaction, client) {
     const languageCount = Object.keys(enabled).length;
 
     // ================= STATUS =================
-    const status =
-      client.ws.ping < 200
-        ? "🟢 Online & Operational"
-        : "🟡 Degraded Performance";
+    const ping = client.ws.ping;
+    const status = ping < 200
+      ? "🟢 Online & Operational"
+      : ping < 500
+        ? "🟡 Degraded Performance"
+        : "🔴 High Latency";
 
     // ================= EMBED =================
     const embed = new EmbedBuilder()
@@ -47,7 +49,7 @@ export default async function infoCommand(interaction, client) {
       .addFields(
         {
           name: "📦 Version",
-          value: "4.0",
+          value: "4.2",
           inline: true
         },
         {
@@ -69,7 +71,7 @@ export default async function infoCommand(interaction, client) {
         },
         {
           name: "📡 Status",
-          value: status,
+          value: `${status} (${ping}ms)`,
           inline: false
         }
       )
