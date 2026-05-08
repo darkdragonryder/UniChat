@@ -22,7 +22,9 @@ export default async function announceOwner(interaction) {
       })
       .setTitle("🚀 Creator Announcement")
       .setDescription(
-        "👑 The UniChat creator is active in this server.\n\n" +
+        "👑 The UniChat creator is active in this server.
+
+" +
         "This is a verified UniChat instance."
       )
       .setFooter({ text: "UniChat • Verified Instance" })
