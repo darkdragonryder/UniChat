@@ -22,7 +22,7 @@ export default async function migrateCommand(interaction) {
   await interaction.reply("🔄 Migrating channels...");
 
   try {
-    const supabase = db(); // ✅ FIX
+    const supabase = db();
 
     const { data } = await supabase
       .from("guild_settings")
