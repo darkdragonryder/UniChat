@@ -1,5 +1,5 @@
-import { db } from "../services/supabase.js";
-import { ChannelType } from "discord.js";
+import { db } from "./supabase.js";
+import { ChannelType, PermissionsBitField } from "discord.js";
 
 const languages = {
   ES: "🇪🇸",
@@ -19,9 +19,9 @@ const roleNames = {
   JA: "Japanese"
 };
 
-export async function recoverGuild(guild) {
+export async function recoverGuild(guild, client) {
   try {
-    const supabase = db(); // ✅ FIX
+    const supabase = db();
 
     const { data: settings, error } = await supabase
       .from("guild_settings")
@@ -72,16 +72,34 @@ export async function recoverGuild(guild) {
     }
 
     // ================= CHANNEL RECOVERY =================
+    const baseName = settings.base_channel_name || "chat";
+
     for (const [lang, emoji] of Object.entries(languages)) {
       const existingId = enabled[lang];
       let channel = guild.channels.cache.get(existingId);
 
       // recreate if missing
       if (!channel) {
+        const role = guild.roles.cache.find(r => r.name === roleNames[lang]);
+
         channel = await guild.channels.create({
-          name: `general-${emoji}`,
+          name: `${baseName}-${emoji}`,
           type: ChannelType.GuildText,
-          parent: category.id
+          parent: category.id,
+          permissionOverwrites: [
+            {
+              id: guild.roles.everyone.id,
+              deny: [PermissionsBitField.Flags.ViewChannel]
+            },
+            {
+              id: role?.id || guild.roles.everyone.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.SendMessages,
+                PermissionsBitField.Flags.ReadMessageHistory
+              ]
+            }
+          ]
         });
 
         enabled[lang] = channel.id;
