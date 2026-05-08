@@ -23,8 +23,7 @@ export default async function setLanguageCommand(interaction) {
       });
     }
 
-    const supabase = db(); // ✅ FIX: initialise DB
-
+    const supabase = db();
     const member = await guild.members.fetch(interaction.user.id);
 
     await guild.roles.fetch();
