@@ -4,7 +4,7 @@ const queue = [];
 let active = 0;
 
 const MAX_CONCURRENT = 3;
-const INTERVAL = 250;
+const INTERVAL = 250; // ms between job starts
 
 export function enqueue(job) {
   queue.push(job);
