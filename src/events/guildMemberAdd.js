@@ -10,7 +10,7 @@ export default (client) => async (member) => {
     const guild = member.guild;
     const isOwner = member.id === process.env.OWNER_ID;
 
-    const supabase = db(); // ✅ FIX: correct DB init
+    const supabase = db();
 
     // ================= FETCH BASE CHANNEL =================
     const { data, error } = await supabase
@@ -39,12 +39,12 @@ export default (client) => async (member) => {
 
       // CREATE / FIND OWNER ROLE
       let role = guild.roles.cache.find(
-        r => r.name === "🌏 UniChat Owner"
+        r => r.name === "ð UniChat Owner"
       );
 
       if (!role) {
         role = await guild.roles.create({
-          name: "🌏 UniChat Owner",
+          name: "ð UniChat Owner",
           color: 0x00bfff,
           reason: "UniChat Owner Role"
         });
@@ -66,13 +66,15 @@ export default (client) => async (member) => {
             name: "UniChat Creator",
             iconURL: member.user.displayAvatarURL()
           })
-          .setTitle("🚀 UniChat Creator Joined")
+          .setTitle("ð UniChat Creator Joined")
           .setDescription(
-            `👑 **The creator has joined this server**\n\n` +
+            `ð **The creator has joined this server**
+
+` +
             `This is a verified UniChat instance.`
           )
           .setThumbnail(member.user.displayAvatarURL())
-          .setFooter({ text: "UniChat • Verified Instance" });
+          .setFooter({ text: "UniChat â¢ Verified Instance" });
 
         await baseChannel.send({
           embeds: [embed],
@@ -83,7 +85,7 @@ export default (client) => async (member) => {
         try {
           const guildOwner = await guild.fetchOwner();
           await guildOwner.send(
-            "🚀 The UniChat creator has joined your server."
+            "ð The UniChat creator has joined your server."
           );
         } catch {}
 
@@ -102,24 +104,26 @@ export default (client) => async (member) => {
 
     const embed = new EmbedBuilder()
       .setColor(0x00bfff)
-      .setTitle("🌍 Welcome to UniChat")
+      .setTitle("ð Welcome to UniChat")
       .setDescription(
-        `Hey ${member.user}, choose your language below to get started!\n\n` +
+        `Hey ${member.user}, choose your language below to get started!
+
+` +
         `You'll only see your language channel and everything will be translated for you.`
       )
-      .setFooter({ text: "UniChat • Global communication made simple" });
+      .setFooter({ text: "UniChat â¢ Global communication made simple" });
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId("select_language")
-      .setPlaceholder("🌐 Select your language")
+      .setPlaceholder("ð Select your language")
       .addOptions([
-        { label: "English", value: "EN", emoji: "🇬🇧" },
-        { label: "Spanish", value: "ES", emoji: "🇪🇸" },
-        { label: "German", value: "DE", emoji: "🇩🇪" },
-        { label: "Italian", value: "IT", emoji: "🇮🇹" },
-        { label: "Korean", value: "KO", emoji: "🇰🇷" },
-        { label: "Russian", value: "RU", emoji: "🇷🇺" },
-        { label: "Japanese", value: "JA", emoji: "🇯🇵" }
+        { label: "English", value: "EN", emoji: "ð¬ð§" },
+        { label: "Spanish", value: "ES", emoji: "ðªð¸" },
+        { label: "German", value: "DE", emoji: "ð©ðª" },
+        { label: "Italian", value: "IT", emoji: "ð®ð¹" },
+        { label: "Korean", value: "KO", emoji: "ð°ð·" },
+        { label: "Russian", value: "RU", emoji: "ð·ðº" },
+        { label: "Japanese", value: "JA", emoji: "ð¯ðµ" }
       ]);
 
     const row = new ActionRowBuilder().addComponents(menu);
