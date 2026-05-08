@@ -1,19 +1,18 @@
 import { db } from "./supabase.js";
 
 const memoryCache = new Map();
-const MAX_CACHE_SIZE = 10000; // Prevent unbounded growth
+const MAX_CACHE_SIZE = 10000;
 
 function makeKey(text, lang) {
   return `${lang}:${text.toLowerCase().trim()}`;
 }
 
-/**
- * LRU-style cache cleanup
- */
 function trimCache() {
   if (memoryCache.size < MAX_CACHE_SIZE) return;
-  const entriesToDelete = Math.floor(MAX_CACHE_SIZE * 0.2); // Remove 20%
+
+  const entriesToDelete = Math.floor(MAX_CACHE_SIZE * 0.2);
   const keys = memoryCache.keys();
+
   for (let i = 0; i < entriesToDelete; i++) {
     const key = keys.next().value;
     if (key) memoryCache.delete(key);
@@ -26,26 +25,26 @@ export async function translateCached(text, lang) {
   const supabase = db();
   const k = makeKey(text, lang);
 
-  // Check memory cache
+  // ---------------- MEMORY CACHE ----------------
   if (memoryCache.has(k)) {
     return memoryCache.get(k);
   }
 
   try {
-    // Check database cache
-    const { data } = await supabase
+    // ---------------- DB CACHE ----------------
+    const { data, error } = await supabase
       .from("translation_cache")
       .select("translated_text")
       .eq("hash", k)
       .maybeSingle();
 
-    if (data?.translated_text) {
+    if (!error && data?.translated_text) {
       trimCache();
       memoryCache.set(k, data.translated_text);
       return data.translated_text;
     }
 
-    // Call DeepL API
+    // ---------------- DEEPL ----------------
     const res = await fetch("https://api-free.deepl.com/v2/translate", {
       method: "POST",
       headers: {
@@ -59,29 +58,31 @@ export async function translateCached(text, lang) {
     });
 
     if (!res.ok) {
-      const status = res.status;
-      if (status === 401) {
-        console.error("DEEPL ERROR: Invalid API key");
-      } else if (status === 429) {
-        console.error("DEEPL ERROR: Rate limited");
-      } else if (status === 456) {
-        console.error("DEEPL ERROR: Quota exceeded");
-      } else {
-        console.error(`DEEPL ERROR: HTTP ${status}`);
-      }
-      // Return original text as fallback
+      console.log(`DEEPL ERROR: HTTP ${res.status}`);
       return text;
     }
 
     const json = await res.json();
     const translated = json?.translations?.[0]?.text || text;
 
-    // Save to DB cache (fire and forget)
-    supabase.from("translation_cache").upsert({
-      hash: k,
-      translated_text: translated,
-      source_lang: json?.translations?.[0]?.detected_source_language || null
-    }).catch(err => console.log("CACHE SAVE ERROR:", err.message));
+    // ---------------- FIXED SUPABASE SAVE ----------------
+    try {
+      const { error: upsertError } = await supabase
+        .from("translation_cache")
+        .upsert({
+          hash: k,
+          translated_text: translated,
+          source_lang: json?.translations?.[0]?.detected_source_language || null
+        }, {
+          onConflict: "hash"
+        });
+
+      if (upsertError) {
+        console.log("CACHE SAVE ERROR:", upsertError.message);
+      }
+    } catch (dbErr) {
+      console.log("CACHE SAVE FAILED:", dbErr.message);
+    }
 
     trimCache();
     memoryCache.set(k, translated);
@@ -90,6 +91,6 @@ export async function translateCached(text, lang) {
 
   } catch (err) {
     console.log("TRANSLATE ERROR:", err.message);
-    return text; // Fallback to original
+    return text;
   }
 }
