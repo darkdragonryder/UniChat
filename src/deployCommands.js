@@ -51,13 +51,13 @@ const commands = [
     .setName("addlanguage")
     .setDescription("Add a new language channel + role")
     .addStringOption(o =>
-      o.setName("code").setDescription("Language code").setRequired(true)
+      o.setName("code").setDescription("Language code (e.g. FR, PT)").setRequired(true)
     )
     .addStringOption(o =>
-      o.setName("name").setDescription("Language name").setRequired(true)
+      o.setName("name").setDescription("Language name (e.g. French)").setRequired(true)
     )
     .addStringOption(o =>
-      o.setName("emoji").setDescription("Flag emoji").setRequired(true)
+      o.setName("emoji").setDescription("Flag emoji (e.g. ð«ð·)").setRequired(true)
     ),
 
   // ================= ADMIN =================
@@ -86,7 +86,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 // ================= DEPLOY =================
 (async () => {
   try {
-    console.log("🚀 Deploying slash commands...");
+    console.log("ð Deploying slash commands...");
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
@@ -95,9 +95,15 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
       }
     );
 
-    console.log("✅ Slash commands deployed successfully");
+    console.log("â Slash commands deployed successfully");
 
   } catch (err) {
-    console.error("❌ Deploy failed:", err);
+    console.error("â Deploy failed:", err.message);
+    if (err.status === 401) {
+      console.error("   â Check your DISCORD_TOKEN is valid");
+    } else if (err.status === 403) {
+      console.error("   â Check your CLIENT_ID is correct");
+    }
+    process.exit(1);
   }
 })();
