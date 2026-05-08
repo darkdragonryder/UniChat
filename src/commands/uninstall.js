@@ -10,7 +10,7 @@ export default async function uninstallCommand(interaction) {
   const guild = interaction.guild;
 
   try {
-    const supabase = db(); // ✅ FIX
+    const supabase = db();
 
     const { data } = await supabase
       .from("guild_settings")
@@ -30,6 +30,7 @@ export default async function uninstallCommand(interaction) {
       "Italian",
       "Japanese",
       "Korean",
+      "Russian",
       "🤖 UniChat Bot"
     ];
 
