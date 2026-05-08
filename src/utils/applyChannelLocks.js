@@ -1,14 +1,16 @@
+import { PermissionsBitField } from "discord.js";
+
+const roleMap = {
+  ES: "Spanish",
+  DE: "German",
+  IT: "Italian",
+  KO: "Korean",
+  RU: "Russian",
+  JA: "Japanese"
+};
+
 export async function applyChannelLocks(guild, config) {
   const { enabled_channels } = config;
-
-  const roleMap = {
-    ES: "Spanish",
-    DE: "German",
-    IT: "Italian",
-    KO: "Korean",
-    RU: "Russian",
-    JA: "Japanese"
-  };
 
   await guild.channels.fetch();
 
