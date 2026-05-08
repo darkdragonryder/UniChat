@@ -302,40 +302,6 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-let shuttingDown = false;
-
-// Graceful shutdown (CTRL+C)
-process.on("SIGINT", async () => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-
-  console.log("\n👋 Shutting down UniChat...");
-
-  try {
-    await client.destroy();
-  } catch (err) {
-    console.log("Shutdown error:", err.message);
-  }
-
-  process.exit(0);
-});
-
-// Graceful shutdown (PM2 / system)
-process.on("SIGTERM", async () => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-
-  console.log("\n👋 Shutting down UniChat...");
-
-  try {
-    await client.destroy();
-  } catch (err) {
-    console.log("Shutdown error:", err.message);
-  }
-
-  process.exit(0);
-});
-
 client.login(process.env.DISCORD_TOKEN).catch((err) => {
   console.error("â Failed to login:", err.message);
   process.exit(1);
