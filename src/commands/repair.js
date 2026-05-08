@@ -6,11 +6,12 @@ export default async function repairCommand(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
-    const supabase = db(); // ✅ FIX: correct DB init
+    const supabase = db();
 
+    // FIX: Select default_channel and active_channel, NOT base_channel_id
     const { data, error } = await supabase
       .from("guild_settings")
-      .select("enabled_channels, base_channel_id")
+      .select("enabled_channels, default_channel, active_channel")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
@@ -31,8 +32,10 @@ export default async function repairCommand(interaction) {
     let fixed = 0;
 
     // ================= 🟢 PROTECT BASE CHANNEL =================
-    const baseChannel = data?.base_channel_id
-      ? await guild.channels.fetch(data.base_channel_id).catch(() => null)
+    // FIX: Use default_channel or active_channel
+    const baseId = data?.default_channel || data?.active_channel;
+    const baseChannel = baseId
+      ? await guild.channels.fetch(baseId).catch(() => null)
       : null;
 
     if (baseChannel) {
@@ -49,7 +52,7 @@ export default async function repairCommand(interaction) {
       if (!channelId) continue;
 
       // 🚫 NEVER TOUCH BASE CHANNEL
-      if (data?.base_channel_id === channelId) continue;
+      if (baseId === channelId) continue;
 
       const channel = guild.channels.cache.get(channelId);
       if (!channel) continue;
