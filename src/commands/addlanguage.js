@@ -1,8 +1,19 @@
 import { db } from "../services/supabase.js";
+import { PermissionsBitField, ChannelType } from "discord.js";
+
+const roleNames = {
+  FR: "French",
+  PT: "Portuguese",
+  NL: "Dutch",
+  PL: "Polish",
+  TR: "Turkish",
+  ZH: "Chinese",
+  AR: "Arabic"
+};
 
 export default async function addLanguageCommand(interaction) {
   try {
-    const supabase = db(); // ✅ FIX
+    const supabase = db();
 
     const code = interaction.options.getString("code")?.trim().toUpperCase();
     const name = interaction.options.getString("name");
@@ -36,36 +47,51 @@ export default async function addLanguageCommand(interaction) {
       return interaction.editReply(`❌ Language **${code}** already exists.`);
     }
 
-    let category = guild.channels.cache.find(c => c.name === "🌍 UniChat");
+    let category = guild.channels.cache.find(
+      c => c.name === "🌍 UniChat" && c.type === ChannelType.GuildCategory
+    );
 
     if (!category) {
       category = await guild.channels.create({
         name: "🌍 UniChat",
-        type: 4
+        type: ChannelType.GuildCategory
       });
     }
 
-    let role = guild.roles.cache.find(r => r.name === `UniChat-${code}`);
+    let role = guild.roles.cache.find(r => r.name === (roleNames[code] || name));
 
     if (!role) {
       role = await guild.roles.create({
-        name: `UniChat-${code}`,
+        name: roleNames[code] || name,
         reason: "UniChat language role"
       });
     }
 
+    // FIX: Use PermissionsBitField instead of string arrays
     const channel = await guild.channels.create({
-      name: base,
-      type: 0,
+      name: `${base}-${emoji}`,
+      type: ChannelType.GuildText,
       parent: category.id,
       permissionOverwrites: [
         {
           id: guild.roles.everyone.id,
-          deny: ["ViewChannel"]
+          deny: [PermissionsBitField.Flags.ViewChannel]
         },
         {
           id: role.id,
-          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
+        },
+        {
+          id: guild.members.me.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory
+          ]
         }
       ]
     });
@@ -84,14 +110,15 @@ export default async function addLanguageCommand(interaction) {
     }
 
     return interaction.editReply(
-      `✅ Added **${name} (${code})**\n📍 Channel: ${channel}`
+      `✅ Added **${name} (${code})**
+📍 Channel: ${channel}`
     );
 
   } catch (err) {
     console.log("ADD LANGUAGE ERROR:", err);
 
     try {
-      return interaction.reply({
+      return interaction.editReply({
         content: "❌ Failed to add language",
         ephemeral: true
       });
