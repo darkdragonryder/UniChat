@@ -4,12 +4,14 @@ import {
   PermissionsBitField
 } from "discord.js";
 
+// FIX: Added RU (Russian) which was missing!
 const languages = {
   ES: "🇪🇸",
   DE: "🇩🇪",
   IT: "🇮🇹",
   JA: "🇯🇵",
-  KO: "🇰🇷"
+  KO: "🇰🇷",
+  RU: "🇷🇺"
 };
 
 const roleNames = {
@@ -17,7 +19,8 @@ const roleNames = {
   DE: "German",
   IT: "Italian",
   JA: "Japanese",
-  KO: "Korean"
+  KO: "Korean",
+  RU: "Russian"
 };
 
 export default async function setupCommand(interaction, client) {
@@ -31,7 +34,7 @@ export default async function setupCommand(interaction, client) {
 
   try {
 
-    const supabase = db(); // ✅ FIX: initialise DB client
+    const supabase = db();
 
     await guild.channels.fetch();
     await guild.roles.fetch();
