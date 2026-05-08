@@ -7,7 +7,7 @@ export default async function diagnoseCommand(interaction, client) {
     await interaction.deferReply({ ephemeral: true });
 
     const guild = interaction.guild;
-    const supabase = db(); // ✅ FIX: correct DB init
+    const supabase = db();
 
     const { data, error } = await supabase
       .from("guild_settings")
