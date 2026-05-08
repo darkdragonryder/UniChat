@@ -11,36 +11,44 @@ export async function systemHealth({ guild }) {
       .maybeSingle();
 
     if (!data) {
+      // Create default entry for new guild
       await supabase.from("guild_settings").insert({
         guild_id: guild.id,
-        enabled_channels: { EN: null },
+        enabled_channels: {},
         active_channel: null,
-        default_channel: null
+        default_channel: null,
+        base_channel_name: "chat"
       });
 
-      return { fixed: true };
+      console.log(`✅ Created default settings for guild: ${guild.name}`);
+      return { fixed: true, new: true };
     }
 
     let enabled = data.enabled_channels || {};
 
-    if (!enabled.EN) {
-      enabled.EN = data.default_channel || data.active_channel || null;
+    // Ensure EN key exists pointing to base channel
+    if (!enabled.EN && (data.default_channel || data.active_channel)) {
+      enabled.EN = data.default_channel || data.active_channel;
     }
 
+    // Clean null/undefined entries
     const cleaned = {};
     for (const [k, v] of Object.entries(enabled)) {
       if (v) cleaned[k] = v;
     }
 
-    await supabase
-      .from("guild_settings")
-      .update({ enabled_channels: cleaned })
-      .eq("guild_id", guild.id);
+    // Only update if changed
+    if (JSON.stringify(enabled) !== JSON.stringify(cleaned)) {
+      await supabase
+        .from("guild_settings")
+        .update({ enabled_channels: cleaned })
+        .eq("guild_id", guild.id);
+    }
 
-    return { fixed: true };
+    return { fixed: true, new: false };
 
   } catch (err) {
     console.log("SYSTEM HEALTH ERROR:", err.message);
-    return { fixed: false };
+    return { fixed: false, error: err.message };
   }
 }
