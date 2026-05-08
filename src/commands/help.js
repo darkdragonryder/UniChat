@@ -24,17 +24,22 @@ export default async function helpCommand(interaction) {
       {
         name: "💬 How It Works",
         value:
-          "• You type in your language\n" +
-          "• UniChat translates automatically\n" +
-          "• Messages appear in all other language channels\n" +
+          "• You type in your language
+" +
+          "• UniChat translates automatically
+" +
+          "• Messages appear in all other language channels
+" +
           "• Everyone reads in their own language",
         inline: false
       },
       {
         name: "🧠 Tips",
         value:
-          "• Set your language first\n" +
-          "• Use the correct channel for best results\n" +
+          "• Set your language first
+" +
+          "• Use the correct channel for best results
+" +
           "• Short messages translate faster",
         inline: false
       }
