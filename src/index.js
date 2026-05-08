@@ -37,11 +37,17 @@ const client = new Client({
 });
 
 // ================= READY =================
-client.once("clientReady", async () => {
-  console.log(`🚀 UniChat v4.1 ONLINE: ${client.user.tag}`);
+// FIX: Discord.js v14 uses "ready", NOT "clientReady"
+client.once("ready", async () => {
+  console.log(`ð UniChat v4.2 ONLINE: ${client.user.tag}`);
+  console.log(`ð Serving ${client.guilds.cache.size} guild(s)`);
 
   for (const guild of client.guilds.cache.values()) {
-    systemHealth({ guild }).catch(() => {});
+    try {
+      await systemHealth({ guild });
+    } catch (err) {
+      console.log(`â ï¸ Health check failed for ${guild.name}:`, err.message);
+    }
   }
 });
 
@@ -98,19 +104,31 @@ client.on("messageCreate", async (message) => {
           iconURL: message.author.displayAvatarURL()
         })
         .setDescription(translated)
-        .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
+        .setFooter({ text: `ð ${sourceLang} â ${lang}` })
         .setTimestamp();
 
-      const sent = await channel.send({ embeds: [embed] }).catch(() => null);
+      const sent = await channel.send({ embeds: [embed] }).catch((err) => {
+        console.log(`SEND ERROR [${lang}]:`, err.message);
+        return null;
+      });
 
       if (sent) messageMap[lang] = sent.id;
     }
 
-    await supabase.from("message_maps").insert({
-      guild_id: message.guild.id,
-      base_message_id: message.id,
-      channel_map: messageMap
-    });
+    // FIX: Use upsert instead of insert to avoid duplicates on retry
+    const { error: insertErr } = await supabase
+      .from("message_maps")
+      .upsert({
+        guild_id: message.guild.id,
+        base_message_id: message.id,
+        channel_map: messageMap
+      }, {
+        onConflict: "guild_id,base_message_id"
+      });
+
+    if (insertErr) {
+      console.log("MESSAGE MAP INSERT ERROR:", insertErr.message);
+    }
 
   } catch (err) {
     console.log("MESSAGE ERROR:", err.message);
@@ -119,6 +137,7 @@ client.on("messageCreate", async (message) => {
 
 /* =========================================================
    MESSAGE UPDATE
+   FIX: Preserve original embed formatting (author, footer, color)
 ========================================================= */
 client.on("messageUpdate", async (oldMsg, newMsg) => {
   try {
@@ -149,6 +168,15 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
     const channels = data?.enabled_channels;
     if (!channels) return;
 
+    // Find source language from the map
+    let sourceLang = null;
+    for (const [lang, msgId] of Object.entries(map)) {
+      if (msgId === newMsg.id) {
+        sourceLang = lang;
+        break;
+      }
+    }
+
     for (const [lang, msgId] of Object.entries(map)) {
       if (msgId === newMsg.id) continue;
 
@@ -164,8 +192,18 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
       const translated = await translateCached(newMsg.content, lang);
       if (!translated) continue;
 
-      await msg.edit({ embeds: [new EmbedBuilder().setDescription(translated)] })
-        .catch(() => {});
+      // FIX: Preserve original embed structure, only update description + footer
+      const originalEmbed = msg.embeds[0];
+      const newEmbed = originalEmbed
+        ? EmbedBuilder.from(originalEmbed)
+            .setDescription(translated)
+            .setFooter({ text: `ð ${sourceLang || "?"} â ${lang} (edited)` })
+        : new EmbedBuilder()
+            .setColor(0x00bfff)
+            .setDescription(translated)
+            .setFooter({ text: `ð ${sourceLang || "?"} â ${lang} (edited)` });
+
+      await msg.edit({ embeds: [newEmbed] }).catch(() => {});
     }
 
   } catch (err) {
@@ -175,6 +213,7 @@ client.on("messageUpdate", async (oldMsg, newMsg) => {
 
 /* =========================================================
    MESSAGE DELETE
+   FIX: Delete DB record first, then clean up messages
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
@@ -194,6 +233,12 @@ client.on("messageDelete", async (message) => {
     if (!record) return;
 
     const map = record.channel_map;
+
+    // FIX: Delete DB record FIRST so we don't retry on failure
+    await supabase
+      .from("message_maps")
+      .delete()
+      .eq("id", record.id);
 
     const { data } = await supabase
       .from("guild_settings")
@@ -216,11 +261,6 @@ client.on("messageDelete", async (message) => {
 
       await msg.delete().catch(() => {});
     }
-
-    await supabase
-      .from("message_maps")
-      .delete()
-      .eq("id", record.id);
 
   } catch (err) {
     console.log("DELETE ERROR:", err.message);
@@ -246,11 +286,38 @@ client.on("interactionCreate", async (interaction) => {
       case "unlock": return unlockCommand(interaction);
       case "announce-owner": return announceOwnerCommand(interaction, client);
       case "diagnose": return diagnoseCommand(interaction, client);
+      default:
+        console.log(`Unknown command: ${interaction.commandName}`);
     }
 
   } catch (err) {
     console.log("INTERACTION ERROR:", err.message);
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.editReply({ content: "â An error occurred", ephemeral: true });
+      } else {
+        await interaction.reply({ content: "â An error occurred", ephemeral: true });
+      }
+    } catch {}
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Graceful shutdown
+process.on("SIGINT", () => {
+  console.log("
+ð Shutting down UniChat...");
+  client.destroy();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  console.log("
+ð Shutting down UniChat...");
+  client.destroy();
+  process.exit(0);
+});
+
+client.login(process.env.DISCORD_TOKEN).catch((err) => {
+  console.error("â Failed to login:", err.message);
+  process.exit(1);
+});
