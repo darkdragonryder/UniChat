@@ -4,6 +4,7 @@ let supabaseInstance = null;
 
 /**
  * Primary DB initializer (recommended usage)
+ * Returns a singleton Supabase client
  */
 export function db() {
   if (supabaseInstance) return supabaseInstance;
@@ -12,14 +13,22 @@ export function db() {
   const key = process.env.SUPABASE_KEY?.trim();
 
   if (!url || !key) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_KEY environment variables");
+    throw new Error("Missing SUPABASE_URL or SUPABASE_KEY environment variables. Check your .env file.");
   }
 
-  supabaseInstance = createClient(url, key, {
-    auth: {
-      persistSession: false
-    }
-  });
+  try {
+    supabaseInstance = createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      },
+      db: {
+        schema: "public"
+      }
+    });
+  } catch (err) {
+    throw new Error(`Failed to create Supabase client: ${err.message}`);
+  }
 
   return supabaseInstance;
 }
