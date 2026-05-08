@@ -302,18 +302,37 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// Graceful shutdown
-process.on("SIGINT", () => {
-  console.log("
-ð Shutting down UniChat...");
-  client.destroy();
+let shuttingDown = false;
+
+// Graceful shutdown (CTRL+C)
+process.on("SIGINT", async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  console.log("\n👋 Shutting down UniChat...");
+
+  try {
+    await client.destroy();
+  } catch (err) {
+    console.log("Shutdown error:", err.message);
+  }
+
   process.exit(0);
 });
 
-process.on("SIGTERM", () => {
-  console.log("
-ð Shutting down UniChat...");
-  client.destroy();
+// Graceful shutdown (PM2 / system)
+process.on("SIGTERM", async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  console.log("\n👋 Shutting down UniChat...");
+
+  try {
+    await client.destroy();
+  } catch (err) {
+    console.log("Shutdown error:", err.message);
+  }
+
   process.exit(0);
 });
 
