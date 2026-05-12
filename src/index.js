@@ -61,24 +61,28 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE (FIXED FOR FORWARDED + WEBHOOK + RELAYS)
+   MESSAGE CREATE (FULL FIXED FOR FORWARDS + WEBHOOKS)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild) return;
 
-    // ================= LOOP PROTECTION =================
-    const isSelf = message.author?.id === client.user.id;
-    const isSystemBot = message.author?.bot && !message.webhookId;
+    // ================= SAFETY FILTER (FIXED) =================
+    if (message.author?.id === client.user.id) return;
 
-    if (isSelf || isSystemBot) return;
+    const isTrueInternalBot =
+      message.author?.bot &&
+      !message.webhookId &&
+      message.author?.id !== client.user.id;
 
-    // ================= EXTRACT CONTENT =================
+    if (isTrueInternalBot) return;
+
+    // ================= CONTENT EXTRACTION (ROBUST) =================
     const content =
       message.content?.trim() ||
       message.embeds?.[0]?.description ||
       message.embeds?.[0]?.title ||
-      message.embeds?.map(e => e.description || "").join(" ") ||
+      message.embeds?.map(e => e.description || e.title || "").join(" ") ||
       "";
 
     if (!content.trim()) return;
@@ -95,17 +99,17 @@ client.on("messageCreate", async (message) => {
 
     const channels = data.enabled_channels;
 
-    // ================= SOURCE LANGUAGE DETECTION (FIXED) =================
+    // ================= SOURCE LANGUAGE DETECTION =================
     let sourceLang = null;
 
-    // 1. Try DB message map first (best accuracy)
-    const { data: existingMaps } = await supabase
+    // 1. message map lookup (best accuracy)
+    const { data: maps } = await supabase
       .from("message_maps")
       .select("channel_map")
       .eq("guild_id", message.guild.id);
 
-    if (existingMaps?.length) {
-      for (const map of existingMaps) {
+    if (maps?.length) {
+      for (const map of maps) {
         for (const [lang, msgId] of Object.entries(map.channel_map || {})) {
           if (msgId === message.id) {
             sourceLang = lang;
@@ -116,7 +120,7 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // 2. Fallback: channel mapping
+    // 2. channel mapping fallback
     if (!sourceLang) {
       for (const [lang, id] of Object.entries(channels)) {
         if (String(id) === String(message.channel.id)) {
@@ -126,14 +130,14 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // 3. Final fallback (important for forwarded messages)
+    // 3. final fallback (required for forwarded content)
     if (!sourceLang) {
       sourceLang = "EN";
     }
 
     const messageMap = { [sourceLang]: message.id };
 
-    // ================= TRANSLATE + FORWARD =================
+    // ================= TRANSLATION LOOP =================
     for (const [lang, channelId] of Object.entries(channels)) {
       if (lang === sourceLang) continue;
 
@@ -161,7 +165,7 @@ client.on("messageCreate", async (message) => {
       if (sent) messageMap[lang] = sent.id;
     }
 
-    // ================= SAVE MESSAGE MAP =================
+    // ================= SAVE MAP =================
     await supabase.from("message_maps").upsert(
       {
         guild_id: message.guild.id,
@@ -188,7 +192,8 @@ client.on("messageUpdate", async (_, newMsg) => {
     const content =
       newMsg.content?.trim() ||
       newMsg.embeds?.[0]?.description ||
-      newMsg.embeds?.[0]?.title;
+      newMsg.embeds?.[0]?.title ||
+      "";
 
     if (!content) return;
 
