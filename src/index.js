@@ -61,19 +61,19 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE (FIXED FOR FORWARDED + WEBHOOK + EMBEDS)
+   MESSAGE CREATE (FIXED FOR FORWARDED + WEBHOOK + RELAYS)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild) return;
 
-    // ================= LOOP / SYSTEM PROTECTION =================
+    // ================= LOOP PROTECTION =================
     const isSelf = message.author?.id === client.user.id;
     const isSystemBot = message.author?.bot && !message.webhookId;
 
     if (isSelf || isSystemBot) return;
 
-    // ================= EXTRACT CONTENT SAFELY =================
+    // ================= EXTRACT CONTENT =================
     const content =
       message.content?.trim() ||
       message.embeds?.[0]?.description ||
@@ -95,17 +95,41 @@ client.on("messageCreate", async (message) => {
 
     const channels = data.enabled_channels;
 
-    // ================= FIND SOURCE LANGUAGE =================
+    // ================= SOURCE LANGUAGE DETECTION (FIXED) =================
     let sourceLang = null;
 
-    for (const [lang, id] of Object.entries(channels)) {
-      if (String(id) === String(message.channel.id)) {
-        sourceLang = lang;
-        break;
+    // 1. Try DB message map first (best accuracy)
+    const { data: existingMaps } = await supabase
+      .from("message_maps")
+      .select("channel_map")
+      .eq("guild_id", message.guild.id);
+
+    if (existingMaps?.length) {
+      for (const map of existingMaps) {
+        for (const [lang, msgId] of Object.entries(map.channel_map || {})) {
+          if (msgId === message.id) {
+            sourceLang = lang;
+            break;
+          }
+        }
+        if (sourceLang) break;
       }
     }
 
-    if (!sourceLang) return;
+    // 2. Fallback: channel mapping
+    if (!sourceLang) {
+      for (const [lang, id] of Object.entries(channels)) {
+        if (String(id) === String(message.channel.id)) {
+          sourceLang = lang;
+          break;
+        }
+      }
+    }
+
+    // 3. Final fallback (important for forwarded messages)
+    if (!sourceLang) {
+      sourceLang = "EN";
+    }
 
     const messageMap = { [sourceLang]: message.id };
 
@@ -289,7 +313,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 /* =========================================================
-   GLOBAL ERRORS
+   ERRORS
 ========================================================= */
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
