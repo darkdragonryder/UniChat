@@ -16,7 +16,6 @@ export default async function diagnoseCommand(interaction, client) {
       .maybeSingle();
 
     if (error) {
-      console.log("DB ERROR:", error.message);
       return interaction.editReply("❌ Database error");
     }
 
@@ -30,9 +29,6 @@ export default async function diagnoseCommand(interaction, client) {
     await guild.roles.fetch();
     await guild.channels.fetch();
 
-    /* ================================
-       ROLE CHECK (SKIP ENGLISH)
-    =================================*/
     const roleMap = {
       ES: "Spanish",
       DE: "German",
@@ -46,9 +42,6 @@ export default async function diagnoseCommand(interaction, client) {
       r => !guild.roles.cache.some(role => role.name === r)
     );
 
-    /* ================================
-       CHANNEL CHECK (SKIP ENGLISH)
-    =================================*/
     const missingChannels = [];
 
     for (const [lang, id] of Object.entries(enabled)) {
@@ -58,10 +51,13 @@ export default async function diagnoseCommand(interaction, client) {
       }
     }
 
-    /* ================================
-       AUTO HEAL TRIGGER
-    =================================*/
-    const healResult = await autoHeal({ guild, client });
+    let healResult = null;
+
+    try {
+      healResult = await autoHeal({ guild, client });
+    } catch {
+      healResult = { fixed: false };
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0xffcc00)
@@ -88,25 +84,20 @@ export default async function diagnoseCommand(interaction, client) {
         },
         {
           name: "🔧 Auto-Heal",
-          value: healResult?.fixed ? "🟢 Fixed issues" : "ℹ️ Checked",
+          value: healResult?.disabled
+            ? "⚠️ Disabled (safe mode)"
+            : healResult?.fixed
+              ? "🟢 Fixed issues"
+              : "ℹ️ Checked",
           inline: false
         }
       )
-      .setFooter({ text: "UniChat • Enterprise Diagnostics" })
+      .setFooter({ text: "UniChat • Diagnostics Safe Mode" })
       .setTimestamp();
 
     return interaction.editReply({ embeds: [embed] });
 
   } catch (err) {
-    console.log("DIAGNOSE ERROR:", err);
-
-    if (interaction.deferred || interaction.replied) {
-      return interaction.editReply("❌ Diagnose failed");
-    }
-
-    return interaction.reply({
-      content: "❌ Diagnose failed",
-      ephemeral: true
-    });
+    return interaction.editReply("❌ Diagnose failed safely");
   }
 }
