@@ -3,8 +3,8 @@ import "dotenv/config";
 import {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
-  Partials
+  Partials,
+  EmbedBuilder
 } from "discord.js";
 
 import { db } from "./services/supabase.js";
@@ -51,7 +51,7 @@ client.once("ready", async () => {
     try {
       await systemHealth({ guild });
     } catch (err) {
-      console.log(`⚠️ Health check failed: ${guild.name}`, err.message);
+      console.log("HEALTH ERROR:", err.message);
     }
   }
 });
@@ -61,31 +61,18 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE (FULL FIXED FOR FORWARDS + WEBHOOKS)
+   MESSAGE TRANSLATION (BASE WORKING VERSION)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
-    if (!message.guild) return;
+    if (!message.guild || message.author?.bot) return;
 
-    // ================= SAFETY FILTER (FIXED) =================
-    if (message.author?.id === client.user.id) return;
-
-    const isTrueInternalBot =
-      message.author?.bot &&
-      !message.webhookId &&
-      message.author?.id !== client.user.id;
-
-    if (isTrueInternalBot) return;
-
-    // ================= CONTENT EXTRACTION (ROBUST) =================
     const content =
       message.content?.trim() ||
       message.embeds?.[0]?.description ||
-      message.embeds?.[0]?.title ||
-      message.embeds?.map(e => e.description || e.title || "").join(" ") ||
-      "";
+      message.embeds?.[0]?.title;
 
-    if (!content.trim()) return;
+    if (!content) return;
 
     const supabase = db();
 
@@ -99,45 +86,19 @@ client.on("messageCreate", async (message) => {
 
     const channels = data.enabled_channels;
 
-    // ================= SOURCE LANGUAGE DETECTION =================
+    // detect source language
     let sourceLang = null;
 
-    // 1. message map lookup (best accuracy)
-    const { data: maps } = await supabase
-      .from("message_maps")
-      .select("channel_map")
-      .eq("guild_id", message.guild.id);
-
-    if (maps?.length) {
-      for (const map of maps) {
-        for (const [lang, msgId] of Object.entries(map.channel_map || {})) {
-          if (msgId === message.id) {
-            sourceLang = lang;
-            break;
-          }
-        }
-        if (sourceLang) break;
+    for (const [lang, id] of Object.entries(channels)) {
+      if (String(id) === String(message.channel.id)) {
+        sourceLang = lang;
+        break;
       }
     }
 
-    // 2. channel mapping fallback
-    if (!sourceLang) {
-      for (const [lang, id] of Object.entries(channels)) {
-        if (String(id) === String(message.channel.id)) {
-          sourceLang = lang;
-          break;
-        }
-      }
-    }
+    if (!sourceLang) return;
 
-    // 3. final fallback (required for forwarded content)
-    if (!sourceLang) {
-      sourceLang = "EN";
-    }
-
-    const messageMap = { [sourceLang]: message.id };
-
-    // ================= TRANSLATION LOOP =================
+    // translate to all other channels
     for (const [lang, channelId] of Object.entries(channels)) {
       if (lang === sourceLang) continue;
 
@@ -150,40 +111,23 @@ client.on("messageCreate", async (message) => {
       const embed = new EmbedBuilder()
         .setColor(0x00bfff)
         .setAuthor({
-          name:
-            message.member?.displayName ||
-            message.author?.username ||
-            "Forwarded Message",
-          iconURL: message.author?.displayAvatarURL?.() || null
+          name: message.member?.displayName || message.author.username,
+          iconURL: message.author.displayAvatarURL()
         })
         .setDescription(translated)
         .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
         .setTimestamp();
 
-      const sent = await channel.send({ embeds: [embed] }).catch(() => null);
-
-      if (sent) messageMap[lang] = sent.id;
+      await channel.send({ embeds: [embed] }).catch(() => {});
     }
 
-    // ================= SAVE MAP =================
-    await supabase.from("message_maps").upsert(
-      {
-        guild_id: message.guild.id,
-        base_message_id: message.id,
-        channel_map: messageMap
-      },
-      {
-        onConflict: "guild_id,base_message_id"
-      }
-    );
-
   } catch (err) {
-    console.log("MESSAGE CREATE ERROR:", err);
+    console.log("MESSAGE ERROR:", err.message);
   }
 });
 
 /* =========================================================
-   MESSAGE UPDATE
+   MESSAGE UPDATE (SAFE BASIC VERSION)
 ========================================================= */
 client.on("messageUpdate", async (_, newMsg) => {
   try {
@@ -192,23 +136,11 @@ client.on("messageUpdate", async (_, newMsg) => {
     const content =
       newMsg.content?.trim() ||
       newMsg.embeds?.[0]?.description ||
-      newMsg.embeds?.[0]?.title ||
-      "";
+      newMsg.embeds?.[0]?.title;
 
     if (!content) return;
 
     const supabase = db();
-
-    const { data: maps } = await supabase
-      .from("message_maps")
-      .select("*")
-      .eq("guild_id", newMsg.guild.id);
-
-    const record = maps?.find(m =>
-      Object.values(m.channel_map || {}).includes(newMsg.id)
-    );
-
-    if (!record) return;
 
     const { data } = await supabase
       .from("guild_settings")
@@ -219,20 +151,23 @@ client.on("messageUpdate", async (_, newMsg) => {
     const channels = data?.enabled_channels;
     if (!channels) return;
 
+    // just re-translate edited message
     let sourceLang = null;
 
-    for (const [lang, msgId] of Object.entries(record.channel_map)) {
-      if (msgId === newMsg.id) sourceLang = lang;
+    for (const [lang, id] of Object.entries(channels)) {
+      if (id === newMsg.channel.id) {
+        sourceLang = lang;
+        break;
+      }
     }
 
-    for (const [lang, msgId] of Object.entries(record.channel_map)) {
-      if (msgId === newMsg.id) continue;
+    if (!sourceLang) return;
 
-      const channel = newMsg.guild.channels.cache.get(channels[lang]);
+    for (const [lang, channelId] of Object.entries(channels)) {
+      if (lang === sourceLang) continue;
+
+      const channel = newMsg.guild.channels.cache.get(channelId);
       if (!channel) continue;
-
-      const msg = await channel.messages.fetch(msgId).catch(() => null);
-      if (!msg) continue;
 
       const translated = await translateCached(content, lang);
       if (!translated) continue;
@@ -240,18 +175,18 @@ client.on("messageUpdate", async (_, newMsg) => {
       const embed = new EmbedBuilder()
         .setColor(0x00bfff)
         .setDescription(translated)
-        .setFooter({ text: `🌍 ${sourceLang || "?"} → ${lang} (edited)` });
+        .setFooter({ text: `🌍 ${sourceLang} → ${lang} (edited)` });
 
-      await msg.edit({ embeds: [embed] }).catch(() => {});
+      await channel.send({ embeds: [embed] }).catch(() => {});
     }
 
   } catch (err) {
-    console.log("MESSAGE UPDATE ERROR:", err);
+    console.log("UPDATE ERROR:", err.message);
   }
 });
 
 /* =========================================================
-   MESSAGE DELETE
+   MESSAGE DELETE (UNCHANGED SAFE)
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
@@ -276,7 +211,7 @@ client.on("messageDelete", async (message) => {
       .eq("id", record.id);
 
   } catch (err) {
-    console.log("DELETE ERROR:", err);
+    console.log("DELETE ERROR:", err.message);
   }
 });
 
@@ -305,9 +240,9 @@ client.on("interactionCreate", async (interaction) => {
     if (cmd) return cmd(interaction, client);
 
   } catch (err) {
-    console.log("INTERACTION ERROR:", err);
+    console.log("INTERACTION ERROR:", err.message);
 
-    const reply = { content: "❌ Error occurred", ephemeral: true };
+    const reply = { content: "❌ Error", ephemeral: true };
 
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply(reply).catch(() => {});
