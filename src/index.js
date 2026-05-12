@@ -3,8 +3,8 @@ import "dotenv/config";
 import {
   Client,
   GatewayIntentBits,
-  Partials,
-  EmbedBuilder
+  EmbedBuilder,
+  Partials
 } from "discord.js";
 
 import { db } from "./services/supabase.js";
@@ -51,7 +51,7 @@ client.once("ready", async () => {
     try {
       await systemHealth({ guild });
     } catch (err) {
-      console.log("HEALTH ERROR:", err.message);
+      console.log(`⚠️ Health check failed: ${guild.name}`, err.message);
     }
   }
 });
@@ -61,17 +61,13 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE TRANSLATION (BASE WORKING VERSION)
+   MESSAGE CREATE (CLEAN WORKING VERSION)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild || message.author?.bot) return;
 
-    const content =
-      message.content?.trim() ||
-      message.embeds?.[0]?.description ||
-      message.embeds?.[0]?.title;
-
+    const content = message.content?.trim();
     if (!content) return;
 
     const supabase = db();
@@ -86,11 +82,11 @@ client.on("messageCreate", async (message) => {
 
     const channels = data.enabled_channels;
 
-    // detect source language
+    // ================= FIND SOURCE LANGUAGE =================
     let sourceLang = null;
 
-    for (const [lang, id] of Object.entries(channels)) {
-      if (String(id) === String(message.channel.id)) {
+    for (const [lang, channelId] of Object.entries(channels)) {
+      if (String(channelId) === String(message.channel.id)) {
         sourceLang = lang;
         break;
       }
@@ -98,7 +94,7 @@ client.on("messageCreate", async (message) => {
 
     if (!sourceLang) return;
 
-    // translate to all other channels
+    // ================= TRANSLATE TO ALL OTHER LANGUAGES =================
     for (const [lang, channelId] of Object.entries(channels)) {
       if (lang === sourceLang) continue;
 
@@ -122,101 +118,12 @@ client.on("messageCreate", async (message) => {
     }
 
   } catch (err) {
-    console.log("MESSAGE ERROR:", err.message);
+    console.log("MESSAGE CREATE ERROR:", err);
   }
 });
 
 /* =========================================================
-   MESSAGE UPDATE (SAFE BASIC VERSION)
-========================================================= */
-client.on("messageUpdate", async (_, newMsg) => {
-  try {
-    if (!newMsg.guild || newMsg.author?.bot) return;
-
-    const content =
-      newMsg.content?.trim() ||
-      newMsg.embeds?.[0]?.description ||
-      newMsg.embeds?.[0]?.title;
-
-    if (!content) return;
-
-    const supabase = db();
-
-    const { data } = await supabase
-      .from("guild_settings")
-      .select("enabled_channels")
-      .eq("guild_id", newMsg.guild.id)
-      .maybeSingle();
-
-    const channels = data?.enabled_channels;
-    if (!channels) return;
-
-    // just re-translate edited message
-    let sourceLang = null;
-
-    for (const [lang, id] of Object.entries(channels)) {
-      if (id === newMsg.channel.id) {
-        sourceLang = lang;
-        break;
-      }
-    }
-
-    if (!sourceLang) return;
-
-    for (const [lang, channelId] of Object.entries(channels)) {
-      if (lang === sourceLang) continue;
-
-      const channel = newMsg.guild.channels.cache.get(channelId);
-      if (!channel) continue;
-
-      const translated = await translateCached(content, lang);
-      if (!translated) continue;
-
-      const embed = new EmbedBuilder()
-        .setColor(0x00bfff)
-        .setDescription(translated)
-        .setFooter({ text: `🌍 ${sourceLang} → ${lang} (edited)` });
-
-      await channel.send({ embeds: [embed] }).catch(() => {});
-    }
-
-  } catch (err) {
-    console.log("UPDATE ERROR:", err.message);
-  }
-});
-
-/* =========================================================
-   MESSAGE DELETE (UNCHANGED SAFE)
-========================================================= */
-client.on("messageDelete", async (message) => {
-  try {
-    if (!message.guild?.id || !message.id) return;
-
-    const supabase = db();
-
-    const { data: maps } = await supabase
-      .from("message_maps")
-      .select("*")
-      .eq("guild_id", message.guild.id);
-
-    const record = maps?.find(m =>
-      Object.values(m.channel_map || {}).includes(message.id)
-    );
-
-    if (!record) return;
-
-    await supabase
-      .from("message_maps")
-      .delete()
-      .eq("id", record.id);
-
-  } catch (err) {
-    console.log("DELETE ERROR:", err.message);
-  }
-});
-
-/* =========================================================
-   COMMAND HANDLER
+   INTERACTIONS
 ========================================================= */
 client.on("interactionCreate", async (interaction) => {
   try {
@@ -239,10 +146,12 @@ client.on("interactionCreate", async (interaction) => {
     const cmd = handlers[interaction.commandName];
     if (cmd) return cmd(interaction, client);
 
+    console.log("UNKNOWN COMMAND:", interaction.commandName);
+
   } catch (err) {
     console.log("INTERACTION ERROR:", err.message);
 
-    const reply = { content: "❌ Error", ephemeral: true };
+    const reply = { content: "❌ Error occurred", ephemeral: true };
 
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply(reply).catch(() => {});
@@ -253,7 +162,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 /* =========================================================
-   ERRORS
+   GLOBAL ERROR HANDLING
 ========================================================= */
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
