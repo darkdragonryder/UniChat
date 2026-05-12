@@ -1,6 +1,5 @@
 import { EmbedBuilder } from "discord.js";
-import { db } from "../services/supabase.js";
-import { autoHeal } from "../services/autoHeal.js";
+import { db } from "../services/supabase.js"
 
 export default async function diagnoseCommand(interaction, client) {
   try {
