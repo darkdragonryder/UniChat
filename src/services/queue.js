@@ -3,8 +3,8 @@ import { db } from "./supabase.js";
 const queue = [];
 let active = 0;
 
-const MAX_CONCURRENT = 3;
-const INTERVAL = 250; // ms between job starts
+const MAX_CONCURRENT = 2;
+const INTERVAL = 300;
 
 export function enqueue(job) {
   queue.push(job);
@@ -15,25 +15,28 @@ async function processJob(job) {
 
   const { message, channels, sourceLang, translateCached } = job;
 
-  const guildChannels = message.guild.channels.cache;
+  if (!message?.guild || !message.content) return;
+
   const channelMap = { [sourceLang]: message.id };
 
   const tasks = [];
 
-  for (const [lang, id] of Object.entries(channels)) {
+  for (const [lang, id] of Object.entries(channels || {})) {
     if (lang === sourceLang) continue;
 
-    const channel = guildChannels.get(id);
+    const channel = message.guild.channels.cache.get(id);
     if (!channel) continue;
 
     tasks.push((async () => {
-      const translated = await translateCached(message.content, lang);
-      if (!translated) return;
+      try {
+        const translated = await translateCached(message.content, lang);
+        if (!translated) return;
 
-      const sent = await channel.send({ content: translated }).catch(() => null);
+        const sent = await channel.send({ content: translated }).catch(() => null);
+        if (sent) channelMap[lang] = sent.id;
 
-      if (sent) {
-        channelMap[lang] = sent.id;
+      } catch (err) {
+        console.log(`QUEUE TRANSLATE ERROR [${lang}]:`, err.message);
       }
     })());
   }
@@ -46,6 +49,8 @@ async function processJob(job) {
     channel_map: channelMap
   }, {
     onConflict: "guild_id,base_message_id"
+  }).catch(err => {
+    console.log("QUEUE UPSERT ERROR:", err.message);
   });
 }
 
@@ -64,5 +69,5 @@ setInterval(async () => {
     console.log("QUEUE ERROR:", err.message);
   }
 
-  active--;
+  active = Math.max(0, active - 1);
 }, INTERVAL);
