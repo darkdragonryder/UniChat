@@ -19,66 +19,58 @@ const roleNames = {
   JA: "Japanese"
 };
 
-export async function recoverGuild(guild, client) {
+export async function recoverGuild(guild) {
   try {
     const supabase = db();
 
-    const { data: settings, error } = await supabase
+    const { data: settings } = await supabase
       .from("guild_settings")
       .select("*")
       .eq("guild_id", guild.id)
       .maybeSingle();
 
-    if (error) {
-      console.log("DB ERROR:", error.message);
-      return;
-    }
-
     if (!settings) return;
 
-    await guild.channels.fetch();
-    await guild.roles.fetch();
+    await guild.channels.fetch().catch(() => {});
+    await guild.roles.fetch().catch(() => {});
 
     let enabled = settings.enabled_channels || {};
     let changed = false;
 
-    // ================= CATEGORY CHECK =================
+    // ================= CATEGORY =================
     let category = guild.channels.cache.find(
-      c =>
-        c.name === "🌍 UniChat" &&
-        c.type === ChannelType.GuildCategory
+      c => c.type === ChannelType.GuildCategory && c.name === "🌍 UniChat"
     );
 
     if (!category) {
       category = await guild.channels.create({
         name: "🌍 UniChat",
         type: ChannelType.GuildCategory
-      });
+      }).catch(() => null);
+
       changed = true;
     }
 
-    if (!category) return; // safety
+    if (!category) return;
 
-    // ================= ROLE RECOVERY =================
+    // ================= ROLES =================
     for (const roleName of Object.values(roleNames)) {
       const exists = guild.roles.cache.find(r => r.name === roleName);
+      if (exists) continue;
 
-      if (!exists) {
-        await guild.roles.create({
-          name: roleName,
-          mentionable: false
-        });
-      }
+      await guild.roles.create({
+        name: roleName,
+        mentionable: false
+      }).catch(() => {});
     }
 
-    // ================= CHANNEL RECOVERY =================
+    // ================= CHANNELS =================
     const baseName = settings.base_channel_name || "chat";
 
     for (const [lang, emoji] of Object.entries(languages)) {
       const existingId = enabled[lang];
       let channel = guild.channels.cache.get(existingId);
 
-      // recreate if missing
       if (!channel) {
         const role = guild.roles.cache.find(r => r.name === roleNames[lang]);
 
@@ -100,38 +92,40 @@ export async function recoverGuild(guild, client) {
               ]
             }
           ]
+        }).catch(err => {
+          console.log(`CHANNEL CREATE ERROR [${lang}]:`, err.message);
+          return null;
         });
 
-        enabled[lang] = channel.id;
-        changed = true;
+        if (channel) {
+          enabled[lang] = channel.id;
+          changed = true;
+        }
       }
     }
 
-    // ================= CLEAN INVALID ENTRIES =================
+    // ================= CLEAN INVALID =================
     for (const [lang, id] of Object.entries(enabled)) {
-      if (!id || !guild.channels.cache.get(id)) {
+      if (!guild.channels.cache.get(id)) {
         delete enabled[lang];
         changed = true;
       }
     }
 
-    // ================= SAVE FIX =================
+    // ================= SAVE =================
     if (changed) {
-      const { error: updateError } = await supabase
+      await supabase
         .from("guild_settings")
-        .update({
-          enabled_channels: enabled
-        })
-        .eq("guild_id", guild.id);
+        .update({ enabled_channels: enabled })
+        .eq("guild_id", guild.id)
+        .catch(err => {
+          console.log("RECOVER SAVE ERROR:", err.message);
+        });
 
-      if (updateError) {
-        console.log("UPDATE ERROR:", updateError.message);
-      } else {
-        console.log(`🧩 Recovered guild: ${guild.name}`);
-      }
+      console.log(`🧩 Guild recovered: ${guild.name}`);
     }
 
   } catch (err) {
-    console.log("RECOVERY ERROR:", err);
+    console.log("RECOVER GUILD ERROR:", err.message);
   }
 }
