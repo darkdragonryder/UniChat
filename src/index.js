@@ -61,18 +61,27 @@ client.on("guildCreate", guildCreate(client));
 client.on("guildMemberAdd", guildMemberAdd(client));
 
 /* =========================================================
-   MESSAGE CREATE
+   MESSAGE CREATE (FIXED FOR FORWARDED + WEBHOOK + EMBEDS)
 ========================================================= */
 client.on("messageCreate", async (message) => {
   try {
-    if (!message.guild || message.author?.bot) return;
+    if (!message.guild) return;
 
+    // ================= LOOP / SYSTEM PROTECTION =================
+    const isSelf = message.author?.id === client.user.id;
+    const isSystemBot = message.author?.bot && !message.webhookId;
+
+    if (isSelf || isSystemBot) return;
+
+    // ================= EXTRACT CONTENT SAFELY =================
     const content =
       message.content?.trim() ||
       message.embeds?.[0]?.description ||
-      message.embeds?.[0]?.title;
+      message.embeds?.[0]?.title ||
+      message.embeds?.map(e => e.description || "").join(" ") ||
+      "";
 
-    if (!content) return;
+    if (!content.trim()) return;
 
     const supabase = db();
 
@@ -86,6 +95,7 @@ client.on("messageCreate", async (message) => {
 
     const channels = data.enabled_channels;
 
+    // ================= FIND SOURCE LANGUAGE =================
     let sourceLang = null;
 
     for (const [lang, id] of Object.entries(channels)) {
@@ -99,6 +109,7 @@ client.on("messageCreate", async (message) => {
 
     const messageMap = { [sourceLang]: message.id };
 
+    // ================= TRANSLATE + FORWARD =================
     for (const [lang, channelId] of Object.entries(channels)) {
       if (lang === sourceLang) continue;
 
@@ -111,32 +122,40 @@ client.on("messageCreate", async (message) => {
       const embed = new EmbedBuilder()
         .setColor(0x00bfff)
         .setAuthor({
-          name: message.member?.displayName || message.author.username,
-          iconURL: message.author.displayAvatarURL()
+          name:
+            message.member?.displayName ||
+            message.author?.username ||
+            "Forwarded Message",
+          iconURL: message.author?.displayAvatarURL?.() || null
         })
         .setDescription(translated)
         .setFooter({ text: `🌍 ${sourceLang} → ${lang}` })
         .setTimestamp();
 
       const sent = await channel.send({ embeds: [embed] }).catch(() => null);
+
       if (sent) messageMap[lang] = sent.id;
     }
 
-    await supabase.from("message_maps").upsert({
-      guild_id: message.guild.id,
-      base_message_id: message.id,
-      channel_map: messageMap
-    }, {
-      onConflict: "guild_id,base_message_id"
-    });
+    // ================= SAVE MESSAGE MAP =================
+    await supabase.from("message_maps").upsert(
+      {
+        guild_id: message.guild.id,
+        base_message_id: message.id,
+        channel_map: messageMap
+      },
+      {
+        onConflict: "guild_id,base_message_id"
+      }
+    );
 
   } catch (err) {
-    console.log("MESSAGE CREATE ERROR:", err.message);
+    console.log("MESSAGE CREATE ERROR:", err);
   }
 });
 
 /* =========================================================
-   MESSAGE UPDATE (FIXED LOGIC)
+   MESSAGE UPDATE
 ========================================================= */
 client.on("messageUpdate", async (_, newMsg) => {
   try {
@@ -172,6 +191,7 @@ client.on("messageUpdate", async (_, newMsg) => {
     if (!channels) return;
 
     let sourceLang = null;
+
     for (const [lang, msgId] of Object.entries(record.channel_map)) {
       if (msgId === newMsg.id) sourceLang = lang;
     }
@@ -197,12 +217,12 @@ client.on("messageUpdate", async (_, newMsg) => {
     }
 
   } catch (err) {
-    console.log("MESSAGE UPDATE ERROR:", err.message);
+    console.log("MESSAGE UPDATE ERROR:", err);
   }
 });
 
 /* =========================================================
-   MESSAGE DELETE (SAFE)
+   MESSAGE DELETE
 ========================================================= */
 client.on("messageDelete", async (message) => {
   try {
@@ -227,12 +247,12 @@ client.on("messageDelete", async (message) => {
       .eq("id", record.id);
 
   } catch (err) {
-    console.log("DELETE ERROR:", err.message);
+    console.log("DELETE ERROR:", err);
   }
 });
 
 /* =========================================================
-   COMMANDS
+   COMMAND HANDLER
 ========================================================= */
 client.on("interactionCreate", async (interaction) => {
   try {
@@ -255,10 +275,8 @@ client.on("interactionCreate", async (interaction) => {
     const cmd = handlers[interaction.commandName];
     if (cmd) return cmd(interaction, client);
 
-    console.log("UNKNOWN COMMAND:", interaction.commandName);
-
   } catch (err) {
-    console.log("INTERACTION ERROR:", err.message);
+    console.log("INTERACTION ERROR:", err);
 
     const reply = { content: "❌ Error occurred", ephemeral: true };
 
